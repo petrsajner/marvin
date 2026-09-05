@@ -79,6 +79,30 @@ class ApplicationService:
     def save_preferences(self):
         atomic_write_text(self.preferences_path, json.dumps(self.preferences, ensure_ascii=False, indent=2))
 
+    def remember_running_model(self, key, profile):
+        with self.lock:
+            self.preferences["last_running_model"] = key
+            self.preferences["last_running_kv"] = profile
+            self.save_preferences()
+
+    def start_model(self, *, restart=False):
+        key = self.preferences["model"]
+        profile = self.preferences.get("kv_cache_modes", {}).get(key, self.cfg.kv_cache_mode(key))
+        return self.models.request(key, restart=restart, kv_profile=profile,
+                                   on_success=lambda model: self.remember_running_model(model, profile))
+
+    def autostart_model(self):
+        if not self.manage_model:
+            return
+        key = self.preferences.get("last_running_model", self.preferences["model"])
+        if key in self.cfg.data["models"]:
+            self.preferences["model"] = key
+            profile = self.preferences.get("last_running_kv")
+            if profile in self.cfg.kv_cache_profiles(key):
+                self.preferences.setdefault("kv_cache_modes", {})[key] = profile
+        self.fit_hardware()
+        self.start_model()
+
     def fit_hardware(self):
         from harness.gpu import best_fit, effective_vram_gb, fits
         candidate = Config(copy.deepcopy(self.cfg.data), self.cfg.root)
@@ -350,7 +374,8 @@ class ApplicationService:
                 if profile_changed or not servermgmt.health(cfg) or servermgmt.running_model(cfg) != key:
                     live["phase"] = "loading_model"
                     flush(True)
-                    self.models.request(key, restart=profile_changed, kv_profile=cfg.kv_cache_mode(key))
+                    self.models.request(key, restart=profile_changed, kv_profile=cfg.kv_cache_mode(key),
+                                        on_success=lambda model: self.remember_running_model(model, cfg.kv_cache_mode(model)))
                     while self.models.snapshot().busy and not self.abort.wait(0.1):
                         pass
                     if self.abort.is_set():
@@ -358,6 +383,7 @@ class ApplicationService:
                         return
                     if not servermgmt.health(cfg):
                         raise RuntimeError(self.models.snapshot().error or "Model server is not ready")
+                self.remember_running_model(key, cfg.kv_cache_mode(key))
             if job.get("resume"):
                 saved_live = read_json(session.dir / "interrupted-live.json")
                 if saved_live.get("text") and not any(m.get("content") == saved_live["text"] for m in session.messages[-8:]):

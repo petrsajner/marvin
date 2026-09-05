@@ -58,6 +58,10 @@ Kompletní download má přibližně 59 GiB a obsahuje Qwen Q4, Qwen Q5, Ornith 
 
 ## První spuštění
 
+Marvin po spuštění automaticky načte naposledy úspěšně používaný model s jeho profilem KV cache. Platí to i při přímém spuštění webového rozhraní. Neúspěšné přepnutí nepřepíše poslední úspěšnou volbu. Tlačítko startu nebo restartu se okamžitě rozsvítí a během načítání jemně pulzuje. Panel modelu ukazuje fázi, uplynulý čas a využití paměti grafické karty. Stop zůstává během načítání dostupný.
+
+Nahrávání příloh, export, změny nastavení, obnova a další požadavky mají okamžitou odezvu a následné potvrzení nebo chybu. Potvrzení znamená přijetí požadavku; zařazená práce modelu dále běží v přehledu konverzace. Zálohování ukazuje průběžný výpis i dokončení či selhání v sekci Data a zálohy.
+
 Desktopový launcher kontroluje Python prostředí, závislosti, `llama.cpp` a potřebné soubory modelů. Chybějící části spustí instalační workflow. Po dokončení instalace se při běžném spouštění modely znovu nestahují.
 
 Spuštění desktopové aplikace otevře nativní WebView okno, spustí Web UI a podle potřeby aktivuje `llama-server` s vybraným modelem. Zavření desktopové aplikace zastaví její Web UI i modelový server a uvolní grafickou paměť.
@@ -93,6 +97,10 @@ Při práci ze zdrojů je potřeba Node.js pro sestavení frontendu. Běžná in
 Vlevo je navigace projektů a chatů, uprostřed konverzace a vpravo zavíratelný panel detailů. Prompt zůstává dole pod konverzací. V menším okně se detail otevírá jako zásuvka.
 
 ## Navigace a pracovní režimy
+
+Šířku navigace i pravého detailu změníte tažením za jejich vnitřní okraj. Dvojklik na okraj obnoví výchozí šířku; totéž provede restart nebo obnovení stránky. Seznam konverzací nejprve ukáže 20 nejnovějších chatů vybraného projektu. **Zobrazit starší** přidá dalších 20, **Jen nejnovější** seznam opět zkrátí.
+
+Desktopový spouštěč používá data své vlastní instalace. Vývojová kopie a nainstalovaný Marvin neslučují konverzace. Pro výslovné otevření existujících dat z vývojové kopie slouží `python webapp.py --data-dir "C:\cesta\k\Marvinu"`. Data zůstávají na původním místě, bez převodu nebo kopírování.
 
 Výběr projektu otevře jeho nejnovější chat. **Bez projektu** otevře samostatnou konverzaci. Přepnutí pohledu nepřesune ani nepřenastaví úlohu, která právě běží v jiném chatu.
 

@@ -77,10 +77,11 @@ def _http_ok(url: str, timeout: float = 2.0) -> bool:
 
 
 def _is_our_webui(base_url: str) -> bool:
+    from harness.web_identity import belongs_to_installation
     try:
         with urllib.request.urlopen(base_url.rstrip("/") + "/config", timeout=2.0) as r:
             payload = json.load(r)
-        return r.status == 200 and isinstance(payload.get("components"), list)
+        return r.status == 200 and belongs_to_installation(payload, ROOT, APP_VERSION)
     except Exception:
         return False
 
@@ -97,6 +98,13 @@ def _free_web_port(preferred: int) -> int:
             return port
     raise RuntimeError(t("No free Web UI port in range {start}-{end}",
                          start=preferred, end=preferred + 19))
+
+
+def _existing_web_port(preferred: int) -> int | None:
+    for port in range(preferred, preferred + 20):
+        if _port_busy(port) and _is_our_webui(f"http://127.0.0.1:{port}"):
+            return port
+    return None
 
 
 def _cfg_ports() -> tuple[int, int]:
@@ -325,7 +333,11 @@ def main() -> int:
     # ---- 2) Web UI NEJDŘÍV (model se nahodí na pozadí přes autostart) ---------
     # UI-first: okno se otevře hned, status ukazuje ⏳ načítám model → 🟢
     webapp_proc = None
-    webui_running = _is_our_webui(base_web)
+    existing_port = _existing_web_port(web_port)
+    webui_running = existing_port is not None
+    if existing_port is not None:
+        web_port = existing_port
+        base_web = f"http://127.0.0.1:{web_port}"
     if not webui_running:
         web_port = _free_web_port(web_port)
         base_web = f"http://127.0.0.1:{web_port}"
@@ -350,6 +362,16 @@ def main() -> int:
             url = base_web
     else:
         url = base_web
+        def start_existing_model():
+            try:
+                request = urllib.request.Request(base_web + "/api/runtime/autostart", data=b"{}",
+                                                 headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(request, timeout=5):
+                    pass
+            except Exception as exc:
+                _log(f"Model autostart request failed: {exc}")
+        import threading
+        threading.Thread(target=start_existing_model, daemon=True, name="model-autostart").start()
     if not (webapp_proc is not None and not smoke):
         _log(f"Web UI ready: {url}")
 

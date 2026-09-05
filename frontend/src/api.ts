@@ -1,3 +1,5 @@
+import { beginActivity } from "./activity";
+
 export type FileItem = {
   id: string;
   name: string;
@@ -45,6 +47,8 @@ export async function api<T = any>(
   method = "GET",
   body?: unknown,
 ): Promise<T> {
+  const finish = beginActivity(path, method);
+  try {
   const response = await fetch(path, {
     method,
     headers:
@@ -65,7 +69,10 @@ export async function api<T = any>(
     } catch {}
     throw new Error(typeof text === "string" ? text : JSON.stringify(text));
   }
-  return response.json();
+  const data = await response.json();
+  finish();
+  return data;
+  } catch (error) { finish(true); throw error; }
 }
 export const imageFile = (file: FileItem) =>
   /\.(png|jpe?g|gif|bmp|webp)$/i.test(file.name || file.path);

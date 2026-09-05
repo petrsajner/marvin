@@ -11,7 +11,8 @@ Principy (UI nikdy nezamykáme):
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, replace
 from typing import Callable
 
 from harness import servermgmt
@@ -24,10 +25,13 @@ class ModelSwitchSnapshot:
     status: str = "idle"  # idle | starting | ready | failed
     target: str | None = None
     error: str = ""
+    started_at: float = 0
+    phase: str = "idle"
+    command: str = ""
 
     @property
     def busy(self) -> bool:
-        return self.status == "starting"
+        return self.status in ("starting", "stopping")
 
 
 def _running_model_ok(cfg: Config, model_key: str) -> bool:
@@ -70,7 +74,8 @@ class ModelSwitchController:
             interrupted = self._state.busy
             self._desired = (model_key, kv_profile, restart, on_success)
             self._gen += 1
-            self._state = ModelSwitchSnapshot("starting", model_key)
+            self._state = ModelSwitchSnapshot("starting", model_key, started_at=time.time(),
+                                              phase="preparing", command="restart" if restart else "start")
             if self._thread is None or not self._thread.is_alive():
                 self._thread = threading.Thread(
                     target=self._run, daemon=True, name="model-switch")
@@ -89,11 +94,14 @@ class ModelSwitchController:
         with self._lock:
             self._desired = None
             self._gen += 1
-            self._state = ModelSwitchSnapshot()
+            gen = self._gen
+            self._state = ModelSwitchSnapshot("stopping", self._state.target, started_at=time.time(),
+                                              phase="stopping", command="stop")
         try:
             self._stop(self.cfg, quiet=True)
         except Exception:
             pass
+        self._publish(gen, ModelSwitchSnapshot())
 
     def reset(self) -> None:
         """Zahodit čekající přání bez zásahu do serveru."""
@@ -120,13 +128,15 @@ class ModelSwitchController:
                 gen = self._gen
             try:
                 if not restart and self._running(self.cfg, target):
+                    if on_success is not None:
+                        on_success(target)
                     # model už běží (start tlačítko na běžícím modelu) - netřeba restart
                     self._publish(gen, ModelSwitchSnapshot("ready", target))
                     continue
                 self._stop(self.cfg, quiet=True)
                 if kv_profile:
                     self.cfg.set_kv_cache_mode(target, kv_profile)
-                self._publish(gen, ModelSwitchSnapshot("starting", target))
+                self._publish(gen, ModelSwitchSnapshot("starting", target, phase="loading"))
                 if not self._ensure(self.cfg, target):
                     raise RuntimeError("llama-server could not be prepared")
                 callback_error = ""
@@ -144,4 +154,5 @@ class ModelSwitchController:
         """Publikuj stav jen pokud ho nikdo nepřepsal novějším přáním."""
         with self._lock:
             if self._gen == gen:
-                self._state = state
+                self._state = replace(state, started_at=state.started_at or self._state.started_at,
+                                      command=state.command or self._state.command)

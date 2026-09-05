@@ -84,6 +84,98 @@ class WorkspaceTests(unittest.TestCase):
     def completed(self, key):
         wait_for(lambda: self.service.store.job(key)["status"] in ("complete", "stopped", "failed"))
 
+    def test_launcher_identity_rejects_other_installation_and_legacy_server(self):
+        from harness.web_identity import belongs_to_installation
+        payload = self.client.get("/config").json()
+        self.assertTrue(belongs_to_installation(payload, self.root))
+        self.assertTrue(belongs_to_installation(payload, self.root, payload["version"]))
+        self.assertFalse(belongs_to_installation(payload, self.root, "old-version"))
+        self.assertFalse(belongs_to_installation(payload, self.root / "other-installation"))
+        self.assertFalse(belongs_to_installation({"components": []}, self.root))
+        self.assertEqual(Path(payload["data_root"]), self.root)
+
+    def test_launcher_reuses_own_server_on_alternate_port(self):
+        from unittest.mock import patch
+        from launcher.launcher_app import _existing_web_port
+        with patch("launcher.launcher_app._port_busy", side_effect=lambda port: port in (7860, 7861)), \
+             patch("launcher.launcher_app._is_our_webui", side_effect=lambda url: url.endswith(":7861")):
+            self.assertEqual(_existing_web_port(7860), 7861)
+
+    def test_autostart_restores_last_successful_model_and_kv(self):
+        from harness.model_switch import ModelSwitchController
+        from unittest.mock import patch
+        gate = threading.Event()
+        self.service.models = ModelSwitchController(self.cfg, ensure_fn=lambda *_: gate.wait(2),
+                                                   stop_fn=lambda *a, **k: True, running_fn=lambda *_: False)
+        self.service.preferences.update(model="q5", last_running_model="q4", last_running_kv="q8_0")
+        self.service.manage_model = True
+        try:
+            with patch.object(self.service, "fit_hardware"):
+                self.service.autostart_model()
+            self.assertEqual(self.service.models.snapshot().target, "q4")
+            self.assertTrue(self.service.models.snapshot().busy)
+            self.assertGreater(self.service.models.snapshot().started_at, 0)
+            self.assertEqual(self.service.preferences["kv_cache_modes"]["q4"], "q8_0")
+        finally:
+            gate.set()
+            self.service.models.wait(3)
+            self.service.manage_model = False
+        saved = json.loads(self.service.preferences_path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["last_running_model"], "q4")
+        self.assertEqual(saved["last_running_kv"], "q8_0")
+        self.assertEqual(self.service.models.snapshot().status, "ready")
+
+    def test_failed_start_does_not_replace_last_successful_model(self):
+        from harness.model_switch import ModelSwitchController
+        self.service.preferences.update(model="q5", last_running_model="q4")
+        self.service.models = ModelSwitchController(self.cfg, ensure_fn=lambda *_: False,
+                                                   stop_fn=lambda *a, **k: True, running_fn=lambda *_: False)
+        response = self.client.post("/api/runtime/start").json()
+        self.assertIn("switch", response)
+        self.service.models.wait(2)
+        self.assertEqual(self.service.models.snapshot().status, "failed")
+        self.assertEqual(self.service.preferences["last_running_model"], "q4")
+
+    def test_api_lifespan_autostarts_by_default(self):
+        from unittest.mock import patch
+        with patch.object(self.service, "autostart_model") as start, patch.dict("os.environ", {"QWEN_AUTOSTART_SERVER": "1"}):
+            with TestClient(create_app(self.cfg, service=self.service)):
+                start.assert_called_once()
+
+    def test_reopened_desktop_autostarts_without_interrupting_active_work(self):
+        from unittest.mock import patch
+        with patch.object(self.service, "autostart_model") as start:
+            self.client.post("/api/runtime/autostart").raise_for_status()
+            start.assert_called_once()
+            self.service.active = {"session_id": "test"}
+            try:
+                self.client.post("/api/runtime/autostart").raise_for_status()
+                start.assert_called_once()
+            finally:
+                self.service.active = None
+
+    def test_existing_project_chats_memory_and_skills_visible_without_conversion(self):
+        project = Projects(self.cfg).create_new("Existing project")
+        old = Session(self.cfg, workspace=project["path"], work_mode="research")
+        old.add("user", "Work from the previous UI")
+        old.add("assistant", "Existing saved answer")
+        memory = self.root / "memory" / "GLOBAL.md"
+        memory.parent.mkdir(exist_ok=True)
+        memory.write_text("# Global memory\nKeep existing preferences", encoding="utf-8")
+        skill = Path(project["path"]) / ".qwen-skills" / "existing-work"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text("---\nname: existing-work\ndescription: Existing workflow\n---\nKeep this workflow", encoding="utf-8")
+        original = (old.dir / "messages.jsonl").read_bytes()
+        state = self.client.get("/api/state", params={"session_id": old.id}).json()
+        self.assertIn(old.id, [s["id"] for s in state["sessions"]])
+        self.assertIn(project["id"], [p["id"] for p in state["projects"]])
+        chat = self.client.get(f"/api/sessions/{old.id}").json()
+        self.assertEqual(chat["messages"][-1]["content"], "Existing saved answer")
+        detail = self.client.get(f"/api/sessions/{old.id}/detail").json()
+        self.assertIn("Keep existing preferences", detail["memory"]["global"]["content"])
+        self.assertIn("existing-work", [s["name"] for s in detail["skills"]])
+        self.assertEqual(original, (old.dir / "messages.jsonl").read_bytes())
+
     def test_fork_keeps_document_after_original_chat_deleted(self):
         sid = self.new_chat()
         session = self.service.session(sid)

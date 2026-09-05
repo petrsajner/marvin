@@ -125,6 +125,16 @@ surface remains available for compatibility diagnostics through
 
 ## Installation (one time)
 
+For a Windows installer distribution, see the [English installation guide](docs/distribution/INSTALL-EN.md)
+or [český instalační postup](docs/distribution/INSTALL-CS.md). The release ZIP contains Setup,
+both PDF manuals and SHA-256 checksums. Model weights are downloaded during setup or
+restored from the separate `QwenHarness-Offline-Backup` directory; no personal data
+is included in the distribution.
+
+Release packaging after `installer/release.bat`: run `scripts/package_distribution.ps1`.
+Validate the ZIP and a clean Python dependency restore with
+`python tests/check_distribution.py --backup <backup-directory>`.
+
 **Required prerequisite:** install 64-bit **Python 3.12** from
 [python.org](https://www.python.org/downloads/release/python-31210/) and enable
 **Add Python to PATH** in its installer. Marvin creates its own virtual

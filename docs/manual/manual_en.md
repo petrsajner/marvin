@@ -58,6 +58,10 @@ The complete download is approximately 59 GiB and includes Qwen Q4, Qwen Q5, Orn
 
 ## First launch
 
+Marvin automatically starts the last successfully used model with its KV cache profile. This also applies when starting the web interface directly. A failed model switch does not replace the last successful selection. Start/restart buttons light up immediately and gently pulse during loading; the model panel shows the current phase, elapsed time, and GPU memory usage. Stop remains available during loading.
+
+File uploads, exports, settings changes, restores, and other requests display immediate progress feedback followed by confirmation or an error. Confirmation means the request was accepted; queued model work continues in the conversation's progress display. Backup operations show live output and a completed/failed result in Data and backups.
+
 The desktop launcher checks the Python environment, dependencies, `llama.cpp`, and the required model files. Missing components trigger the setup workflow. Once installed, ordinary launches do not download the models again.
 
 Starting the desktop application opens the native WebView window, starts the Web UI, and starts the selected `llama-server` model when required. Closing the desktop application stops its Web UI and model server and releases GPU memory.
@@ -100,6 +104,10 @@ Source development requires Node.js to build the frontend. A normal Setup.exe in
 The workspace has project/chat navigation on the left, the conversation in the center, and a closable detail panel on the right. The prompt stays at the bottom of the conversation. At smaller widths, the detail panel becomes a drawer.
 
 ## Navigation and work modes
+
+The navigation and detail columns can be resized by dragging their inner edges. Double-click an edge to reset its width; restarting or reloading the interface also restores the default widths. The conversation list initially shows the 20 most recent chats in the selected project. **Show older** reveals another 20; **Show recent only** collapses the list.
+
+The desktop launcher uses the data folder belonging to its own installation. Running a development checkout alongside an installed copy does not merge their conversations. For explicit access to an existing installation from source, run `python webapp.py --data-dir "C:\path\to\Marvin"`; this uses the existing data in place without converting or copying it.
 
 The project selector opens the most recent chat of that project. **No project** opens an independent chat. Selecting another chat never rebinds the task that is already running elsewhere.
 

@@ -55,6 +55,8 @@ import {
 
 import { Attachment, ChatMessage } from "./components/Messages";
 import { DialogView } from "./components/Dialogs";
+import { ResizeHandle } from "./components/ResizeHandle";
+import { ActivityFeedback } from "./components/ActivityFeedback";
 
 type Dialog = { type: string; file?: FileItem; section?: string; data?: any };
 const phases: Record<string, [string, string]> = {
@@ -68,6 +70,10 @@ const phases: Record<string, [string, string]> = {
 };
 
 export function App() {
+  const [leftWidth, setLeftWidth] = useState<number>();
+  const [rightWidth, setRightWidth] = useState<number>();
+  const [chatLimit, setChatLimit] = useState(20);
+  const runtimeGeneration = useRef(0);
   const [app, setApp] = useState<any>(null),
     [sid, setSid] = useState(""),
     [chat, setChat] = useState<Chat | null>(null),
@@ -106,6 +112,10 @@ export function App() {
     return () => clearInterval(timer);
   }, [app?.active?.session_id, sid]);
   const cs = app?.preferences?.language === "cs";
+  useEffect(() => setChatLimit(20), [chat?.meta.workspace, search]);
+  const listedChats = searchResults || (app?.sessions || []).filter(
+    (s: any) => (s.workspace || null) === (chat?.meta.workspace || null),
+  );
   useEffect(() => {
     if (app?.preferences?.send_mode) setDelivery(app.preferences.send_mode);
   }, [app?.preferences?.send_mode]);
@@ -231,16 +241,26 @@ export function App() {
   }, [!!app, refresh, reloadChat, refreshDetail, error]);
   useEffect(() => {
     if (!app) return;
-    const poll = () =>
+    let pending = false;
+    const poll = () => {
+      if (pending) return;
+      pending = true;
+      const generation = runtimeGeneration.current;
+      return (
       api("/api/runtime")
         .then((value) => {
+          if (generation !== runtimeGeneration.current) return;
           setRuntime(value);
           if (panel && tab === "progress") refreshDetail().catch(error);
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => { pending = false; })
+      );
+    };
     poll();
-    const timer = setInterval(poll, 5000);
-    return () => clearInterval(timer);
+    const timer = setInterval(poll, 2000);
+    window.addEventListener("marvin-runtime-refresh", poll);
+    return () => { clearInterval(timer); window.removeEventListener("marvin-runtime-refresh", poll); };
   }, [!!app, panel, tab, refreshDetail, error]);
   useEffect(() => {
     if (!draftReady.current || !sid) return;
@@ -298,7 +318,23 @@ export function App() {
   );
   const settings = async (value: any) => {
     await api("/api/settings", "PATCH", value);
+    window.dispatchEvent(new Event("marvin-runtime-refresh"));
     await refresh();
+  };
+  const runtimeCommand = async (command: string) => {
+    ++runtimeGeneration.current;
+    setRuntime((old: any) => ({ ...old, switch: {
+      status: command === "stop" ? "stopping" : "starting", command,
+      phase: command === "stop" ? "stopping" : "preparing", started_at: Date.now() / 1000,
+      target: app.preferences.model,
+    } }));
+    try {
+      const result = await api("/api/runtime/" + command, "POST");
+      setRuntime((old: any) => ({ ...old, switch: result.switch }));
+    } catch (e) {
+      setRuntime((old: any) => ({ ...old, switch: { status: "failed", error: String(e) } }));
+      throw e;
+    } finally { window.dispatchEvent(new Event("marvin-runtime-refresh")); }
   };
   const addFiles = async (files: File[]) => {
     const current = sidRef.current;
@@ -488,24 +524,26 @@ export function App() {
         </div>
         <span className="spacer" />
         <button
-          className="runtime-button"
+          className={"runtime-button " + (["starting", "stopping"].includes(runtime.switch?.status) ? "model-busy" : "")}
           onClick={() => setDialog({ type: "settings", section: "model" })}
         >
-          <span
+          {["starting", "stopping"].includes(runtime.switch?.status) ? <LoaderCircle className="spin" /> : <span
             className={
               "dot " + (runtime.status === "running" ? "ready" : "waiting")
             }
-          />
+          />}
           <span>
             {
               app.models.find(
-                (m: any) => m.id === (runtime.model || app.preferences.model),
+                (m: any) => m.id === (runtime.switch?.status === "starting" ? runtime.switch.target : runtime.model || app.preferences.model),
               )?.name
             }
           </span>
           <span className="muted">
             {runtime.switch?.status === "starting"
               ? tr("Loading", "Načítám")
+              : runtime.switch?.status === "stopping" ? tr("Stopping", "Zastavuji")
+              : runtime.switch?.status === "failed" ? tr("Start failed", "Start selhal")
               : runtime.status === "running"
                 ? tr("Ready", "Připraven")
                 : tr("Stopped", "Zastaven")}
@@ -521,7 +559,11 @@ export function App() {
           <Settings2 />
         </button>
       </header>
-      <div className="workspace">
+      <div className="workspace" style={{
+        "--sidebar-width": leftWidth ? `${leftWidth}px` : undefined,
+        "--detail-width": rightWidth ? `${rightWidth}px` : undefined,
+      } as React.CSSProperties}>
+        <div className={"sidebar-region " + (nav ? "open" : "")}>
         <aside className={"sidebar " + (nav ? "open" : "")}>
           <button className="positive" onClick={() => newChat().catch(error)}>
             <Plus />
@@ -567,13 +609,7 @@ export function App() {
             className="chat-list"
             aria-label={tr("Conversations", "Konverzace")}
           >
-            {(
-              searchResults ||
-              app.sessions.filter(
-                (s: any) =>
-                  (s.workspace || null) === (chat?.meta.workspace || null),
-              )
-            ).map((s: any) => (
+            {listedChats.slice(0, chatLimit).map((s: any) => (
               <button
                 key={s.id}
                 className={sid === s.id ? "selected" : ""}
@@ -592,6 +628,12 @@ export function App() {
                 </span>
               </button>
             ))}
+            {listedChats.length > chatLimit && <button className="older-chats" onClick={() => setChatLimit((n) => n + 20)}>
+              <ChevronDown />{tr("Show older", "Zobrazit starší")} ({listedChats.length - chatLimit})
+            </button>}
+            {chatLimit > 20 && <button className="older-chats" onClick={() => setChatLimit(20)}>
+              {tr("Show recent only", "Jen nejnovější")}
+            </button>}
           </nav>
           <button
             className="nav-button"
@@ -624,6 +666,9 @@ export function App() {
             </button>
           </div>
         </aside>
+        <ResizeHandle side="left" label={tr("Navigation width", "Šířka navigace")} value={leftWidth}
+          onChange={setLeftWidth} onReset={() => setLeftWidth(undefined)} />
+        </div>
         <main className="main">
           <div className="chat-heading">
             <input
@@ -864,7 +909,9 @@ export function App() {
                   <div className="activity" role="status">
                     <LoaderCircle className="spin" />
                     <span>
-                      {tr(...(phases[live?.phase] || phases.preparing))}
+                      {live?.phase === "preparing" && /^\/(compress|handoff)/.test(app.active?.text || "")
+                        ? tr("Summarizing conversation", "Shrnuji konverzaci")
+                        : tr(...(phases[live?.phase] || phases.preparing))}
                       {live?.tool && " · " + live.tool}
                       {live?.tool_chars > 0 &&
                         " · " + Math.round(live.tool_chars / 1024) + " KB"}
@@ -1072,6 +1119,8 @@ export function App() {
             </div>
             {panel && (
               <aside className="detail">
+                <ResizeHandle side="right" label={tr("Detail width", "Šířka detailu")} value={rightWidth}
+                  onChange={setRightWidth} onReset={() => setRightWidth(undefined)} />
                 <nav className="detail-tabs">
                   {[
                     ["results", "Results", "Výsledky"],
@@ -1473,8 +1522,10 @@ export function App() {
           setSid={setSid}
           pick={pick}
           runtime={runtime}
+          runtimeCommand={runtimeCommand}
         />
       )}
+      <ActivityFeedback cs={cs} />
     </div>
   );
 }

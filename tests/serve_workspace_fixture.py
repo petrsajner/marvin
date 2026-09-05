@@ -28,4 +28,8 @@ if __name__ == "__main__":
         session.meta["title"] = "Vyhledávání a ukládání"
         session.add("user", "Doplň vyhledávání a zachovej průběžné ukládání poznámek.")
         session.add("assistant", "Prošel jsem ukládání poznámek. Následuje doplnění vyhledávání a kontrola obnovení rozepsané práce.")
+        for i in range(25):
+            older = service.new_session(project["path"], "development")
+            older.add("user", f"Jaké číslo je napsané na přiloženém obrázku? Odpověz prosím jen číslem. Kontrola zalomení názvu {i + 1}")
+        service.select_session(session.id)
         uvicorn.run(create_app(cfg, service=service), host="127.0.0.1", port=7878, log_level="warning")

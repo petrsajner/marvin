@@ -54,6 +54,8 @@ import {
 } from "../api";
 
 import { DecisionEditor } from "./Decisions";
+import { ModelStatus } from "./ModelStatus";
+import { OperationProgress } from "./OperationProgress";
 
 export function DialogView(props: any) {
   const {
@@ -73,6 +75,7 @@ export function DialogView(props: any) {
     setSid,
     pick,
     runtime,
+    runtimeCommand,
   } = props;
   const [content, setContent] = useState(""),
     [name, setName] = useState(""),
@@ -357,9 +360,12 @@ export function DialogView(props: any) {
                   {["start", "stop", "restart"].map((command) => (
                     <button
                       key={command}
-                      className={command === "stop" ? "danger" : "outline"}
+                      className={(command === "stop" ? "danger" : "outline") +
+                        (["starting", "stopping"].includes(runtime.switch?.status) && runtime.switch.command === command ? " model-busy" : "")}
+                      disabled={command === "stop" ? runtime.switch?.status === "stopping" : ["starting", "stopping"].includes(runtime.switch?.status)}
+                      aria-busy={["starting", "stopping"].includes(runtime.switch?.status) && runtime.switch.command === command}
                       onClick={() =>
-                        call(() => api("/api/runtime/" + command, "POST"))
+                        call(() => runtimeCommand(command))
                       }
                     >
                       {command === "start" ? (
@@ -373,9 +379,7 @@ export function DialogView(props: any) {
                     </button>
                   ))}
                 </div>
-                {runtime.switch?.error && (
-                  <p className="error">{runtime.switch.error}</p>
-                )}
+                <ModelStatus runtime={runtime} cs={cs} />
               </>
             )}
             {dialog.type === "settings" && section === "behavior" && (
@@ -686,9 +690,7 @@ export function DialogView(props: any) {
                   ))}
                 </div>
                 {maintenance.map((p) => (
-                  <p key={p.process_id}>
-                    {p.status} · {Math.round(p.elapsed_seconds)} s
-                  </p>
+                  <OperationProgress key={p.process_id} process={p} cs={cs} />
                 ))}
                 <button
                   onClick={() =>

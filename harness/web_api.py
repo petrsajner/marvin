@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from harness.application import ApplicationService, read_json
 from harness.app_operations import COMMANDS, perform_action, session_detail
 from harness.changes import atomic_write_text
-from harness.config import load_config
+from harness.config import Config, load_config
 from harness.history_index import HistoryIndex
 from harness.projects import Projects
 from harness.session import Session
@@ -31,6 +31,8 @@ def create_app(cfg=None, *, service=None):
 
     @asynccontextmanager
     async def lifespan(app):
+        if os.environ.get("QWEN_AUTOSTART_SERVER", "1").lower() not in ("0", "false", "no"):
+            service.autostart_model()
         yield
         service.close()
 
@@ -44,7 +46,8 @@ def create_app(cfg=None, *, service=None):
 
     @app.get("/config")
     def compatibility_config():
-        return {"title": f"Marvin v{APP_VERSION}", "mode": "workspace", "version": APP_VERSION, "components": []}
+        return {"title": f"Marvin v{APP_VERSION}", "mode": "workspace", "version": APP_VERSION,
+                "components": [], "data_root": str(cfg.root.resolve())}
 
     @app.get("/favicon.ico")
     def favicon():
@@ -323,8 +326,7 @@ def create_app(cfg=None, *, service=None):
                 service.fit_hardware()
             service.save_preferences()
             if service.manage_model and not service.active and ("model" in payload or "kv_cache_modes" in payload):
-                key = service.preferences["model"]
-                service.models.request(key, restart=True, kv_profile=service.preferences["kv_cache_modes"].get(key))
+                service.start_model(restart=True)
             service.store.emit(None, "settings_changed", service.preferences)
             return service.preferences
 
@@ -332,8 +334,8 @@ def create_app(cfg=None, *, service=None):
 
     @app.get("/api/runtime")
     def runtime():
-        if time.monotonic() - runtime_cache["at"] < 2:
-            return runtime_cache["value"]
+        if time.monotonic() - runtime_cache["at"] < 1:
+            return {**runtime_cache["value"], "switch": service.models.snapshot().__dict__}
         from harness import servermgmt
         snapshot = service.models.snapshot()
         value = {"status": servermgmt.server_state(cfg), "switch": snapshot.__dict__,
@@ -344,18 +346,20 @@ def create_app(cfg=None, *, service=None):
 
     @app.post("/api/runtime/{command}")
     def runtime_command(command: str):
-        if command == "stop":
+        if command == "autostart":
+            if not service.active:
+                service.autostart_model()
+        elif command == "stop":
             service.stop()
             service.models.cancel()
         elif command in ("start", "restart"):
             if service.active:
                 service.stop()
-            key = service.preferences["model"]
-            service.models.request(key, restart=command == "restart", kv_profile=service.preferences["kv_cache_modes"].get(key))
+            service.start_model(restart=command == "restart")
         else:
             raise ValueError("Unknown runtime action")
         runtime_cache["at"] = 0
-        return {"ok": True}
+        return {"ok": True, "switch": service.models.snapshot().__dict__}
 
     @app.get("/api/backup")
     def backup_info():
@@ -414,11 +418,11 @@ def create_app(cfg=None, *, service=None):
         return items
 
     @app.get("/api/maintenance/{process_id}")
-    def maintenance_output(process_id: str):
+    def maintenance_output(process_id: str, cursor: int = 0):
         manager = getattr(service, "maintenance", None)
         if not manager or not manager.get(process_id):
             raise HTTPException(404, "Operation not found")
-        return manager.poll(process_id, max_chars=50000)
+        return manager.poll(process_id, cursor=cursor, max_chars=50000)
 
     @app.get("/api/sessions/{sid}/processes/{process_id}")
     def process_output(sid: str, process_id: str, cursor: int = 0):
@@ -432,27 +436,34 @@ def create_app(cfg=None, *, service=None):
     @app.get("/api/manual/{language}")
     def manual(language: str):
         name = "Marvin-Manual-" + ("CS" if language == "cs" else "EN") + ".pdf"
-        for path in (cfg.root / "docs" / name, cfg.root / "output" / "pdf" / name,
-                     Path(__file__).resolve().parent.parent / "output" / "pdf" / name):
+        code_root = Path(__file__).resolve().parent.parent
+        for path in (code_root / "docs" / name, code_root / "output" / "pdf" / name,
+                     cfg.root / "docs" / name, cfg.root / "output" / "pdf" / name):
             if path.is_file():
                 return FileResponse(path, media_type="application/pdf")
         raise HTTPException(404, "Manual not found")
 
-    ui_dir = cfg.root / "ui_dist"
+    ui_dir = Path(__file__).resolve().parent.parent / "ui_dist"
     if not ui_dir.is_dir():
-        ui_dir = Path(__file__).resolve().parent.parent / "ui_dist"
+        ui_dir = cfg.root / "ui_dist"
     if ui_dir.is_dir():
         app.mount("/", StaticFiles(directory=ui_dir, html=True), name="workspace")
     return app
 
 
 def main():
+    import argparse
     import uvicorn
-    cfg = load_config()
+    parser = argparse.ArgumentParser(description="Marvin local workspace")
+    parser.add_argument("--data-dir", type=Path, help="Use an existing installation's data and configuration")
+    args = parser.parse_args()
+    if args.data_dir:
+        root = args.data_dir.resolve()
+        if not (root / "config.yaml").is_file():
+            parser.error("Data directory must contain an existing config.yaml")
+        cfg = Config(load_config(root / "config.yaml").data, root)
+    else:
+        cfg = load_config()
     app = create_app(cfg)
-    if os.environ.get("QWEN_AUTOSTART_SERVER"):
-        service = app.state.service
-        key = service.preferences["model"]
-        service.models.request(key, kv_profile=service.preferences["kv_cache_modes"].get(key))
     uvicorn.run(app, host=cfg.web.get("host", "127.0.0.1"),
                 port=int(os.environ.get("QWEN_WEB_PORT", cfg.web.get("port", 7860))), log_level="warning")
