@@ -383,16 +383,17 @@ checks:
 ## Structure
 
 ```
-harness/          core: config, llm, agent, safety, session, prompts, servermgmt, i18n
-harness/tools/    fs, shell, vision (view_image), computer (screenshot/click/…)
+frontend/         current React/TypeScript workspace source
+harness/          application, agent, context, storage and runtime services
+harness/tools/    built-in file, shell, browser, document and computer tools
+launcher/         native WebView2 desktop launcher
 skills/           bundled optional SKILL.md procedures
-user-skills/      your own persistent skills (the installer never overwrites them)
-scripts/          setup_env, download_llama, download_models, server, bench
-tests/            test_core (unit), e2e_smoke (GPU)
-tui.py            terminal UI
-webapp.py         web UI (Gradio 6)
-runtime/          llama.cpp + GGUF models (gitignored)
-sessions/         conversation history (gitignored)
+user-skills/      personal persistent skills (the installer never overwrites them)
+scripts/          current setup, build, release, backup and benchmark helpers
+tests/            current unit, service, browser and GPU verification
+webapp.py         current API/workspace entry point; Gradio compatibility fallback
+runtime/          llama.cpp + deliberately retained GGUF models (gitignored)
+sessions/         development conversation history (gitignored)
 ```
 
 ## Notes

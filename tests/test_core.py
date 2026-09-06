@@ -937,7 +937,7 @@ def test_offline_backup() -> None:
                                         ROOT / "run_setup.bat") if p2.is_file()), None)
         backup_bat = next((p2 for p2 in (ROOT / "installer" / "run_setup_from_backup.bat",
                                          ROOT / "run_setup_from_backup.bat") if p2.is_file()), None)
-        iss_file = ROOT / "installer" / "qwen-harness.iss"
+        iss_file = ROOT / "installer" / "marvin.iss"
         installer_text = setup_bat.read_text(encoding="utf-8") if setup_bat else ""
         check("offline_backup.py restore" in installer_text
               and "scripts\\sync_deps.py" in installer_text

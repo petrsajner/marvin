@@ -12,7 +12,7 @@ cd /d "%~dp0.."
 set "PYTHONUTF8=1"
 
 set "VERFILE=installer\version.txt"
-if not exist "%VERFILE%" ( echo 1.2.0> "%VERFILE%" )
+if not exist "%VERFILE%" ( echo 1.7.0> "%VERFILE%" )
 set /p VERSION=<"%VERFILE%"
 set VERSION=%VERSION: =%
 
