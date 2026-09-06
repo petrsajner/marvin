@@ -31,16 +31,16 @@ Výběr projektu dá modelu přístup k danému adresáři prostřednictvím ná
 | Ovladač | Aktuální NVIDIA ovladač kompatibilní s přibaleným CUDA buildem |
 | Systémová RAM | Dost pro Windows, mapování modelu, projekty a nástroje; komfortní je 64 GB a více |
 | Volné místo | Nejméně 65 GiB pro všechny modely, runtime a pracovní data |
-| Python | 64bitový Python 3.12 nainstalovaný samostatně; zapněte **Add Python to PATH** |
+| Python | Full: vlastní Python 3.12 přibalený. Minimal: 64bitový Python 3.12 instalovaný samostatně |
 | WebView | Microsoft Edge WebView2, běžně součást Windows 11 |
 
 Jiné NVIDIA karty mohou fungovat, ale dodané kontexty a kvantizace byly nastaveny a ověřeny pro RTX 5090 s 32 GB. Karty s menší VRAM potřebují menší kontext, nižší kvantizaci, méně GPU vrstev nebo CPU offload.
 
-> POZNÁMKA: Python 3.12 je povinný externí předpoklad každé instalace. Setup.exe vytvoří oddělené virtuální prostředí, ale samotný Python neobsahuje ani neinstaluje. Před instalací Marvin nainstalujte 64bitovou verzi Pythonu 3.12 z [python.org](https://www.python.org/downloads/) a zvolte **Add Python to PATH**.
+> POZNÁMKA: K dispozici jsou dva instalátory. **Minimal** stahuje balíčky a llama.cpp a vyžaduje samostatně nainstalovaný Python 3.12. **Full** obsahuje vlastní Python 3.12, uzamčené balíčky a llama.cpp/CUDA knihovny. Full vytvoří nové izolované venv místně, neregistruje Python a nemění systémový PATH. Obě varianty stahují modely samostatně; ovladač NVIDIA instaluje uživatel. Offline Backup zůstává samostatným balíčkem.
 
 ## Instalace pomocí Setup.exe
 
-1. Nainstalujte 64bitový Python 3.12 a v jeho instalátoru zapněte **Add Python to PATH**.
+1. Pro soběstačné prostředí aplikace vyberte Full. Pouze pro Minimal nejprve nainstalujte 64bitový Python 3.12 a zapněte **Add Python to PATH**.
 2. Spusťte `Marvin-Setup-<verze>.exe`.
 3. Zvolte angličtinu nebo češtinu. Výchozí je angličtina.
 4. Zvolte, zda chcete ikonu na ploše.
@@ -691,6 +691,6 @@ Projektový archiv je oddělený od zálohy modelů a runtime. Ta nadále funguj
 
 ## Vývoj ze zdrojů a vydání
 
-Běžný uživatel potřebuje Python 3.12 a standardní Setup.exe; Node.js není nutný pro provoz aplikace. Vývojář sestaví frontend příkazy `npm --prefix frontend ci` a `npm --prefix frontend run build`. Python obsluhuje výsledný adresář `ui_dist`. Ověřené Windows verze balíčků drží `requirements-windows-py312.lock`.
+Běžný uživatel volí Minimal nebo Full; Full obsahuje Python 3.12 i závislosti. Node.js není nutný pro provoz aplikace. Vývojář sestaví frontend příkazy `npm --prefix frontend ci` a `npm --prefix frontend run build`. Python obsluhuje výsledný adresář `ui_dist`. Ověřené Windows verze balíčků drží `requirements-windows-py312.lock`.
 
 Původní Gradio rozhraní zůstává pro diagnostiku kompatibility s `MARVIN_LEGACY_UI=1`; standardně se spouští nová pracovní plocha.

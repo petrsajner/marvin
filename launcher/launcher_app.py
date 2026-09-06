@@ -300,6 +300,18 @@ def main() -> int:
     if not smoke:
         _show_splash()
 
+    for key in ("PYTHONHOME", "PYTHONPATH", "PYTHONUSERBASE", "PYTHONSTARTUP"):
+        os.environ.pop(key, None)
+    os.environ["PYTHONNOUSERSITE"] = "1"
+    private_python = ROOT / "runtime" / "python" / "python.exe"
+    if private_python.is_file():
+        rc = subprocess.call([str(private_python), "-I", "scripts/bootstrap_full.py"],
+                             cwd=ROOT, creationflags=0x08000000)
+        if rc:
+            _close_splash()
+            _alert("Bundled Python environment could not be prepared. See runtime/launcher.log.")
+            return 1
+
     # ---- 1) preflight: venv + llama.cpp + modely (rychlé kontroly souborů) ----
     problems = []
     if not VENV_PY.exists():

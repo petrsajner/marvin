@@ -123,6 +123,9 @@ build the frontend; the installer ships the compiled assets. The previous Gradio
 surface remains available for compatibility diagnostics through
 `MARVIN_LEGACY_UI=1`.
 
+For a detailed technical specification of the application service, UI/UX components,
+and harness intelligence, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ## Installation (one time)
 
 For a Windows installer distribution, see the [English installation guide](docs/distribution/INSTALL-EN.md)
@@ -135,10 +138,12 @@ Release packaging after `installer/release.bat`: run `scripts/package_distributi
 Validate the ZIP and a clean Python dependency restore with
 `python tests/check_distribution.py --backup <backup-directory>`.
 
-**Required prerequisite:** install 64-bit **Python 3.12** from
+**Minimal installer prerequisite:** install 64-bit **Python 3.12** from
 [python.org](https://www.python.org/downloads/release/python-31210/) and enable
 **Add Python to PATH** in its installer. Marvin creates its own virtual
-environment, but it does not bundle the Python interpreter itself.
+environment. **Full** instead includes a private Python runtime, locked packages
+and llama.cpp/CUDA libraries, creates its venv locally and never changes system
+Python or PATH. Both variants download models; the NVIDIA driver is user-managed.
 
 ```bash
 py -3.12 -m venv .venv
@@ -195,7 +200,7 @@ installer/build_installer.bat     # builds dist/Marvin-Setup-<version>.exe
   starts in it. You can switch later in the web UI (Settings → Appearance and language).
 - **First launch** (via the `run_app.bat` shortcut) automatically: creates the venv,
   downloads dependencies, llama.cpp (~540 MB) and models (~59 GiB) — afterwards it
-  just opens the app. Python 3.12 must already be installed; Setup.exe does not
+  just opens the app. Minimal requires Python 3.12 to be installed; it does not
   contain Python.
 - **Offline backup** in Settings & help copies the already downloaded files from
   `runtime\models` and `runtime\llama` plus the installed packages from `.venv`,
@@ -218,9 +223,11 @@ installer/build_installer.bat     # builds dist/Marvin-Setup-<version>.exe
 ```
 /ws [path]              show/set the project folder (workspace)
 /model q4|q5|ornith_q5  switch model (server restart)
-/mode chat|agent|computer     mode: chat | coding tools | + PC control
+/work <mode>            discussion | research | writing | development | computer
+/mode chat|agent|computer     compatibility shortcut
 /autonomy supervised|semi|auto   autonomy level
 /thinking xhigh|medium|low|off   model reasoning depth
+/memory                 show persistent memory (global + mode + project)
 /img <path>             attach an image to the next message
 /screenshot             attach a screen capture
 /new /sessions /load <id>   session management

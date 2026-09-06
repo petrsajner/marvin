@@ -87,7 +87,9 @@ def _runtime_sources(root: Path) -> list[tuple[Path, Path, str]]:
     if selection.is_file():
         sources.append((selection, Path("payload/runtime/model-selection.txt"), "settings"))
     version = _version(root)
-    installer = root / "dist" / f"Marvin-Setup-{version}.exe"
+    installer = root / "dist" / f"Marvin-Setup-{version}-Minimal.exe"
+    if not installer.is_file():
+        installer = root / "dist" / f"Marvin-Setup-{version}.exe"
     if installer.is_file():
         sources.append((installer, Path(installer.name), "installer"))
     return sources

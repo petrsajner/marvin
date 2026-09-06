@@ -31,16 +31,16 @@ Selecting a project gives the model access to that directory through tools. It d
 | Driver | Current NVIDIA driver compatible with the bundled CUDA build |
 | System RAM | Enough for Windows, model mapping, projects, and tools; 64 GB or more is comfortable |
 | Free disk space | At least 65 GiB for all models, runtime, and working data |
-| Python | 64-bit Python 3.12, installed separately; enable **Add Python to PATH** |
+| Python | Full: private Python 3.12 included. Minimal: install 64-bit Python 3.12 separately |
 | WebView / browser | Microsoft Edge WebView2 and Microsoft Edge, normally present on Windows 11 |
 
 Other NVIDIA GPUs may work, but the supplied contexts and quantizations were tuned and tested for a 32 GB RTX 5090. Lower-VRAM cards require smaller contexts, lower quantization, fewer GPU layers, or CPU offload.
 
-> NOTE: Python 3.12 is a required external prerequisite for every installation. Setup.exe creates an isolated virtual environment, but it does not contain or install Python itself. Install the 64-bit Python 3.12 release from [python.org](https://www.python.org/downloads/) and select **Add Python to PATH** before installing Marvin.
+> NOTE: There are two installers: **Minimal** downloads packages and llama.cpp and requires separately installed Python 3.12. **Full** includes its own Python 3.12, locked packages and llama.cpp/CUDA libraries. Full creates a new isolated venv locally and does not register Python or change the system PATH. Both download models separately; the NVIDIA driver is installed by the user. Offline Backup remains a separate package.
 
 ## Installing with Setup.exe
 
-1. Install 64-bit Python 3.12 and enable **Add Python to PATH** in the Python installer.
+1. Choose Full for a self-contained application runtime. For Minimal only, install 64-bit Python 3.12 and enable **Add Python to PATH** first.
 2. Run `Marvin-Setup-<version>.exe`.
 3. Choose English or Czech in the installer. English is the default.
 4. Choose whether to create a desktop shortcut.
@@ -973,6 +973,6 @@ This project archive is separate from the model/runtime backup. The latter still
 
 ## Source development and releases
 
-End users install Python 3.12 and the normal Setup.exe; Node.js is not a runtime prerequisite. Source developers build the frontend with `npm --prefix frontend ci` and `npm --prefix frontend run build`. Python serves the compiled `ui_dist` directory. Windows package versions are fixed in `requirements-windows-py312.lock`.
+End users choose Minimal or Full; Full includes Python 3.12 and runtime dependencies. Node.js is not a runtime prerequisite. Source developers build the frontend with `npm --prefix frontend ci` and `npm --prefix frontend run build`. Python serves the compiled `ui_dist` directory. Windows package versions are fixed in `requirements-windows-py312.lock`.
 
 The old Gradio surface remains available for compatibility diagnostics with `MARVIN_LEGACY_UI=1`; the new workspace is the default.

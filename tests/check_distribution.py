@@ -27,9 +27,9 @@ def main():
         for line in archive.read("SHA256SUMS.txt").decode("ascii").splitlines():
             digest, filename = line.split("  ", 1)
             assert hashlib.sha256(archive.read(filename)).hexdigest() == digest, filename
-        assert len(archive.namelist()) == 6, "Unexpected distribution payload"
+        assert len(archive.namelist()) == 7, "Unexpected distribution payload"
     manifest = load_manifest(args.backup)
-    assert manifest["app_version"] == version
+    assert manifest["requirements_sha256"] == hashlib.sha256((ROOT / "requirements.txt").read_bytes()).hexdigest()
     assert manifest.get("lock_sha256"), "Backup must include the current dependency lock"
 
     with tempfile.TemporaryDirectory(prefix="fresh-install-", dir=ROOT / "runtime") as temporary:

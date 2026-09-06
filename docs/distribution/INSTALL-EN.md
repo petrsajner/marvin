@@ -1,33 +1,24 @@
-# Marvin 1.6.2 - Windows Installation
+# Marvin 1.7.0 - Windows Installation
 
-## New computer
+## Minimal and Full
 
-1. Install 64-bit Python 3.12, including the Python Launcher (`py`) and Add Python to PATH. Python is a separate prerequisite, not included in this package.
-2. Install a current NVIDIA Windows driver. Use a GPU supported by the model profile selected in Setup. No separate CUDA Toolkit or Node.js installation is required for normal use.
-3. Run `Marvin-Setup-1.6.2.exe`. Select the language, destination and models appropriate for the GPU. The default destination is `%LOCALAPPDATA%\QwenHarness`.
-4. Leave environment/model setup enabled on a new computer. It creates the Python environment and obtains the selected models and llama.cpp runtime. Internet access is needed unless the matching local backup is used.
-5. Start Marvin from the desktop or Start menu. The selected model starts automatically; later launches use the last successfully used model and KV profile.
+- `Marvin-Setup-1.7.0-Minimal.exe`: small installer. Requires separate 64-bit Python 3.12 with the Python Launcher (`py`). Downloads Python packages and llama.cpp/CUDA during setup.
+- `Marvin-Setup-1.7.0-Full.exe`: includes private Python 3.12, locked packages and llama.cpp/CUDA. Does not require system Python. Model weights are not included.
 
-Start with Qwen Q5 and 8-bit KV on a 32 GB GPU. Model selection in the installer supports smaller GPU profiles. Leave enough free space for the models selected, the application environment and your projects.
+Both variants require supported 64-bit Windows and a user-installed NVIDIA driver. Have Microsoft Edge/WebView2 available for the desktop window and browser tools. A separate CUDA Toolkit or Node.js is not required.
 
-## Using the local backup
+## Steps
 
-The separate `QwenHarness-Offline-Backup` directory contains the 1.6.2 installer, all locally available models/projectors, llama.cpp/CUDA runtime and a matching Python package snapshot. Keep the entire folder and its `manifest.json` together. The full backup is approximately 123 GiB; installation size depends on the models restored or selected.
+1. For Minimal only, install Python 3.12 and enable Add Python to PATH. Skip this step for Full.
+2. Run the chosen installer and select language, directory and models appropriate for GPU memory.
+3. Full creates a new isolated `.venv` using bundled Python. It does not register Python or change system PATH. Initial preparation can take a little time.
+4. Leave model download enabled and finish setup.
+5. Start Marvin from the desktop or Start menu. The model starts automatically.
 
-- Run the installer directly from inside the backup directory so it can discover `manifest.json` beside itself.
-- Normal setup tries the network first and uses the backup if a component is unavailable online. The backup does not disable internet access.
-- To restore the local files first, finish the application installation, then use **Marvin > Set up from offline backup** in the Start menu and select the backup directory.
-- Python 3.12 and the NVIDIA driver still need to be installed separately. Have their installers available beforehand if the new computer has no internet access.
+To update, use the existing application directory and close running tasks and Marvin first. Conversations, projects, memories, skills and models remain in place. When replacing a venv with Full, the old environment is retained under `runtime/environment-history`; the new one is created from bundled packages.
 
-## Existing computer
+## Offline Backup
 
-Install over the existing Marvin directory. Existing conversations, projects, memories, user skills and downloaded models remain in place. Do not uninstall or delete the data directory to update. Close Marvin and any running tasks before upgrading.
+`QwenHarness-Offline-Backup` remains a separate, unchanged package. Neither installer includes it. Normal model retrieval prefers internet sources; a configured backup is a fallback. Explicit offline-backup setup restores local files first.
 
-## Included files
-
-- `Marvin-Setup-1.6.2.exe`: the same installer supports both new installations and updates.
-- `Marvin-Manual-EN.pdf` and `Marvin-Manual-CS.pdf`: complete user manuals.
-- `INSTALL-EN.md` and `INSTALL-CS.md`: installation instructions.
-- `SHA256SUMS.txt`: checksums for the files above.
-
-This distribution does not contain the owner's conversations, projects, personal memories or user skills. Its small ZIP does not contain model weights; those are downloaded or restored from the separate backup.
+The distribution contains no personal data. Both PDF manuals are included in each installer. Both variants download models; the NVIDIA driver remains user-managed.

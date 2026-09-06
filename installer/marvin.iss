@@ -10,7 +10,7 @@
 ; Verzi lze předefinovat z příkazové řádky: ISCC /DMyAppVersion=x.y.z
 ; (používá installer\release.bat s verzí z installer\version.txt)
 #ifndef MyAppVersion
-#define MyAppVersion "1.6.2"
+#define MyAppVersion "1.7.0"
 #endif
 
 #define MyAppName "Marvin"
@@ -28,13 +28,22 @@ DefaultGroupName={#MyAppName}
 ; bez admin prav - instalace do uzivatelskeho profilu
 PrivilegesRequired=lowest
 OutputDir=..\dist
-OutputBaseFilename=Marvin-Setup-{#MyAppVersion}
+#ifdef FullBuild
+OutputBaseFilename=Marvin-Setup-{#MyAppVersion}-Full
+#else
+OutputBaseFilename=Marvin-Setup-{#MyAppVersion}-Minimal
+#endif
 SetupIconFile={#MyAppIcon}
 UninstallDisplayIcon={app}\app_icon.ico
+#ifdef FullBuild
+Compression=lzma2/fast
+#else
 Compression=lzma2
+#endif
 SolidCompression=yes
 WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed=x64compatible
 CloseApplications=no
 ; vzdy zobraz vyber jazyka (anglictina je prvni = vychozi)
 ShowLanguageDialog=yes
@@ -54,20 +63,39 @@ en.SetupEnvMenu=Set up environment and models (up to ~59 GiB)
 cze.SetupEnvMenu=Instalace prostředí a modelů (až 59 GiB)
 en.BackupSetupMenu=Set up from offline backup
 cze.BackupSetupMenu=Instalace z offline zálohy
+#ifdef FullBuild
+en.RunSetupDesc=Download selected models (Python, packages and llama.cpp are included)
+cze.RunSetupDesc=Stahnout vybrane modely (Python, balicky a llama.cpp jsou pribalene)
+#else
 en.RunSetupDesc=Set up the environment and download models (requires separately installed 64-bit Python 3.12)
 cze.RunSetupDesc=Nainstalovat prostředí a modely (vyžaduje samostatně nainstalovaný 64bitový Python 3.12)
+#endif
 
 [Messages]
+#ifdef FullBuild
+en.WelcomeLabel2=Marvin Full includes a private Python 3.12 runtime, Python packages and llama.cpp/CUDA libraries.%n%nNo system Python or PATH changes are required. NVIDIA drivers remain your responsibility. Models are downloaded separately.%n%nContinue?
+cze.WelcomeLabel2=Marvin Full obsahuje vlastni Python 3.12, Python balicky a llama.cpp/CUDA knihovny.%n%nNepotrebuje systemovy Python a nemeni PATH. Ovladac NVIDIA instaluje uzivatel. Modely se stahuji samostatne.%n%nPokracovat?
+#else
 en.WelcomeLabel2=This wizard will install [name/ver], a local AI harness for Qwen and Ornith.%n%nREQUIRED: Install 64-bit Python 3.12 separately and enable "Add Python to PATH" before continuing. Python is not bundled.%n%nAfter installation, the environment and selected models will be prepared from an offline backup or downloaded automatically (up to ~59 GiB).%n%nContinue?
 cze.WelcomeLabel2=Tento pruvodce nainstaluje [name/ver] - lokalni AI harness pro Qwen a Ornith.%n%nVYZADOVANO: Pred pokracovanim samostatne nainstalujte 64bitovy Python 3.12 a zapnete "Add Python to PATH". Python neni soucasti instalatoru.%n%nPo instalaci se prostredi a vybrane modely pripravi z offline zalohy nebo automaticky stahnou (az ~59 GiB).%n%nPOKRACOVAT?
+#endif
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
+#ifdef FullBuild
+Source: "..\build\full-payload-{#MyAppVersion}\python\*"; DestDir: "{app}\runtime\python"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\build\full-payload-{#MyAppVersion}\packages\*"; DestDir: "{app}\runtime\python-packages"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\build\full-payload-{#MyAppVersion}\llama\*"; DestDir: "{app}\runtime\llama"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\build\full-payload-{#MyAppVersion}\manifest.json"; DestDir: "{app}\runtime"; DestName: "full-manifest.json"; Flags: ignoreversion
+#endif
 ; hlavní aplikace (PyInstaller: exe + _internal)
 Source: "..\dist\Marvin\Marvin.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\Marvin\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs createallsubdirs
+#ifdef FullBuild
+Source: "..\build\full-payload-{#MyAppVersion}\crt\*.dll"; DestDir: "{app}\_internal"; Flags: ignoreversion
+#endif
 ; podpůrné zdroje (harness jádro, skripty, config)
 Source: "..\qwen_app.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\webapp.py"; DestDir: "{app}"; Flags: ignoreversion
@@ -103,6 +131,9 @@ Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
+#ifdef FullBuild
+Filename: "{app}\runtime\python\python.exe"; Parameters: "-I ""{app}\scripts\bootstrap_full.py"""; WorkingDir: "{app}"; StatusMsg: "Preparing private Python environment..."; Flags: runhidden waituntilterminated
+#endif
 ; HLAVNI KROK: vytvori venv, stahne zavislosti, llama.cpp i modely (~59 GiB)
 ; s prubehem v konzoli - hned po dokonceni instalatoru (default zaskrtnuto)
 Filename: "{app}\run_setup.bat"; Description: "{cm:RunSetupDesc}"; Flags: postinstall shellexec runasoriginaluser; WorkingDir: "{app}"

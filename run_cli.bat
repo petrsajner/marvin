@@ -6,6 +6,14 @@ rem ============================================================
 setlocal
 cd /d "%~dp0"
 title Marvin - CLI
+set "PYTHONHOME="
+set "PYTHONPATH="
+set "PYTHONUSERBASE="
+set "PYTHONNOUSERSITE=1"
+if exist "runtime\python\python.exe" (
+    "runtime\python\python.exe" -I scripts\bootstrap_full.py
+    if errorlevel 1 exit /b 1
+)
 
 if not exist ".venv\Scripts\python.exe" (
     echo [ERROR] Python environment is missing.

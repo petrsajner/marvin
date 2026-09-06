@@ -36,5 +36,6 @@ echo [BUILD] Kompiluji instalator (%ISCC%)...
 if errorlevel 1 ( echo [CHYBA] Kompilace selhala. & pause & exit /b 1 )
 
 echo.
-echo [BUILD] HOTOVO: dist\Marvin-Setup-%VERSION%.exe
+echo [BUILD] HOTOVO: dist\Marvin-Setup-%VERSION%-Minimal.exe
+echo [BUILD] For both Minimal and Full, use installer\release.bat.
 pause

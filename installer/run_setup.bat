@@ -7,6 +7,14 @@ rem ============================================================
 setlocal
 cd /d "%~dp0"
 title Marvin - environment setup
+set "PYTHONHOME="
+set "PYTHONPATH="
+set "PYTHONUSERBASE="
+set "PYTHONNOUSERSITE=1"
+if exist "runtime\python\python.exe" (
+    "runtime\python\python.exe" -I scripts\bootstrap_full.py
+    if errorlevel 1 ( echo [ERROR] Bundled environment setup failed. & pause & exit /b 1 )
+)
 
 echo ============================================================
 echo  [1/4] Python environment (venv)

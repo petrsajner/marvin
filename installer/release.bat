@@ -51,10 +51,16 @@ if not defined ISCC if exist "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" set
 if not defined ISCC ( echo [CHYBA] ISCC nenalezen. & pause & exit /b 1 )
 "%ISCC%" "/DMyAppVersion=%VERSION%" installer\marvin.iss
 if errorlevel 1 ( echo [CHYBA] Instalator build selhal. & pause & exit /b 1 )
+".venv\Scripts\python.exe" scripts\build_full_payload.py
+if errorlevel 1 ( echo [ERROR] Full payload build failed. & exit /b 1 )
+".venv\Scripts\python.exe" tests\check_full_runtime.py
+if errorlevel 1 ( echo [ERROR] Full runtime verification failed. & exit /b 1 )
+"%ISCC%" "/DMyAppVersion=%VERSION%" /DFullBuild installer\marvin.iss
+if errorlevel 1 ( echo [ERROR] Full installer build failed. & exit /b 1 )
 
 echo.
 echo ============================================================
-echo  RELEASE HOTOVO: dist\Marvin-Setup-%VERSION%.exe
+echo  RELEASE HOTOVO: dist\Marvin-Setup-%VERSION%-Minimal.exe and -Full.exe
 echo  Verze aplikace i instalatoru: %VERSION%
 echo ============================================================
 endlocal

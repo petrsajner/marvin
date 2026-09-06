@@ -8,7 +8,8 @@ if ((Test-Path -LiteralPath $target) -or (Test-Path -LiteralPath $zip)) {
     throw "Distribution already exists: $target. Use a fresh release version or archive the existing package first."
 }
 $sources = @(
-    "dist\Marvin-Setup-$version.exe",
+    "dist\Marvin-Setup-$version-Minimal.exe",
+    "dist\Marvin-Setup-$version-Full.exe",
     'output\pdf\Marvin-Manual-EN.pdf',
     'output\pdf\Marvin-Manual-CS.pdf',
     'docs\distribution\INSTALL-EN.md',

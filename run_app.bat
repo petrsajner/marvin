@@ -6,6 +6,18 @@ rem  - then opens the native app window (qwen_app.py)
 rem ============================================================
 setlocal
 cd /d "%~dp0"
+if exist "Marvin.exe" (
+    start "" "Marvin.exe"
+    exit /b 0
+)
+set "PYTHONHOME="
+set "PYTHONPATH="
+set "PYTHONUSERBASE="
+set "PYTHONNOUSERSITE=1"
+if exist "runtime\python\python.exe" (
+    "runtime\python\python.exe" -I scripts\bootstrap_full.py
+    if errorlevel 1 exit /b 1
+)
 
 if not exist ".venv\Scripts\python.exe" (
     echo [SETUP] First run: creating the Python environment...
