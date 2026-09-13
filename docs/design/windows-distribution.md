@@ -32,7 +32,7 @@ Keep these public asset names across releases so website links remain stable:
 
 - `Marvin-Setup-Full.exe` and `Marvin-Setup-Minimal.exe`
 - `Marvin-Manual-EN.pdf` and `Marvin-Manual-CS.pdf`
-- `Marvin-Workspace.png` and `SHA256SUMS.txt`
+- `Marvin-Workspace.jpg` and `SHA256SUMS.txt`
 
 The public installer links use `/releases/latest/download/<asset-name>`. A version-specific link uses `/releases/download/v<version>/<asset-name>`. Create a draft against the application build commit, upload the verified artifacts, compare GitHub's asset digests with the local SHA-256 values, and publish as the latest release only when all assets are ready. Verify downloads without authentication after publication. The preview uses demonstration content, not personal conversations or diagnostic archives.
 

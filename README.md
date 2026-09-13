@@ -27,7 +27,7 @@ Both manuals are also installed with the application and can be opened from
 
 ## Workspace preview
 
-![Marvin workspace with an example English conversation](docs/images/Marvin-Workspace.png)
+![Marvin workspace with an example English conversation](docs/images/Marvin-Workspace.jpg)
 
 Example workspace with demonstration content.
 

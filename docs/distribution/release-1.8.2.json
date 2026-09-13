@@ -33,11 +33,11 @@
       "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Manual-CS.pdf"
     },
     {
-      "name": "Marvin-Workspace.png",
+      "name": "Marvin-Workspace.jpg",
       "bytes": 71809,
       "sha256": "55ab38eeb260dea9aa958b417e0051fe70fc3577000acb78dc3ec70ff6c124de",
-      "url": "https://github.com/petrsajner/marvin/releases/download/v1.8.2/Marvin-Workspace.png",
-      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Workspace.png"
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.8.2/Marvin-Workspace.jpg",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Workspace.jpg"
     }
   ],
   "preview": "Real application UI with seeded English demonstration content; no personal conversations."
