@@ -10,13 +10,26 @@ the selected websites and search services.
 The UI language is **English by default**; the installer offers a language choice
 (English / Czech) and the app can be switched at runtime in Settings.
 
+## Download for Windows
+
+- **[Full installer — recommended for a new PC](https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Full.exe)** — includes private Python and the inference runtime.
+- **[Minimal installer](https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Minimal.exe)** — requires 64-bit Python 3.12 already installed.
+
+Model weights are downloaded during setup. See the [latest release](https://github.com/petrsajner/marvin/releases/latest) for release notes and checksums.
+
 ## User manuals
 
-- [English user manual](output/pdf/Marvin-Manual-EN.pdf)
-- [Český uživatelský manuál](output/pdf/Marvin-Manual-CS.pdf)
+- [English user manual (PDF)](https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Manual-EN.pdf)
+- [Český uživatelský manuál (PDF)](https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Manual-CS.pdf)
 
 Both manuals are also installed with the application and can be opened from
 **Settings > Help and manuals**.
+
+## Workspace preview
+
+![Marvin workspace with an example English conversation](docs/images/Marvin-Workspace.png)
+
+Example workspace with demonstration content.
 
 ## Permanent product boundaries
 

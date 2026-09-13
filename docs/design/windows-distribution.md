@@ -23,3 +23,17 @@ The test is a relocated runtime check on the current Windows host, not a clean W
 ## Current artifacts and installation evidence
 
 The Full installation baseline is recorded in [release 1.8.0](../distribution/RELEASE-1.8.0.md), performance changes in [1.8.1](../distribution/PERFORMANCE-1.8.1.md), and the current Minimal upgrade/startup checks in [1.8.2](../distribution/STARTUP-RECOVERY-1.8.2.md). Source build staging under `build/` and `dist/Marvin/` is reproducible and is not an installed runtime. Active development dependencies stay in `.venv` and `frontend/node_modules`; generated staging can be removed after final artifacts have been verified.
+
+## Public GitHub downloads
+
+Executable installers are attached to GitHub Releases. Git tracks the source, manuals, preview and release manifest; the Full installer exceeds GitHub's 100 MiB limit for ordinary Git files. See [GitHub's large-file policy](https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-large-files-on-github).
+
+Keep these public asset names across releases so website links remain stable:
+
+- `Marvin-Setup-Full.exe` and `Marvin-Setup-Minimal.exe`
+- `Marvin-Manual-EN.pdf` and `Marvin-Manual-CS.pdf`
+- `Marvin-Workspace.png` and `SHA256SUMS.txt`
+
+The public installer links use `/releases/latest/download/<asset-name>`. A version-specific link uses `/releases/download/v<version>/<asset-name>`. Create a draft against the application build commit, upload the verified artifacts, compare GitHub's asset digests with the local SHA-256 values, and publish as the latest release only when all assets are ready. Verify downloads without authentication after publication. The preview uses demonstration content, not personal conversations or diagnostic archives.
+
+The [1.8.2 release manifest](../distribution/release-1.8.2.json) records the application commit, sizes, hashes and public URLs. Documentation-only publication commits may follow the application build commit without changing the installer bytes.

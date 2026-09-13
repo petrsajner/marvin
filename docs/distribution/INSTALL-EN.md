@@ -1,5 +1,8 @@
 # Marvin 1.8.2 - Windows Installation
 
+Public downloads: **[Full](https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Full.exe)** · **[Minimal](https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Minimal.exe)**.
+These links follow the latest release. Public assets keep the names `Marvin-Setup-Full.exe` and `Marvin-Setup-Minimal.exe`; local and offline builds also include the version number in their filenames.
+
 ## Minimal and Full
 
 - `Marvin-Setup-1.8.2-Minimal.exe`: smaller installer. Requires separate 64-bit Python 3.12 with the Python Launcher (`py`); prepares packages and llama.cpp/CUDA during setup.

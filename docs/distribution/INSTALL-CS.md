@@ -1,5 +1,8 @@
 # Marvin 1.8.2 - instalace pro Windows
 
+Veřejné stažení: **[Full](https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Full.exe)** · **[Minimal](https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Minimal.exe)**.
+Odkazy míří na nejnovější vydání. Veřejné soubory mají stálé názvy `Marvin-Setup-Full.exe` a `Marvin-Setup-Minimal.exe`; místní a offline balíčky obsahují také číslo verze v názvu.
+
 ## Minimal a Full
 
 - `Marvin-Setup-1.8.2-Minimal.exe`: menší instalátor. Vyžaduje samostatný 64bitový Python 3.12 s Python Launcherem (`py`). Balíčky a llama.cpp/CUDA získá při nastavení.

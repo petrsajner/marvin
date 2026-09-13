@@ -1,0 +1,44 @@
+{
+  "version": "1.8.2",
+  "tag": "v1.8.2",
+  "application_commit": "6820286991438ce016098b40eb29c1a0f28bc300",
+  "release_url": "https://github.com/petrsajner/marvin/releases/tag/v1.8.2",
+  "assets": [
+    {
+      "name": "Marvin-Setup-Full.exe",
+      "bytes": 727137000,
+      "sha256": "81af7e0c0980b0d7cc4dbc724cd7538e217f91d0da04dac5dd3de7a6aa8c8fa6",
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.8.2/Marvin-Setup-Full.exe",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Full.exe"
+    },
+    {
+      "name": "Marvin-Setup-Minimal.exe",
+      "bytes": 52349925,
+      "sha256": "c70be547575dcbbfaf49f164044f406b4c0df17980c747c3d2ac4b8554fae79f",
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.8.2/Marvin-Setup-Minimal.exe",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Minimal.exe"
+    },
+    {
+      "name": "Marvin-Manual-EN.pdf",
+      "bytes": 182357,
+      "sha256": "bfd04d1e1c9cd3310eb1b7c630cc550dfb2bb226a6798836c0f6169b256d84b5",
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.8.2/Marvin-Manual-EN.pdf",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Manual-EN.pdf"
+    },
+    {
+      "name": "Marvin-Manual-CS.pdf",
+      "bytes": 175695,
+      "sha256": "c4abd6d09123e31cbd1e6506e616833aa7eda7db642575df35f1b6352dc90319",
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.8.2/Marvin-Manual-CS.pdf",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Manual-CS.pdf"
+    },
+    {
+      "name": "Marvin-Workspace.png",
+      "bytes": 71809,
+      "sha256": "55ab38eeb260dea9aa958b417e0051fe70fc3577000acb78dc3ec70ff6c124de",
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.8.2/Marvin-Workspace.png",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Workspace.png"
+    }
+  ],
+  "preview": "Real application UI with seeded English demonstration content; no personal conversations."
+}
