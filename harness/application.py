@@ -255,7 +255,18 @@ class ApplicationService:
                           if j["session_id"] == session_id]
             if not candidates:
                 raise ValueError("No interrupted task in this chat")
-            job = candidates[-1]["payload"]
+            job = copy.deepcopy(candidates[-1]["payload"])
+            # Continue resumes the work, not its old GPU allocation. A manual
+            # model/KV change after a failure must remain authoritative. Keep
+            # the task's mode, reasoning and safety settings intact.
+            current = self.config_for(self.session(session_id))
+            key = current.model_key()
+            for name in ("model", "kv_cache_modes", "adaptive_kv_requests", "vram_gb"):
+                job["settings"][name] = copy.deepcopy(self.preferences[name])
+            job["config"]["default_model"] = key
+            job["config"]["models"][key] = copy.deepcopy(current.model(key))
+            job["config"]["hardware"] = copy.deepcopy(current.data.get("hardware", {}))
+            job.pop("error", None)
             job["resume"] = True
             job["approve"] = approve
             self.store.save_job(job, "queued")

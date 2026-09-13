@@ -22,6 +22,8 @@ The test is a relocated runtime check on the current Windows host, not a clean W
 
 ## Current artifacts and installation evidence
 
+The current 1.8.2 refresh also fixes Continue after a manual model/KV switch. See [resume model selection and regression verification](../distribution/CONTINUE-MODEL-1.8.2.md).
+
 The refreshed 1.8.2 installers prepare WebView2 automatically. See [desktop runtime distribution and verification](../distribution/WEBVIEW2-1.8.2.md). Build-time payload signatures and runtime checksums are pinned in `installer/webview2.json`; `scripts/download_webview2.py --refresh` explicitly updates that pin.
 
 The Full installation baseline is recorded in [release 1.8.0](../distribution/RELEASE-1.8.0.md), performance changes in [1.8.1](../distribution/PERFORMANCE-1.8.1.md), and the current Minimal upgrade/startup checks in [1.8.2](../distribution/STARTUP-RECOVERY-1.8.2.md). Source build staging under `build/` and `dist/Marvin/` is reproducible and is not an installed runtime. Active development dependencies stay in `.venv` and `frontend/node_modules`; generated staging can be removed after final artifacts have been verified.

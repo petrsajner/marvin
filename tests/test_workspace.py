@@ -121,6 +121,88 @@ class WorkspaceTests(unittest.TestCase):
     def completed(self, key):
         wait_for(lambda: self.service.store.job(key)["status"] in ("complete", "stopped", "failed"))
 
+    def interrupted_model_job(self, sid, key, *, old_model="flash_next_q3", status="failed"):
+        session = self.service.session(sid)
+        session.add("user", "Continue the existing task.")
+        settings = copy.deepcopy(self.service.preferences)
+        settings.update(model=old_model, thinking="xhigh", autonomy="supervised")
+        cfg = self.service.config_for(session, settings)
+        job = {"id": key, "session_id": sid, "text": "Continue the existing task.",
+               "attachments": [], "settings": settings, "config": cfg.data,
+               "created": time.time(), "error": "Previous model ran out of memory"}
+        self.service.store.save_job(job, status)
+        return job
+
+    def test_continue_reuses_selected_running_model_and_current_kv(self):
+        from unittest.mock import patch
+        for status, old, selected, profile in (
+            ("failed", "flash_next_q3", "q5", "q8_0"),
+            ("stopped", "flash_next_q3", "q4", "q8_0_compact"),
+            ("interrupted", "q5", "q5", "f16"),
+            ("waiting_confirmation", "flash_next_q3", "q3", "q8_0_32k"),
+            ("failed", "flash_next_q3", "flash_next_q3", "q8_0_128k"),
+        ):
+            with self.subTest(status=status, model=selected, profile=profile):
+                sid = self.new_chat()
+                rid = "resume-" + status + "-" + selected
+                original = self.interrupted_model_job(sid, rid, old_model=old, status=status)
+                self.client.patch("/api/settings", json={"model": selected,
+                    "kv_cache_modes": {selected: profile}, "vram_gb": "auto",
+                    "autonomy": "auto", "thinking": "low"}).raise_for_status()
+                self.service.models.cfg = self.service.config_for(self.service.session(sid))
+                self.service.manage_model = True
+                try:
+                    with patch("harness.servermgmt.health", return_value=True), \
+                         patch("harness.servermgmt.running_model", return_value=selected), \
+                         patch.object(self.service.models, "request", side_effect=AssertionError("Already selected model must not restart")) as request:
+                        response = self.client.post(f"/api/sessions/{sid}/actions/resume", json={})
+                        response.raise_for_status()
+                        self.completed(rid)
+                        wait_for(lambda: self.service.active is None)
+                        saved = self.service.store.job(rid)
+                        self.assertEqual(saved["status"], "complete", saved["payload"].get("error"))
+                        request.assert_not_called()
+                    self.assertEqual(Model.calls[-1][1]["default_model"], selected)
+                    agent = self.service.agents[sid]
+                    self.assertEqual(agent.cfg.kv_cache_mode(), profile)
+                    self.assertEqual(agent._ctx_limit(), self.service.models.cfg.context_size())
+                    self.assertEqual(agent.cfg.data["reasoning_effort"], "xhigh")
+                    self.assertEqual(agent.cfg.agent["autonomy"], "supervised")
+                    self.assertEqual(saved["payload"]["settings"]["model"], selected)
+                    self.assertEqual(saved["payload"]["config"]["hardware"]["vram_gb"], "auto")
+                    self.assertNotIn("error", saved["payload"])
+                    self.assertEqual(saved["payload"]["id"], original["id"])
+                    self.assertEqual(original["config"]["default_model"], old)
+                    self.assertEqual(original["settings"]["model"], old)
+                    self.assertEqual(len([m for m in agent.session.messages if m.get("content") == original["text"]]), 1)
+                finally:
+                    self.service.manage_model = False
+
+    def test_continue_with_smaller_model_compresses_for_its_context_without_losing_history(self):
+        from unittest.mock import patch
+        sid = self.new_chat()
+        session = self.service.session(sid)
+        history = []
+        for number in range(4):
+            history.append(session.add("user", f"Earlier question {number}"))
+            history.append(session.add("assistant", f"Earlier findings {number}: " + "data " * 12000))
+        for number in range(3):
+            history.append(session.add("user", f"Recent question {number}"))
+            history.append(session.add("assistant", f"Recent finding {number}"))
+        self.interrupted_model_job(sid, "smaller-context")
+        self.client.patch("/api/settings", json={"model": "q3", "kv_cache_modes": {"q3": "q8_0_32k"}}).raise_for_status()
+        with patch("harness.context.summarize_messages", return_value="Retained findings and decisions.") as summarize:
+            self.service.resume(sid)
+            self.completed("smaller-context")
+            wait_for(lambda: self.service.active is None)
+            self.assertEqual(self.service.store.job("smaller-context")["status"], "complete")
+            summarize.assert_called_once()
+            self.assertEqual(summarize.call_args.args[0].cfg.model_key(), "q3")
+            self.assertEqual(summarize.call_args.args[0].cfg.context_size(), 32768)
+        self.assertIsNotNone(session.compression)
+        self.assertTrue(all(any(m.get("id") == original["id"] and m["content"] == original["content"]
+                                for m in session.messages) for original in history))
+
     def test_messages_arriving_at_completion_are_not_stranded_as_steering(self):
         finished = threading.Event()
         release = threading.Event()
@@ -435,7 +517,7 @@ class WorkspaceTests(unittest.TestCase):
     def test_recovery_keeps_partial_text_and_marks_unknown_tool_outcome(self):
         sid = self.new_chat()
         session = self.service.session(sid)
-        cfg = self.service.config_for(session)
+        cfg = self.service.config_for(session, {"model": "flash_next_q3"})
         session.add("user", "recover-task")
         session.add("assistant", "", tool_calls=[{"id": "crash-call", "type": "function",
                     "function": {"name": "write_file", "arguments": '{"path":"already.txt","content":"done"}'}}])
@@ -443,8 +525,11 @@ class WorkspaceTests(unittest.TestCase):
         partial = {"text": "Visible partial text", "reasoning": "", "run_id": "recover"}
         (session.dir / "run-live.json").write_text(json.dumps(partial))
         job = {"id": "recover", "session_id": sid, "text": "recover-task", "attachments": [],
-               "config": cfg.data, "settings": self.service.preferences, "created": time.time()}
+               "config": cfg.data, "settings": {**copy.deepcopy(self.service.preferences), "model": "flash_next_q3"},
+               "created": time.time()}
         self.service.store.save_job(job, "running")
+        self.service.preferences["model"] = "q5"
+        self.service.save_preferences()
         self.service.close()
         recovered = ApplicationService(self.cfg, llm_factory=Model, manage_model=False)
         try:
@@ -455,6 +540,7 @@ class WorkspaceTests(unittest.TestCase):
             self.assertTrue(any(m.get("content") == partial["text"] for m in history))
             self.assertEqual(len([m for m in history if m.get("tool_call_id") == "crash-call"]), 1)
             self.assertEqual((session.dir / "already.txt").read_text(), "done")
+            self.assertEqual(Model.calls[-1][1]["default_model"], "q5")
         finally:
             recovered.close()
 

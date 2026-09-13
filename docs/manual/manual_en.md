@@ -151,7 +151,7 @@ Enter and Ctrl+Enter send; Shift+Enter inserts a new line. The composer clears a
 
 While a task is active, choose **Clarify now** to steer it or **After completion** to queue a separate request. A task in a different chat keeps running; a new request waits for the single model worker. Queued text can be edited, and queued messages can be cancelled.
 
-**Stop task** works during prompt processing, reasoning, visible text, tool preparation, and synchronous actions. It may finish the current visible sentence briefly; it does not wait for a whole reasoning block. Already completed work and visible partial text are retained. Stop also pauses the pending queue; **Resume queued messages** starts it again. **Continue** resumes the interrupted task.
+**Stop task** works during prompt processing, reasoning, visible text, tool preparation, and synchronous actions. It may finish the current visible sentence briefly; it does not wait for a whole reasoning block. Already completed work and visible partial text are retained. Stop also pauses the pending queue; **Resume queued messages** starts it again. **Continue** resumes the interrupted task using the currently selected model and its current KV profile. It does not reload the original model after you switch to another one. Existing history and task progress remain available; a smaller context uses the usual history compression.
 
 Refreshing or reconnecting the browser does not own or cancel the model run. After a full application restart, interrupted work is available to continue. If a tool result was not saved before a crash, the model is told to inspect the actual outcome instead of blindly replaying the action.
 
