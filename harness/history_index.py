@@ -7,6 +7,7 @@ import sqlite3
 
 from harness.i18n import t
 from pathlib import Path
+from harness.jsonl import physical_lines
 
 
 class HistoryIndex:
@@ -95,8 +96,8 @@ class HistoryIndex:
             if known.get(directory.name, -1) >= mtime:
                 continue
             try:
-                messages = [json.loads(line) for line in jsonl.read_text(
-                    encoding="utf-8", errors="replace").splitlines() if line.strip()]
+                messages = [json.loads(line) for line in physical_lines(jsonl.read_text(
+                    encoding="utf-8", errors="replace")) if line.strip()]
                 meta = json.loads((directory / "meta.json").read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 continue

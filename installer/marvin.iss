@@ -10,7 +10,7 @@
 ; Verzi lze předefinovat z příkazové řádky: ISCC /DMyAppVersion=x.y.z
 ; (používá installer\release.bat s verzí z installer\version.txt)
 #ifndef MyAppVersion
-#define MyAppVersion "1.8.1"
+#define MyAppVersion "1.8.2"
 #endif
 
 #define MyAppName "Marvin"

@@ -1,10 +1,10 @@
-# Marvin 1.8.1 - Windows Installation
+# Marvin 1.8.2 - Windows Installation
 
 ## Minimal and Full
 
-- `Marvin-Setup-1.8.1-Minimal.exe`: smaller installer. Requires separate 64-bit Python 3.12 with the Python Launcher (`py`); prepares packages and llama.cpp/CUDA during setup.
-- `Marvin-Setup-1.8.1-Full.exe`: includes private Python 3.12, locked packages, and validated llama.cpp/CUDA b10935. No system Python is required. The EXE itself does not include model weights.
-- `Marvin-Offline-Backup-1.8.1`: complete local bundle with Full Setup, all included models and projectors including Flash-Next, runtime, dependency snapshot, and checksum manifest.
+- `Marvin-Setup-1.8.2-Minimal.exe`: smaller installer. Requires separate 64-bit Python 3.12 with the Python Launcher (`py`); prepares packages and llama.cpp/CUDA during setup.
+- `Marvin-Setup-1.8.2-Full.exe`: includes private Python 3.12, locked packages, and validated llama.cpp/CUDA b10935. No system Python is required. The EXE itself does not include model weights.
+- `Marvin-Offline-Backup-1.8.2`: complete local bundle with Full Setup, all included models and projectors including Flash-Next, runtime, dependency snapshot, and checksum manifest.
 
 Both variants require supported 64-bit Windows and a user-installed NVIDIA driver. Have Microsoft Edge/WebView2 available for the desktop window and browser tools. A separate CUDA Toolkit or Node.js is not required.
 

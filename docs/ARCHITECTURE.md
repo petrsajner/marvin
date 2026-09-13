@@ -170,7 +170,7 @@ When older messages are compressed out of active context, the model can actively
 
 ---
 
-## 5. Runtime, Packaging & Installers (v1.8.1)
+## 5. Runtime, Packaging & Installers (v1.8.2)
 
 Marvin provides two distinct installer options:
 1. **Minimal Installer** (`dist/Marvin-Setup-<version>-Minimal.exe`, ~52 MB):
@@ -198,3 +198,5 @@ The right column has one scrollable detail body; the copyright footer is its sib
 See [Windows distribution](design/windows-distribution.md) for packaging and [release verification](distribution/RELEASE-1.8.0.md) for measured coverage and remaining limits.
 
 Version 1.8.1 preserves the exact request prefix by persisting only changed context sections as hidden internal messages; unchanged pinned documents are not repeated when the task plan changes. Native prompt progress reports new-token processing separately from cached history. Web fetch supports literal passage search, pagination and task-local reuse while retaining the full fetched source in the research ledger. Weights, Q8 KV, reasoning settings and runtime are unchanged. See [performance measurements](distribution/PERFORMANCE-1.8.1.md).
+
+`jsonl.py` handles physical record boundaries and lossless Unicode escaping. Session reads recover damaged records under the same file lock used by writers, preserving original bytes and using complete durable message events where an ID can be matched. Recovery notes stay internal; startup opens the conversation without a repair dialog. See [startup recovery verification](distribution/STARTUP-RECOVERY-1.8.2.md).

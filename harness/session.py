@@ -19,6 +19,7 @@ from typing import Any
 
 from harness.config import Config
 from harness.i18n import t
+from harness.jsonl import dump_record, history_lock, physical_lines, read_history
 
 IMG_MIMES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp"}
 
@@ -100,6 +101,7 @@ class Session:
         "[TASK PROTOCOL", "[PROGRESS UPDATE", "[FINAL SUMMARY",
         "[The following image", "[Interrupted by user]", "[RESEARCH PLAN",
         "[DYNAMIC TASK CONTEXT",
+        "[HISTORY RECOVERY",
     )
 
     def _view_messages(self) -> list[dict]:
@@ -350,25 +352,26 @@ class Session:
         self.transient = False
         self.dir.mkdir(parents=True, exist_ok=True)
         self._save_meta()
-        with open(self._jsonl, "w", encoding="utf-8") as f:
+        with history_lock(self._jsonl), open(self._jsonl, "w", encoding="utf-8") as f:
             for m in self.messages:
-                f.write(json.dumps(m, ensure_ascii=False) + "\n")
+                f.write(dump_record(m) + "\n")
 
     def _append_jsonl(self, msg: dict) -> None:
         if self.transient:
             return
         self.dir.mkdir(parents=True, exist_ok=True)
-        with open(self._jsonl, "a", encoding="utf-8") as f:
-            f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+        with history_lock(self._jsonl), open(self._jsonl, "a", encoding="utf-8") as f:
+            f.write(dump_record(msg) + "\n")
 
     def _rewrite_jsonl(self) -> None:
         """Přepiš celý JSONL (po opravách historie)."""
         self.dir.mkdir(parents=True, exist_ok=True)
         tmp = self._jsonl.with_suffix(".tmp")
-        with open(tmp, "w", encoding="utf-8") as f:
-            for m in self.messages:
-                f.write(json.dumps(m, ensure_ascii=False) + "\n")
-        tmp.replace(self._jsonl)
+        with history_lock(self._jsonl):
+            with open(tmp, "w", encoding="utf-8") as f:
+                for m in self.messages:
+                    f.write(dump_record(m) + "\n")
+            tmp.replace(self._jsonl)
         self._update_history_index()
 
     def last_user_index(self) -> int | None:
@@ -454,7 +457,7 @@ class Session:
         target = export_dir / f"{self.id}.jsonl"
         with open(target, "w", encoding="utf-8") as handle:
             for message in self.messages:
-                handle.write(json.dumps(message, ensure_ascii=False) + "\n")
+                handle.write(dump_record(message) + "\n")
         return target
 
     def _clear_compression(self) -> None:
@@ -539,25 +542,16 @@ class Session:
 
     @classmethod
     def load(cls, cfg: Config, session_id: str, system_prompt: str | None = None) -> "Session":
+        base = cfg.path("paths.sessions_dir").resolve()
+        if (base / session_id).resolve().parent != base:
+            raise ValueError("Invalid conversation identifier")
         s = cls(cfg, session_id=session_id)
         f = s._jsonl
         if not f.exists():
             raise FileNotFoundError(f"Session {session_id} nenalezena ({f})")
-        lines = f.read_text(encoding="utf-8").splitlines()
         s.messages = []
-        for index, line in enumerate(lines):
-            if not line.strip():
-                continue
-            try:
-                message = json.loads(line)
-            except ValueError:
-                if any(rest.strip() for rest in lines[index + 1:]):
-                    raise
-                # A crash can leave only the last append incomplete. Keep it for diagnosis.
-                from harness.changes import atomic_write_text
-                atomic_write_text(s.dir / "incomplete-last-message.txt", line)
-                atomic_write_text(f, "\n".join(lines[:index]) + "\n")
-                break
+        records = read_history(f, cfg.path("paths.runtime_dir") / "application.sqlite3")
+        for index, message in enumerate(records):
             message.setdefault("id", f"{s.id}:{index}")
             s.messages.append(message)
         s._load_meta()
@@ -581,7 +575,7 @@ class Session:
                      workspace: str | None = None,
                      work_mode: str | None = None) -> "Session":
         messages: list[dict] = []
-        for number, line in enumerate(source.read_text(encoding="utf-8").splitlines(), 1):
+        for number, line in enumerate(physical_lines(source.read_text(encoding="utf-8")), 1):
             if not line.strip():
                 continue
             try:

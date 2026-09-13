@@ -80,7 +80,7 @@ export const visibleMessage = (message: Message) =>
   message.role !== "system" &&
   !(
     message.role === "user" &&
-    /^\[(TASK PROTOCOL|WRITING PROTOCOL|PROGRESS UPDATE|FINAL SUMMARY|WRITING SUMMARY|RESEARCH PLAN|DYNAMIC TASK CONTEXT|The following image|LOOP WARNING)/.test(
+    /^\[(TASK PROTOCOL|WRITING PROTOCOL|PROGRESS UPDATE|FINAL SUMMARY|WRITING SUMMARY|RESEARCH PLAN|DYNAMIC TASK CONTEXT|HISTORY RECOVERY|The following image|LOOP WARNING)/.test(
       message.content || "",
     )
   );

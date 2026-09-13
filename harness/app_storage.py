@@ -10,6 +10,7 @@ import zipfile
 from pathlib import Path
 
 from harness.changes import atomic_write_text
+from harness.jsonl import dump_record, physical_lines
 
 
 class EventStore:
@@ -124,7 +125,7 @@ def export_project(cfg, project: dict, destination: Path):
             for item in sessions:
                 session_dir = cfg.path("paths.sessions_dir") / item["id"]
                 for path in session_dir.rglob("*"):
-                    if path.is_file():
+                    if path.is_file() and path.name != ".messages.lock":
                         archive.write(path, "sessions/" + path.relative_to(cfg.path("paths.sessions_dir")).as_posix())
         temporary.replace(destination)
     finally:
@@ -193,8 +194,8 @@ def import_project(cfg, source: Path):
                     if target.suffix == ".json":
                         data = json.dumps(remap_data(json.loads(data)), ensure_ascii=False).encode()
                     else:
-                        data = ("\n".join(json.dumps(remap_data(json.loads(line)), ensure_ascii=False)
-                                          for line in data.decode().splitlines() if line.strip()) + "\n").encode()
+                        data = ("\n".join(dump_record(remap_data(json.loads(line)))
+                                          for line in physical_lines(data.decode()) if line.strip()) + "\n").encode()
                 except (ValueError, UnicodeError):
                     pass
             target.write_bytes(data)

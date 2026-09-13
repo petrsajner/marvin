@@ -1,10 +1,10 @@
-# Marvin 1.8.1 - instalace pro Windows
+# Marvin 1.8.2 - instalace pro Windows
 
 ## Minimal a Full
 
-- `Marvin-Setup-1.8.1-Minimal.exe`: menší instalátor. Vyžaduje samostatný 64bitový Python 3.12 s Python Launcherem (`py`). Balíčky a llama.cpp/CUDA získá při nastavení.
-- `Marvin-Setup-1.8.1-Full.exe`: obsahuje vlastní Python 3.12, uzamčené balíčky a ověřené llama.cpp/CUDA b10935. Systémový Python není potřeba. Modely nejsou součástí samotného EXE.
-- `Marvin-Offline-Backup-1.8.1`: úplná místní sada s Full instalátorem, modely včetně Flash-Next, jejich projektory, runtime, snapshotem závislostí a manifestem kontrolních součtů.
+- `Marvin-Setup-1.8.2-Minimal.exe`: menší instalátor. Vyžaduje samostatný 64bitový Python 3.12 s Python Launcherem (`py`). Balíčky a llama.cpp/CUDA získá při nastavení.
+- `Marvin-Setup-1.8.2-Full.exe`: obsahuje vlastní Python 3.12, uzamčené balíčky a ověřené llama.cpp/CUDA b10935. Systémový Python není potřeba. Modely nejsou součástí samotného EXE.
+- `Marvin-Offline-Backup-1.8.2`: úplná místní sada s Full instalátorem, modely včetně Flash-Next, jejich projektory, runtime, snapshotem závislostí a manifestem kontrolních součtů.
 
 Obě varianty vyžadují podporované 64bitové Windows a ovladač NVIDIA nainstalovaný uživatelem. Pro desktopové okno a prohlížečové nástroje mějte dostupný Microsoft Edge/WebView2. Samostatný CUDA Toolkit ani Node.js nejsou potřeba.
 

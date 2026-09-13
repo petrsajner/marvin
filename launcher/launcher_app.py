@@ -20,6 +20,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+import urllib.parse
 from pathlib import Path
 
 
@@ -74,6 +75,22 @@ def _http_ok(url: str, timeout: float = 2.0) -> bool:
             return r.status == 200
     except Exception:
         return False
+
+
+def _check_workspace_api(base_web: str) -> None:
+    """Release diagnostic only: prove the UI can open its actual selected chat."""
+    with urllib.request.urlopen(base_web + "/api/state", timeout=15) as response:
+        state = json.load(response)
+    session_id = state.get("session_id")
+    if not isinstance(session_id, str) or not session_id:
+        raise ValueError("Workspace did not select a conversation")
+    path = base_web + "/api/sessions/" + urllib.parse.quote(session_id, safe="")
+    with urllib.request.urlopen(path, timeout=15) as response:
+        chat = json.load(response)
+    if chat.get("id") != session_id or not isinstance(chat.get("messages"), list):
+        raise ValueError("Workspace did not open the selected conversation")
+    with urllib.request.urlopen(path + "/detail", timeout=15) as response:
+        json.load(response)
 
 
 def _is_our_webui(base_url: str) -> bool:
@@ -406,6 +423,13 @@ def main() -> int:
     atexit.register(cleanup)
 
     if smoke:
+        try:
+            _check_workspace_api(base_web)
+            _log("SMOKE: workspace and selected conversation opened.")
+        except Exception as exc:
+            _log(f"SMOKE: workspace check failed: {exc}")
+            cleanup()
+            return 1
         # počkej na model (autostart na pozadí), pak cleanup - test celého cyklu
         _log("SMOKE: waiting for the model (autostart) ...")
         for _ in range(90):

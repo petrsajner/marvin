@@ -1,4 +1,4 @@
-# Marvin 1.8.0: Windows distribution
+# Marvin: Windows distribution
 
 ## Layout and isolation
 
@@ -22,4 +22,4 @@ The test is a relocated runtime check on the current Windows host, not a clean W
 
 ## Current artifacts and installation evidence
 
-The current artifact hashes, actual upgrade outcome and offline checks are recorded in [release 1.8.0](../distribution/RELEASE-1.8.0.md). Source build staging under `build/` and `dist/Marvin/` is reproducible and is not an installed runtime. Active development dependencies stay in `.venv` and `frontend/node_modules`; generated staging can be removed after final artifacts have been verified.
+The Full installation baseline is recorded in [release 1.8.0](../distribution/RELEASE-1.8.0.md), performance changes in [1.8.1](../distribution/PERFORMANCE-1.8.1.md), and the current Minimal upgrade/startup checks in [1.8.2](../distribution/STARTUP-RECOVERY-1.8.2.md). Source build staging under `build/` and `dist/Marvin/` is reproducible and is not an installed runtime. Active development dependencies stay in `.venv` and `frontend/node_modules`; generated staging can be removed after final artifacts have been verified.

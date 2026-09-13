@@ -470,7 +470,7 @@ gr.Blocks.launch = _patched_blocks_launch
 
 # ------------------------------------------------------------- render helpers
 _HIDDEN_NOTE_PREFIXES = ("[TASK PROTOCOL", "[PROGRESS UPDATE", "[FINAL SUMMARY",
-                         "[Interrupted by user]", "[RESEARCH PLAN", "[DYNAMIC TASK CONTEXT")
+                         "[Interrupted by user]", "[RESEARCH PLAN", "[DYNAMIC TASK CONTEXT", "[HISTORY RECOVERY")
 
 
 def chat_view() -> list[dict]:
