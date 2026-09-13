@@ -10,11 +10,11 @@
 ; Verzi lze předefinovat z příkazové řádky: ISCC /DMyAppVersion=x.y.z
 ; (používá installer\release.bat s verzí z installer\version.txt)
 #ifndef MyAppVersion
-#define MyAppVersion "1.7.0"
+#define MyAppVersion "1.8.0"
 #endif
 
 #define MyAppName "Marvin"
-#define MyAppPublisher "Petr - Marvin, local AI harness"
+#define MyAppPublisher "Petr Sajner"
 #define MyAppExeName "Marvin.exe"
 #define MyAppIcon "..\app_icon.ico"
 
@@ -23,6 +23,7 @@ AppId={{8F3A2C1B-6D5E-4F8A-9B7C-2E1D0A4B5C6E}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
+AppCopyright=© Petr Sajner 2026
 DefaultDirName={localappdata}\QwenHarness
 DefaultGroupName={#MyAppName}
 ; bez admin prav - instalace do uzivatelskeho profilu
@@ -44,14 +45,21 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
-CloseApplications=no
+CloseApplications=yes
 ; vzdy zobraz vyber jazyka (anglictina je prvni = vychozi)
 ShowLanguageDialog=yes
 
 ; po prejmenovani produktu odstranit stare exe z predchozi instalace
 [InstallDelete]
 Type: files; Name: "{app}\QwenHarness.exe"
-Type: filesandordirs; Name: "{app}\ui_dist\assets"
+; Replace only packaged application code. User data, models and user-skills stay.
+Type: filesandordirs; Name: "{app}\_internal"
+Type: filesandordirs; Name: "{app}\harness"
+Type: filesandordirs; Name: "{app}\launcher"
+Type: filesandordirs; Name: "{app}\scripts"
+Type: filesandordirs; Name: "{app}\tests"
+Type: filesandordirs; Name: "{app}\skills"
+Type: filesandordirs; Name: "{app}\ui_dist"
 
 [Languages]
 ; First entry = default language (English base after installation).
@@ -59,8 +67,8 @@ Name: "en"; MessagesFile: "compiler:Default.isl"
 Name: "cze"; MessagesFile: "compiler:Languages\Czech.isl"
 
 [CustomMessages]
-en.SetupEnvMenu=Set up environment and models (up to ~59 GiB)
-cze.SetupEnvMenu=Instalace prostředí a modelů (až 59 GiB)
+en.SetupEnvMenu=Set up environment and models
+cze.SetupEnvMenu=Instalace prostředí a modelů
 en.BackupSetupMenu=Set up from offline backup
 cze.BackupSetupMenu=Instalace z offline zálohy
 #ifdef FullBuild
@@ -76,8 +84,8 @@ cze.RunSetupDesc=Nainstalovat prostředí a modely (vyžaduje samostatně nainst
 en.WelcomeLabel2=Marvin Full includes a private Python 3.12 runtime, Python packages and llama.cpp/CUDA libraries.%n%nNo system Python or PATH changes are required. NVIDIA drivers remain your responsibility. Models are downloaded separately.%n%nContinue?
 cze.WelcomeLabel2=Marvin Full obsahuje vlastni Python 3.12, Python balicky a llama.cpp/CUDA knihovny.%n%nNepotrebuje systemovy Python a nemeni PATH. Ovladac NVIDIA instaluje uzivatel. Modely se stahuji samostatne.%n%nPokracovat?
 #else
-en.WelcomeLabel2=This wizard will install [name/ver], a local AI harness for Qwen and Ornith.%n%nREQUIRED: Install 64-bit Python 3.12 separately and enable "Add Python to PATH" before continuing. Python is not bundled.%n%nAfter installation, the environment and selected models will be prepared from an offline backup or downloaded automatically (up to ~59 GiB).%n%nContinue?
-cze.WelcomeLabel2=Tento pruvodce nainstaluje [name/ver] - lokalni AI harness pro Qwen a Ornith.%n%nVYZADOVANO: Pred pokracovanim samostatne nainstalujte 64bitovy Python 3.12 a zapnete "Add Python to PATH". Python neni soucasti instalatoru.%n%nPo instalaci se prostredi a vybrane modely pripravi z offline zalohy nebo automaticky stahnou (az ~59 GiB).%n%nPOKRACOVAT?
+en.WelcomeLabel2=This wizard will install [name/ver], a local AI application.%n%nREQUIRED: Install 64-bit Python 3.12 separately and enable "Add Python to PATH" before continuing. Python is not bundled.%n%nAfter installation, the environment and selected models will be prepared from an offline backup or downloaded. Download size depends on your model selection.%n%nContinue?
+cze.WelcomeLabel2=Tento pruvodce nainstaluje [name/ver] - lokalni AI aplikaci.%n%nVYZADOVANO: Pred pokracovanim samostatne nainstalujte 64bitovy Python 3.12 a zapnete "Add Python to PATH". Python neni soucasti instalatoru.%n%nPo instalaci se prostredi a vybrane modely pripravi z offline zalohy nebo stahnou. Objem zavisi na vyberu modelu.%n%nPOKRACOVAT?
 #endif
 
 [Tasks]
@@ -114,6 +122,7 @@ Source: "..\output\pdf\Marvin-Manual-CS.pdf"; DestDir: "{app}\docs"; Flags: igno
 Source: "..\app_icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\harness\*.py"; DestDir: "{app}\harness"; Flags: ignoreversion recursesubdirs
 Source: "..\harness\tools\*.py"; DestDir: "{app}\harness\tools"; Flags: ignoreversion
+Source: "..\launcher\*.py"; DestDir: "{app}\launcher"; Flags: ignoreversion
 Source: "..\scripts\*.py"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "..\tests\*.py"; DestDir: "{app}\tests"; Flags: ignoreversion
 Source: "..\memory\*.md"; DestDir: "{app}\memory"; Flags: ignoreversion onlyifdoesntexist recursesubdirs createallsubdirs
@@ -136,7 +145,7 @@ Filename: "{app}\runtime\python\python.exe"; Parameters: "-I ""{app}\scripts\boo
 #endif
 ; HLAVNI KROK: vytvori venv, stahne zavislosti, llama.cpp i modely (~59 GiB)
 ; s prubehem v konzoli - hned po dokonceni instalatoru (default zaskrtnuto)
-Filename: "{app}\run_setup.bat"; Description: "{cm:RunSetupDesc}"; Flags: postinstall shellexec runasoriginaluser; WorkingDir: "{app}"
+Filename: "{app}\run_setup.bat"; Description: "{cm:RunSetupDesc}"; Flags: postinstall skipifsilent shellexec runasoriginaluser; WorkingDir: "{app}"
 
 [Code]
 var
@@ -144,10 +153,10 @@ var
   ModelList: TNewCheckListBox;
   // naplni se v FillModelTable (Pascal Script neumi typovane konstanty);
   // zrcadli config.yaml (min_vram_gb = nejnizsi profil modelu)
-  ModelKeys: array[0..5] of String;
-  ModelNames: array[0..5] of String;
-  ModelMinVram: array[0..5] of Double;
-  ModelFiles: array[0..5] of String;
+  ModelKeys: array[0..6] of String;
+  ModelNames: array[0..6] of String;
+  ModelMinVram: array[0..6] of Double;
+  ModelFiles: array[0..6] of String;
 
 procedure FillModelTable;
 begin
@@ -157,24 +166,28 @@ begin
   ModelKeys[3] := 'ornith_q5';
   ModelKeys[4] := 'nemotron_q4';
   ModelKeys[5] := 'nemotron_q5';
+  ModelKeys[6] := 'flash_next_q3';
   ModelNames[0] := 'Qwen3.8-27B IQ3_S  (12.0 GB download)  -  16 GB GPUs (borderline)';
   ModelNames[1] := 'Qwen3.8-27B Q4_K_M  (16.5 GB download)  -  24 GB+ GPUs';
   ModelNames[2] := 'Qwen3.8-27B Q5_K_M  (19.8 GB download)  -  24 GB+ GPUs';
   ModelNames[3] := 'Ornith 1.5 35B-A3B Q5 Abliterated  (23.0 GB download)  -  32 GB GPUs';
-  ModelNames[4] := 'Nemotron 3.5 Lightning 30B-A3B Q4_K_XL  (25.5 GB download)  -  24 GB+ GPUs (32 GB: up to 1M ctx)';
+  ModelNames[4] := 'Nemotron 3.5 Lightning 30B-A3B Q4_K_XL  (25.5 GB download)  -  24 GB+ GPUs';
   ModelNames[5] := 'Nemotron 3.5 Lightning 30B-A3B Q5_K_XL  (30.4 GB download)  -  26 GB+ GPUs';
+  ModelNames[6] := 'Qwen3.8-Flash-Next Q3  (90.9 GB download)  -  GPU + system RAM, automatic configuration';
   ModelMinVram[0] := 15.0;
   ModelMinVram[1] := 23.0;
   ModelMinVram[2] := 24.0;
   ModelMinVram[3] := 30.0;
   ModelMinVram[4] := 24.0;
   ModelMinVram[5] := 26.0;
+  ModelMinVram[6] := 12.0;
   ModelFiles[0] := 'Qwen3.8-27B-UD-IQ3_S.gguf';
   ModelFiles[1] := 'Qwen3.8-27B-UD-Q4_K_M.gguf';
   ModelFiles[2] := 'Qwen3.8-27B-UD-Q5_K_M.gguf';
   ModelFiles[3] := 'Ornith-1.5-35B-Abliterated-Dynamic-Q5_K_M.gguf';
   ModelFiles[4] := 'NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q4_K_XL.gguf';
   ModelFiles[5] := 'NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q5_K_XL.gguf';
+  ModelFiles[6] := 'Qwen3.8-Flash-Next\.marvin-verified.json';
 end;
 
 function DetectVRAM: Double;
@@ -202,16 +215,16 @@ begin
   Vram := DetectVRAM;
   ModelsDir := AppDir + '\runtime\models';
   HasAnyModel := False;
-  for I := 0 to 5 do
+  for I := 0 to 6 do
     if FileExists(ModelsDir + '\' + ModelFiles[I]) then HasAnyModel := True;
   // TNewCheckListBox neumi mazat polozky - pri refreshi ho vytvorime znovu
   if ModelList <> nil then
     ModelList.Free;
   ModelList := TNewCheckListBox.Create(ModelPage.Surface);
-  ModelList.SetBounds(ScaleX(0), ScaleY(0), ModelPage.SurfaceWidth, ScaleY(120));
+  ModelList.SetBounds(ScaleX(0), ScaleY(0), ModelPage.SurfaceWidth, ScaleY(150));
   ModelList.Parent := ModelPage.Surface;
   ModelList.ShowLines := False;
-  for I := 0 to 5 do
+  for I := 0 to 6 do
   begin
     Fits := (Vram <= 0) or (ModelMinVram[I] <= Vram);
     // cista instalace: zaskrtni vse, co se vejde; upgrade: zaskrtni jen jiz
@@ -219,7 +232,7 @@ begin
     if HasAnyModel then
       Checked := Fits and FileExists(ModelsDir + '\' + ModelFiles[I])
     else
-      Checked := Fits;
+      Checked := Fits and (I <> 6);
     ModelList.AddCheckBox(ModelNames[I], '', 0, Checked, Fits, False, False, TObject(I));
   end;
 end;
@@ -265,11 +278,26 @@ begin
   end;
 end;
 
+function FindOfflineBackup: String;
+var
+  SourceDir: String;
+begin
+  SourceDir := ExpandConstant('{src}');
+  Result := '';
+  if FileExists(SourceDir + '\manifest.json') then
+    Result := SourceDir
+  else if FileExists(SourceDir + '\QwenHarness-Offline-Backup\manifest.json') then
+    Result := SourceDir + '\QwenHarness-Offline-Backup'
+  else if FileExists(SourceDir + '\Marvin-Offline-Backup\manifest.json') then
+    Result := SourceDir + '\Marvin-Offline-Backup';
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   I: Integer;
   Selection: String;
   OldGroup: String;
+  BackupDir: String;
 begin
   if CurStep = ssInstall then
   begin
@@ -284,6 +312,12 @@ begin
     CreateDir(ExpandConstant('{app}\runtime'));
     // uloz vybrany jazyk instalatoru -> aplikace se podle nej nastavi
     SaveStringToFile(ExpandConstant('{app}\runtime\ui-language.txt'), ActiveLanguage, False);
+    BackupDir := FindOfflineBackup;
+    if BackupDir <> '' then
+    begin
+      SaveStringToFile(ExpandConstant('{app}\runtime\offline-backup-path.txt'), BackupDir, False);
+      SaveStringToFile(ExpandConstant('{app}\runtime\offline-setup-once.txt'), '1', False);
+    end;
     // uloz vyber modelu z wizardu (comma list; run_setup.bat ho preda downloadu)
     Selection := '';
     if Assigned(ModelList) then

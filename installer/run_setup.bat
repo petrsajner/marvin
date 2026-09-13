@@ -43,6 +43,7 @@ if defined BACKUP (
         echo [WARNING] Configured offline backup has no manifest.json: %BACKUP%
     )
 )
+if exist "runtime\offline-setup-once.txt" set "QWEN_HARNESS_BACKUP_PREFER=1"
 if defined QWEN_HARNESS_BACKUP_PREFER if defined BACKUP_OK (
     echo [BACKUP] Explicit offline setup selected - restoring local components first.
     ".venv\Scripts\python.exe" scripts\offline_backup.py restore --backup "%BACKUP%" --root "%CD%"
@@ -97,5 +98,6 @@ echo ============================================================
 echo  DONE! The environment is ready.
 echo  Start Marvin from the Start Menu / desktop icon.
 echo ============================================================
+if exist "runtime\offline-setup-once.txt" del /q "runtime\offline-setup-once.txt"
 pause
 endlocal

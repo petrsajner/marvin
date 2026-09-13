@@ -104,6 +104,8 @@ def session_detail(app, session):
     memory = MemoryStore(cfg, workspace, session.meta.get("work_mode"))
     skills = SkillLibrary(cfg, workspace)
     agent = app.agents.get(session.id)
+    active_here = bool(app.active and app.active["session_id"] == session.id)
+    context_limit = agent.cfg.context_size() if active_here and agent else cfg.context_size()
     journal = agent.ctx.changes if agent else ChangeJournal(session, workspace or session.dir)
     from harness.task_plan import TaskPlanStore
     research = agent.ctx.research if agent else ResearchLedger(session)
@@ -126,7 +128,7 @@ def session_detail(app, session):
     return {
         "decisions": DecisionStore(workspace).list(),
         "notices": app.store.notices(session.id),
-        "context": {**session.context_breakdown(), "limit": cfg.context_size(),
+        "context": {**session.context_breakdown(), "limit": context_limit,
                     "snapshot": read_json(Path(session.meta["context_snapshot"])) if session.meta.get("context_snapshot") else None,
                     "usage": session.meta.get("last_usage", {}), "active_skills": session.meta.get("active_skills", []),
                     "breakdown": agent.context_usage_breakdown() if agent else {}},

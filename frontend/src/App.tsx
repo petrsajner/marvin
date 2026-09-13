@@ -59,6 +59,7 @@ import { ResizeHandle } from "./components/ResizeHandle";
 import { ActivityFeedback } from "./components/ActivityFeedback";
 
 type Dialog = { type: string; file?: FileItem; section?: string; data?: any };
+const COPYRIGHT = "© Petr Sajner 2026";
 const phases: Record<string, [string, string]> = {
   preparing: ["Preparing request", "Připravuji dotaz"],
   loading_model: ["Loading model", "Načítám model"],
@@ -227,6 +228,8 @@ export function App() {
           refresh().catch(error);
           if (current) {
             reloadChat().catch(error);
+          }
+          if (current || row.kind === "settings_changed") {
             refreshDetail().catch(error);
           }
         }, 180);
@@ -492,6 +495,7 @@ export function App() {
         <Bot size={32} />
         <h1>Marvin</h1>
         <p>{toast || "Loading workspace…"}</p>
+        <small className="copyright">{COPYRIGHT}</small>
       </div>
     );
   return (
@@ -1487,6 +1491,9 @@ export function App() {
                     </>
                   )}
                 </div>
+                <footer className="detail-footer">
+                  <small className="copyright">{COPYRIGHT}</small>
+                </footer>
               </aside>
             )}
           </div>

@@ -44,11 +44,18 @@ def _copy_with_hash(source: Path, target: Path) -> str:
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_name(target.name + ".partial")
     digest = hashlib.sha256()
+    total = source.stat().st_size
+    copied = 0
+    last_report = time.monotonic()
     try:
         with open(source, "rb") as src, open(temporary, "wb") as dst:
             for chunk in iter(lambda: src.read(CHUNK_SIZE), b""):
                 digest.update(chunk)
                 dst.write(chunk)
+                copied += len(chunk)
+                if time.monotonic() - last_report >= 20:
+                    print(f"    {target.name}: {copied / 2**30:.1f} / {total / 2**30:.1f} GiB", flush=True)
+                    last_report = time.monotonic()
         shutil.copystat(source, temporary)
         os.replace(temporary, target)
     finally:
@@ -74,7 +81,7 @@ def _runtime_sources(root: Path) -> list[tuple[Path, Path, str]]:
     if models.is_dir():
         for source in sorted(models.rglob("*")):
             if (source.is_file() and ".cache" not in source.parts
-                    and not source.name.endswith((".partial", ".incomplete"))):
+                    and not source.name.endswith((".partial", ".incomplete", ".part", ".lock"))):
                 rel = Path("payload") / "runtime" / "models" / source.relative_to(models)
                 sources.append((source, rel, "models"))
     llama = runtime / "llama"
@@ -87,7 +94,9 @@ def _runtime_sources(root: Path) -> list[tuple[Path, Path, str]]:
     if selection.is_file():
         sources.append((selection, Path("payload/runtime/model-selection.txt"), "settings"))
     version = _version(root)
-    installer = root / "dist" / f"Marvin-Setup-{version}-Minimal.exe"
+    installer = root / "dist" / f"Marvin-Setup-{version}-Full.exe"
+    if not installer.is_file():
+        installer = root / "dist" / f"Marvin-Setup-{version}-Minimal.exe"
     if not installer.is_file():
         installer = root / "dist" / f"Marvin-Setup-{version}.exe"
     if installer.is_file():
@@ -103,12 +112,15 @@ def _write_readme(path: Path) -> None:
         "runtime files, and a snapshot of the already installed Python packages.\n"
         "Keep manifest.json with the payload and python-dependencies folders.\n\n"
         "On another Windows PC:\n"
-        "1. Install Python 3.12 (the only external prerequisite).\n"
-        "2. Run the Marvin-Setup executable included in this folder.\n"
+        "1. Run the Marvin-Setup executable included in this folder.\n"
+        "   The Full installer includes private Python; no system Python is needed.\n"
+        "   Only when using a Minimal installer, prepare 64-bit Python 3.12 first.\n"
         "   The installer detects manifest.json beside itself automatically.\n"
         "   With another compatible Setup.exe, use the Start Menu command\n"
         "   'Set up from offline backup' and select this folder.\n"
-        "4. Normal setup uses internet sources first. If a model, llama.cpp, or\n"
+        "2. A matching backup beside Setup is selected for local restore first.\n"
+        "   The complete offline restore copies all models included in this backup.\n"
+        "3. Normal setup without that selection uses internet sources first. If a model, llama.cpp, or\n"
         "   Python package cannot be obtained online, it restores that component\n"
         "   from this backup. The explicit Start Menu offline command restores\n"
         "   this backup first instead.\n\n"

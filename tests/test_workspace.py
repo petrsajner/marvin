@@ -81,8 +81,101 @@ class WorkspaceTests(unittest.TestCase):
     def new_chat(self, **kwargs):
         return self.client.post("/api/sessions", json=kwargs).json()["session_id"]
 
+    def test_runtime_memory_failure_remains_visible_across_cached_polls(self):
+        from unittest.mock import patch
+        failure = self.cfg.path("paths.runtime_dir") / "model-failure.json"
+        failure.write_text(json.dumps({"model": "q5", "error": "Model stopped because system memory became critically low."}))
+        with patch("harness.servermgmt.server_state", return_value="down"), \
+             patch("harness.servermgmt.running_model", return_value=None), \
+             patch("harness.servermgmt.vram_value", return_value="2 / 32 GB"):
+            first = self.client.get("/api/runtime").json()
+            second = self.client.get("/api/runtime").json()
+        self.assertEqual(first["switch"]["status"], "failed")
+        self.assertEqual(second["switch"]["error"], first["switch"]["error"])
+
+    def test_failed_switch_restores_applied_hardware_preference(self):
+        from unittest.mock import patch
+        from harness.model_switch import ModelSwitchSnapshot
+        restored = Config(copy.deepcopy(self.cfg.data), self.cfg.root)
+        restored.data["hardware"]["vram_gb"] = "auto"
+        self.service.models.cfg = restored
+        self.service.preferences.update(model="flash_next_q3", vram_gb=16)
+        with patch.object(self.service.models, "snapshot", return_value=ModelSwitchSnapshot("failed", "flash_next_q3")):
+            self.service.model_switch_failed("flash_next_q3", "q5")
+        self.assertEqual(self.service.preferences["model"], "q5")
+        self.assertEqual(self.service.preferences["vram_gb"], "auto")
+
+    def test_context_display_keeps_active_capacity_then_uses_selected_model(self):
+        from harness.app_operations import session_detail
+        sid = self.new_chat()
+        self.service.submit(sid, "hold-task", request_id="capacity-test")
+        wait_for(lambda: bool(Model.calls))
+        old_limit = self.service.agents[sid].cfg.context_size()
+        self.client.patch("/api/settings", json={"model": "flash_next_q3"}).raise_for_status()
+        self.assertEqual(session_detail(self.service, self.service.session(sid))["context"]["limit"], old_limit)
+        Model.gate.set()
+        self.completed("capacity-test")
+        wait_for(lambda: self.service.active is None)
+        self.assertEqual(session_detail(self.service, self.service.session(sid))["context"]["limit"], 262144)
+
     def completed(self, key):
         wait_for(lambda: self.service.store.job(key)["status"] in ("complete", "stopped", "failed"))
+
+    def test_messages_arriving_at_completion_are_not_stranded_as_steering(self):
+        finished = threading.Event()
+        release = threading.Event()
+        original_drive = self.service._drive
+
+        def hold_completed_job(job):
+            original_drive(job)
+            if job["id"] == "completion-first":
+                finished.set()
+                release.wait(5)
+
+        self.service._drive = hold_completed_job
+        sid = self.new_chat()
+        try:
+            self.service.submit(sid, "First task.", request_id="completion-first")
+            self.assertTrue(finished.wait(5))
+            self.assertEqual(self.service.store.job("completion-first")["status"], "complete")
+            self.assertIsNotNone(self.service.active)
+            self.service.submit(sid, "Second task.", request_id="completion-second")
+            self.service.submit(sid, "Third task.", request_id="completion-third")
+            release.set()
+            self.completed("completion-second")
+            self.completed("completion-third")
+            self.assertEqual(self.service.store.job("completion-second")["status"], "complete")
+            self.assertEqual(self.service.store.job("completion-third")["status"], "complete")
+            users = [m["content"] for m in self.service.session(sid).messages
+                     if m.get("role") == "user" and m.get("content") in ("First task.", "Second task.", "Third task.")]
+            self.assertEqual(users, ["First task.", "Second task.", "Third task."])
+            self.assertFalse(self.service.store.jobs(("steering",)))
+        finally:
+            release.set()
+
+    def test_late_steering_keeps_queue_paused_after_stop(self):
+        finished = threading.Event()
+        release = threading.Event()
+        original_drive = self.service._drive
+
+        def hold_completed_job(job):
+            original_drive(job)
+            finished.set()
+            release.wait(5)
+
+        self.service._drive = hold_completed_job
+        sid = self.new_chat()
+        try:
+            self.service.submit(sid, "First task.", request_id="paused-first")
+            self.assertTrue(finished.wait(5))
+            self.service.submit(sid, "Next task.", request_id="paused-next")
+            self.assertTrue(self.service.stop(sid))
+            release.set()
+            wait_for(lambda: self.service.active is None)
+            self.assertTrue(self.service.queue_paused)
+            self.assertEqual(self.service.store.job("paused-next")["status"], "queued")
+        finally:
+            release.set()
 
     def test_launcher_identity_rejects_other_installation_and_legacy_server(self):
         from harness.web_identity import belongs_to_installation

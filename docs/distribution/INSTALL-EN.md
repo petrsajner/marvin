@@ -1,9 +1,10 @@
-# Marvin 1.7.0 - Windows Installation
+# Marvin 1.8.0 - Windows Installation
 
 ## Minimal and Full
 
-- `Marvin-Setup-1.7.0-Minimal.exe`: small installer. Requires separate 64-bit Python 3.12 with the Python Launcher (`py`). Downloads Python packages and llama.cpp/CUDA during setup.
-- `Marvin-Setup-1.7.0-Full.exe`: includes private Python 3.12, locked packages and llama.cpp/CUDA. Does not require system Python. Model weights are not included.
+- `Marvin-Setup-1.8.0-Minimal.exe`: smaller installer. Requires separate 64-bit Python 3.12 with the Python Launcher (`py`); prepares packages and llama.cpp/CUDA during setup.
+- `Marvin-Setup-1.8.0-Full.exe`: includes private Python 3.12, locked packages, and validated llama.cpp/CUDA b10935. No system Python is required. The EXE itself does not include model weights.
+- `Marvin-Offline-Backup-1.8.0`: complete local bundle with Full Setup, all included models and projectors including Flash-Next, runtime, dependency snapshot, and checksum manifest.
 
 Both variants require supported 64-bit Windows and a user-installed NVIDIA driver. Have Microsoft Edge/WebView2 available for the desktop window and browser tools. A separate CUDA Toolkit or Node.js is not required.
 
@@ -19,6 +20,12 @@ To update, use the existing application directory and close running tasks and Ma
 
 ## Offline Backup
 
-`QwenHarness-Offline-Backup` remains a separate, unchanged package. Neither installer includes it. Normal model retrieval prefers internet sources; a configured backup is a fallback. Explicit offline-backup setup restores local files first.
+Keep the complete offline folder together and run its Full installer directly beside `manifest.json`. Setup recognizes the backup and the first preparation restores local files first. No separate Python installation or repeat download of included models is needed. A complete restore copies all models in the bundle and requires over 200 GB of storage when those files are not already on the destination.
 
-The distribution contains no personal data. Both PDF manuals are included in each installer. Both variants download models; the NVIDIA driver remains user-managed.
+An existing installation can also select a backup through **Set up from offline backup** in the Start Menu or **Settings > Data and backups**. Ordinary online setup uses a registered backup as fallback. Models or components absent from the bundle still have to be obtained separately.
+
+## Flash-Next
+
+Flash-Next is optional in the wizard and is not automatically checked for a fresh online installation. It can also be selected later in **Model and device**. It downloads approximately 90.9 GB and uses Q3 weights, Q8 KV, and 128k to 256k context according to available RAM/VRAM. See the manual for measured results and limits. The general new-installation default remains Qwen Q5/Q8/192k.
+
+The distribution and offline installation bundle contain no personal chats, projects, or memories. Back those up separately. Both updated PDF manuals are included in each installer. The NVIDIA driver remains user-managed.

@@ -145,7 +145,8 @@ class LLMClient:
         self.client = OpenAI(
             base_url=cfg.base_url + "/v1", api_key="local",
             max_retries=0,
-            timeout=httpx.Timeout(connect=10.0, read=300.0, write=30.0, pool=30.0),
+            timeout=httpx.Timeout(connect=10.0, read=float(cfg.model().get("read_timeout", 300)),
+                                  write=30.0, pool=30.0),
         )
         self.model_name = "local-model"  # llama-server akceptuje cokoliv
 
@@ -246,6 +247,10 @@ class LLMClient:
                     res.stopped = stop_started is not None
                     break
                 if kind == "error":
+                    from harness.servermgmt import last_failure
+                    failure = last_failure(self.cfg)
+                    if failure.get("model") == self.cfg.model_key() and failure.get("error"):
+                        raise RuntimeError(failure["error"]) from chunk
                     raise chunk
                 last_chunk_at = time.monotonic()
                 idle_probes = 0

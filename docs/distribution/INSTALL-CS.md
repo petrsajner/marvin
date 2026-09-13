@@ -1,9 +1,10 @@
-# Marvin 1.7.0 - instalace pro Windows
+# Marvin 1.8.0 - instalace pro Windows
 
 ## Minimal a Full
 
-- `Marvin-Setup-1.7.0-Minimal.exe`: malý instalátor. Vyžaduje samostatný 64bitový Python 3.12 s Python Launcherem (`py`). Python balíčky a llama.cpp/CUDA získá při nastavení ze sítě.
-- `Marvin-Setup-1.7.0-Full.exe`: obsahuje vlastní Python 3.12, uzamčené balíčky a llama.cpp/CUDA. Systémový Python není potřeba. Modely přibalené nejsou.
+- `Marvin-Setup-1.8.0-Minimal.exe`: menší instalátor. Vyžaduje samostatný 64bitový Python 3.12 s Python Launcherem (`py`). Balíčky a llama.cpp/CUDA získá při nastavení.
+- `Marvin-Setup-1.8.0-Full.exe`: obsahuje vlastní Python 3.12, uzamčené balíčky a ověřené llama.cpp/CUDA b10935. Systémový Python není potřeba. Modely nejsou součástí samotného EXE.
+- `Marvin-Offline-Backup-1.8.0`: úplná místní sada s Full instalátorem, modely včetně Flash-Next, jejich projektory, runtime, snapshotem závislostí a manifestem kontrolních součtů.
 
 Obě varianty vyžadují podporované 64bitové Windows a ovladač NVIDIA nainstalovaný uživatelem. Pro desktopové okno a prohlížečové nástroje mějte dostupný Microsoft Edge/WebView2. Samostatný CUDA Toolkit ani Node.js nejsou potřeba.
 
@@ -19,6 +20,12 @@ Při aktualizaci použijte stávající adresář aplikace a nejprve ukončete b
 
 ## Offline Backup
 
-`QwenHarness-Offline-Backup` zůstává samostatným balíčkem a touto verzí se nemění. Není součástí instalátorů. Běžné získávání modelů preferuje internet; nakonfigurovaná záloha je náhradní zdroj. Výslovná instalace z offline zálohy obnovuje místní soubory přednostně.
+Zachovejte celou offline složku pohromadě a spusťte její Full instalátor přímo vedle `manifest.json`. Průvodce zálohu rozpozná a první příprava obnoví místní soubory přednostně. Nepotřebujete samostatně instalovat Python ani znovu stahovat přibalené modely. Úplná obnova kopíruje všechny modely obsažené v balíčku; vyžaduje přes 200 GB prostoru, pokud na cíli ještě nejsou.
 
-Distribuce neobsahuje osobní data. Oba PDF manuály jsou součástí každého instalátoru. Modely se stahují v obou variantách, ovladač NVIDIA řeší uživatel.
+Existující instalaci lze propojit se zálohou také přes nabídku Start **Instalace z offline zálohy** nebo přes **Nastavení > Data a zálohy**. Běžné online nastavení používá registrovanou zálohu jako náhradní zdroj. Modely či součásti, které záloha neobsahuje, je nutné získat zvlášť.
+
+## Flash-Next
+
+V průvodci je Flash-Next volitelný; při nové online instalaci není automaticky zaškrtnutý. Lze jej později vybrat v **Model a zařízení**. Stahuje přibližně 90,9 GB a používá Q3 váhy, Q8 KV a 128k až 256k kontext podle dostupné RAM/VRAM. Podrobnosti a skutečně naměřené limity jsou v manuálu. Výchozím obecným modelem nové instalace zůstává Qwen Q5/Q8/192k.
+
+Distribuce ani offline instalační sada neobsahují osobní chaty, projekty nebo paměť. Ty zálohujte samostatně. Oba aktualizované PDF manuály jsou součástí instalátorů. Ovladač NVIDIA instaluje uživatel.

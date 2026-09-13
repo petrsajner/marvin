@@ -2,8 +2,8 @@
 
 Your local AI companion — a brain the size of a planet that never leaves your machine.
 
-A harness for local work with **Qwen3.8-27B** and **Ornith 1.5 35B-A3B** models on an
-**RTX 5090 (32 GB)**. Model inference, projects, memories and chats stay local.
+A harness for local work with **Qwen3.8-27B**, **Qwen3.8-Flash-Next**, **Ornith 1.5**
+and **Nemotron 3.5 Lightning** on NVIDIA GPUs. Model inference, projects, memories and chats stay local.
 When you use web or research tools, the app makes ordinary internet requests to
 the selected websites and search services.
 
@@ -40,7 +40,7 @@ These are product decisions, not postponed roadmap items.
   Last used folder is remembered.
 - 🖼️ **Image analysis** — native vision (mmproj), including screenshots
 - 🖱️ **Computer control** — screenshot → clicking, typing, keys (pyautogui + mss)
-- 🔀 **Switchable models** — Qwen Q4/Q5 and Ornith Abliterated Q5
+- 🔀 **Switchable models** — Qwen IQ3/Q4/Q5, Flash-Next Q3, Ornith Q5 and Nemotron Q4/Q5
 - 🎚️ **KV cache precision** — Qwen F16 for accuracy, or Q8 for double the context;
   Ornith fixed at Q8
 - 🧠 **Thinking on/off** — model reasoning mode (switchable at runtime)
@@ -147,13 +147,31 @@ Python or PATH. Both variants download models; the NVIDIA driver is user-managed
 
 ```bash
 py -3.12 -m venv .venv
-.venv/Scripts/python scripts/setup_env.py --model all
+.venv/Scripts/python scripts/setup_env.py --model auto
 npm --prefix frontend ci
 npm --prefix frontend run build
 ```
 
-Downloads and prepares everything: pip dependencies, llama.cpp CUDA binaries
-(~540 MB), Qwen Q4/Q5, Ornith Abliterated Q5 and both vision projectors (~59 GiB).
+Prepares the locked Python dependencies, validated llama.cpp CUDA binaries and
+models appropriate for the detected GPU. Download size depends on the selection.
+Flash-Next is optional and is downloaded when selected in the application.
+
+### Qwen3.8-Flash-Next
+
+Select **Qwen 3.8 Flash-Next · Q3** in Settings. Marvin checks available RAM and VRAM,
+downloads and verifies the 90.9 GB model and its image support, then configures CPU
+threads and expert placement automatically. Download progress is visible and can
+be interrupted and resumed. Chat, images and agent tools use the existing UI.
+
+Flash-Next uses Q8 KV cache with a minimum 128k context. Larger profiles require
+enough available memory; the application can reduce the requested profile to 128k.
+A smaller GPU also needs more system RAM for this model. This differs from the
+smaller Qwen models that primarily run in VRAM.
+
+On the tested RTX 5090 / 64 GB RAM / Core Ultra 7 265K, Q3 generated about 27 tok/s.
+A 122,397-token input took 17m 34s to process; the next question reused that context
+and took 1.27s. These are individual measurements, not a guarantee for other machines.
+See the [integration evidence](docs/design/2026-09-13-qwen38-flash-next-integration.md).
 
 ## Running
 

@@ -56,6 +56,7 @@ class ApplicationService:
             "autonomy": legacy.get("autonomy", cfg.agent.get("autonomy", "supervised")),
             "work_mode": legacy.get("work_mode", cfg.data.get("work_mode", "discussion")),
             "session_id": legacy.get("session_id"), "kv_cache_modes": legacy.get("kv_cache_modes", {}),
+            "adaptive_kv_requests": {},
             "send_mode": "steer", **read_json(self.preferences_path),
         }
         if self.preferences["model"] not in cfg.data["models"]:
@@ -88,8 +89,31 @@ class ApplicationService:
     def start_model(self, *, restart=False):
         key = self.preferences["model"]
         profile = self.preferences.get("kv_cache_modes", {}).get(key, self.cfg.kv_cache_mode(key))
+        if self.cfg.model(key).get("adaptive_runtime"):
+            profile = self.preferences.get("adaptive_kv_requests", {}).get(key, self.cfg.kv_cache_mode(key))
+        data = copy.deepcopy(self.cfg.data)
+        data["default_model"] = key
+        data.setdefault("hardware", {})["vram_gb"] = self.preferences.get("vram_gb", "auto")
+        current = Config(data, self.cfg.root)
         return self.models.request(key, restart=restart, kv_profile=profile,
-                                   on_success=lambda model: self.remember_running_model(model, profile))
+                                   config=current, on_success=self.model_became_ready,
+                                   on_failure=lambda restored: self.model_switch_failed(key, restored))
+
+    def model_became_ready(self, model):
+        with self.lock:
+            profile = self.models.cfg.kv_cache_mode(model)
+            self.preferences.setdefault("kv_cache_modes", {})[model] = profile
+            self.remember_running_model(model, profile)
+            self.store.emit(None, "settings_changed", copy.deepcopy(self.preferences))
+
+    def model_switch_failed(self, requested, restored):
+        with self.lock:
+            snapshot = self.models.snapshot()
+            if (restored and snapshot.status == "failed" and snapshot.target == requested
+                    and self.preferences["model"] == requested):
+                self.preferences["model"] = restored
+                self.preferences["vram_gb"] = self.models.cfg.data.get("hardware", {}).get("vram_gb", "auto")
+                self.model_became_ready(restored)
 
     def autostart_model(self):
         if not self.manage_model:
@@ -108,6 +132,10 @@ class ApplicationService:
         candidate = Config(copy.deepcopy(self.cfg.data), self.cfg.root)
         candidate.data.setdefault("hardware", {})["vram_gb"] = self.preferences.get("vram_gb", "auto")
         key = self.preferences["model"]
+        if candidate.model(key).get("adaptive_runtime"):
+            # Full planning happens after the old model frees its resources. Do not
+            # change model identity based solely on a VRAM-only preflight.
+            return
         candidate.data["default_model"] = key
         profile = self.preferences.get("kv_cache_modes", {}).get(key, candidate.kv_cache_mode(key))
         if profile in candidate.kv_cache_profiles(key):
@@ -256,6 +284,15 @@ class ApplicationService:
                 self.store.emit(job["session_id"], "run_status", {"status": status, "error": job["error"], "run_id": job["id"]})
             finally:
                 with self.wake:
+                    # A submit can arrive after _drive's final steering check but before
+                    # active is cleared. No run remains to consume that steering: retain
+                    # it as normal queued work, under the same lock used by submit.
+                    late = [item for item in self.store.jobs(("steering",))
+                            if item["session_id"] == job["session_id"]]
+                    for item in late:
+                        self.store.save_job(item["payload"], "queued")
+                    if late:
+                        self.store.emit(job["session_id"], "queue_changed", {})
                     self.active = None
                     self.wake.notify_all()
 
@@ -371,18 +408,25 @@ class ApplicationService:
                 from harness import servermgmt
                 key = cfg.model_key()
                 profile_changed = cfg.kv_cache_mode(key) != self.models.cfg.kv_cache_mode(key)
-                if profile_changed or not servermgmt.health(cfg) or servermgmt.running_model(cfg) != key:
+                hardware_changed = cfg.data.get("hardware") != self.models.cfg.data.get("hardware")
+                if profile_changed or hardware_changed or not servermgmt.health(cfg) or servermgmt.running_model(cfg) != key:
                     live["phase"] = "loading_model"
                     flush(True)
-                    self.models.request(key, restart=profile_changed, kv_profile=cfg.kv_cache_mode(key),
-                                        on_success=lambda model: self.remember_running_model(model, cfg.kv_cache_mode(model)))
+                    profile = cfg.kv_cache_mode(key)
+                    if cfg.model(key).get("adaptive_runtime"):
+                        profile = job["settings"].get("adaptive_kv_requests", {}).get(key, self.cfg.kv_cache_mode(key))
+                    self.models.request(key, restart=bool(profile_changed or hardware_changed), kv_profile=profile, config=cfg,
+                                        on_success=self.model_became_ready,
+                                        on_failure=lambda restored: self.model_switch_failed(key, restored))
                     while self.models.snapshot().busy and not self.abort.wait(0.1):
                         pass
                     if self.abort.is_set():
                         self.store.save_job(job, "stopped")
                         return
-                    if not servermgmt.health(cfg):
+                    if (self.models.snapshot().status != "ready" or not servermgmt.health(cfg)
+                            or servermgmt.running_model(cfg) != key):
                         raise RuntimeError(self.models.snapshot().error or "Model server is not ready")
+                cfg.set_kv_cache_mode(key, self.models.cfg.kv_cache_mode(key))
                 self.remember_running_model(key, cfg.kv_cache_mode(key))
             if job.get("resume"):
                 saved_live = read_json(session.dir / "interrupted-live.json")

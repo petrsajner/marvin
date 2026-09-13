@@ -25,3 +25,4 @@ def read_app_version() -> str:
 
 
 APP_VERSION = read_app_version()
+APP_COPYRIGHT = "© Petr Sajner 2026"

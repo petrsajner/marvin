@@ -826,9 +826,23 @@ button.nav-button {
   border-bottom-color: var(--green);
 }
 .detail-body {
+  flex: 1;
+  min-height: 0;
   padding: 16px;
   overflow: auto;
   font-size: 12px;
+}
+.detail-footer {
+  flex: none;
+  border-top: 1px solid var(--line);
+  padding: 10px 16px;
+  text-align: right;
+}
+.copyright {
+  color: var(--dim);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 .detail-body section + section {
   border-top: 1px solid var(--line);
@@ -1138,6 +1152,10 @@ button.nav-button {
 }
 .startup > svg {
   color: var(--green);
+}
+.startup .copyright {
+  position: fixed;
+  bottom: 20px;
 }
 .mobile-nav {
   display: none !important;

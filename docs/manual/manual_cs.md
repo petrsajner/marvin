@@ -30,7 +30,7 @@ Výběr projektu dá modelu přístup k danému adresáři prostřednictvím ná
 | GPU | NVIDIA RTX 5090 s 32 GB VRAM |
 | Ovladač | Aktuální NVIDIA ovladač kompatibilní s přibaleným CUDA buildem |
 | Systémová RAM | Dost pro Windows, mapování modelu, projekty a nástroje; komfortní je 64 GB a více |
-| Volné místo | Nejméně 65 GiB pro všechny modely, runtime a pracovní data |
+| Volné místo | Podle vybraných modelů; Flash-Next samostatně potřebuje přibližně 90,9 GB |
 | Python | Full: vlastní Python 3.12 přibalený. Minimal: 64bitový Python 3.12 instalovaný samostatně |
 | WebView | Microsoft Edge WebView2, běžně součást Windows 11 |
 
@@ -54,7 +54,13 @@ Výchozí instalační adresář je:
 %LOCALAPPDATA%\QwenHarness
 ```
 
-Kompletní download má přibližně 59 GiB a obsahuje Qwen Q4, Qwen Q5, Ornith Q5 a vision projektory. Přerušené stahování z Hugging Face lze obvykle obnovit opětovným spuštěním **Instalace prostředí a modelů** z nabídky Start.
+Objem stahování závisí na zvolených modelech. Přerušené stahování lze obnovit opětovným spuštěním **Instalace prostředí a modelů** z nabídky Start. Volitelný Flash-Next se stahuje až při výběru v aplikaci.
+
+## Qwen3.8-Flash-Next
+
+V nastavení modelu vyberte **Qwen 3.8 Flash-Next · Q3**. Marvin před stahováním zkontroluje paměť počítače, stáhne a ověří všechny části modelu včetně podpory obrázků a připraví spuštění. Během přenosu ukazuje procenta a objem dat; přenos lze zastavit a později obnovit. Ovládání chatu, příloh a nástrojů zůstává stejné.
+
+Tento model používá Q8 cache a alespoň 128k kontext. Počet jader a rozdělení dat mezi systémovou a grafickou paměť aplikace volí sama. Pokud větší zvolený kontext nemá dost paměti, použije nižší profil, nejméně 128k, a zobrazí skutečnou velikost. Karta s menší VRAM potřebuje více volné systémové RAM. Dlouhý nový dokument se může zpracovávat několik minut; navazující otázky využívají již zpracovaný kontext.
 
 ## První spuštění
 
@@ -82,7 +88,7 @@ Chcete-li odstranit úplně vše, zkontrolujte a smažte zbývající instalačn
 
 ```text
 py -3.12 -m venv .venv
-.venv\Scripts\python scripts\setup_env.py --model all
+.venv\Scripts\python scripts\setup_env.py --model auto
 npm --prefix frontend ci
 npm --prefix frontend run build
 .venv\Scripts\python qwen_app.py
@@ -95,6 +101,17 @@ Při práci ze zdrojů je potřeba Node.js pro sestavení frontendu. Běžná in
 # 3. Prohlídka desktopového rozhraní
 
 Vlevo je navigace projektů a chatů, uprostřed konverzace a vpravo zavíratelný panel detailů. Prompt zůstává dole pod konverzací. V menším okně se detail otevírá jako zásuvka.
+
+Tato kapitola popisuje pracovní okno verze 1.8.0. Model a jeho stav najdete v horní liště. Pravý sloupec otevřete ikonou detailu nad konverzací nebo kliknutím na ukazatel kontextu pod zprávou. Obsah pravého sloupce se posouvá samostatně; jeho spodní patička **© Petr Sajner 2026** zůstává na místě. Stejný copyright je ve startovacím okně.
+
+## První úloha krok za krokem
+
+1. Klikněte na název modelu nahoře a zkontrolujte volbu v **Model a zařízení**. Pro běžnou práci ponechte automatickou detekci paměti. Počkejte na stav **Připraven**.
+2. Vlevo vyberte projekt, připojte existující složku přes menu projektu nebo ponechte **Bez projektu**. Klikněte na **Nový chat**.
+3. Vedle názvu chatu zvolte pracovní režim. Například **Psaní** pro dokument nebo **Vývoj** pro práci v repozitáři.
+4. Napište požadovaný výsledek. Podle potřeby přidejte podklady tlačítkem **Attach**, přetažením nebo vložením ze schránky.
+5. Odešlete zprávu. Průběh sledujte v konverzaci a v pravé záložce **Průběh**. Během práce lze upřesnit zadání, připravit další zprávu do fronty nebo úlohu zastavit.
+6. Hotové soubory najdete v **Výsledky**. Otevřete náhled nebo jejich složku a ověřte výsledek. Běžná textová odpověď zůstává přímo v chatu.
 
 ## Navigace a pracovní režimy
 
@@ -157,22 +174,38 @@ Myšlení zůstává také u promptu, protože ho můžete měnit mezi otázkami
 
 # 4. Modely, KV cache, kontext a thinking
 
-| Model | Typické použití | Kvantizace | KV | Ověřený kontext |
+| Model | Typické použití | Kvantizace | KV | Praktické profily |
 |---|---|---|---|---|
 | Qwen 3.8 27B Q5 | Hlavní kvalitní model | Q5 | F16/Q8 | F16 96k; Q8 192k |
 | Qwen 3.8 27B Q4 | Rychlost a největší kontext | Q4 | F16/Q8 | F16 128k; Q8 256k |
+| Qwen 3.8 27B IQ3_S | Menší grafické karty, kompromis v kvalitě | IQ3_S | F16/Q8 | Podle GPU: Q8 32k až 256k |
 | Ornith 1.5 35B-A3B Abliterated Q5 | Velmi rychlý volitelný MoE | Q5 | Q8 | 128k |
+| Nemotron 3.5 Lightning Q4 | Rychlý textový MoE | Q4_K_XL | Q8 | 128k, 256k, 512k; také profily s využitím RAM |
+| Nemotron 3.5 Lightning Q5 | Textový MoE s vyšší kvantizací vah | Q5_K_XL | Q8 | 32k, 64k, 128k; 256k s využitím RAM |
+| Qwen 3.8 Flash-Next Q3 | Velký model s automatickým využitím GPU a RAM, včetně vision | Q3_K_XL | Q8 | 128k, 192k, 256k; výchozí požadavek 256k |
 
 Výchozí profil nové instalace je Qwen Q5/Q8/192k. Aplikace si pamatuje poslední model a KV volbu každého modelu.
 
 Q5 používejte pro náročný vývoj, architekturu a finální kvalitu. Q4 je vhodný pro vyšší rychlost nebo kontext 256k. Ornith je extrémně rychlý, ale při reálném vývoji může být slabší než dense Qwen.
 
 
-Další nakonfigurované modely zahrnují Qwen IQ3 pro menší GPU a Nemotron Q4/Q5. Nemotron je pouze textový. Nabídka modelů ukazuje dostupnost souboru a KV nabídka profily konkrétního modelu. Jde o konfiguraci, nikoli tvrzení, že každý profil byl změřen na každém počítači.
+Nemotron je pouze textový. Qwen, Ornith a Flash-Next mají vlastní podporu obrazových vstupů. Nabídka modelů ukazuje dostupnost souborů; u Flash-Next musí být kompletní všechny shardy i projektor. Podle karty jsou u Qwenu dostupné také kompaktní profily. Tabulka není příslibem, že každá kombinace poběží na každém počítači; přesný výběr najdete u zvoleného modelu v nastavení.
+
+## Flash-Next: nastavení a reálné čekání
+
+Flash-Next stáhne přibližně **90,9 GB** ve čtyřech souborech. Po prvním stažení se používá místní kopie. Změna KV profilu model znovu nestahuje. Během přípravy uvidíte zvlášť stahování, kontrolu souborů a načítání; přenos ukazuje procenta a objem dat.
+
+Výchozí požadavek je **256k Q8**. Aplikace podle aktuálně volné RAM a VRAM vybere 256k, 192k nebo 128k, nastaví CPU a rozdělení vah a zobrazí skutečně použitý profil. Pod 128k tento model nenastavuje. Když paměť nestačí, vysvětlí problém a při neúspěšném přepnutí se pokusí obnovit předchozí funkční model.
+
+Na RTX 5090 / 64 GB RAM / Core Ultra 7 265K jsme naměřili přibližně **27 generovaných tokenů za sekundu**. Úplné zpracování nového vstupu o 122 397 tokenech trvalo **17 minut 34 sekund**. Následující otázka využila uložený kontext a odpověď trvala **1,27 sekundy**. Rychlost psaní odpovědi proto neříká, jak dlouho potrvá načíst rozsáhlý nový dokument.
+
+128k profil prošel tímto dlouhým testem. 256k prošel testy nástrojů, obrázků, agentní úlohy a vstupu o 24 tisících tokenech; celé 256k okno nebylo naplněno. Na fyzických 16GB a 24GB kartách tato varianta zatím změřená není. Menší VRAM vyžaduje více volné systémové RAM; samotný údaj o celkové RAM nestačí.
+
+Profily používají tradiční označení 128k/192k/256k pro 131 072 / 196 608 / 262 144 tokenů. Číselný ukazatel může tutéž kapacitu zaokrouhlit například na 262k.
 
 ## Přesnost KV
 
-F16 dává nejvyšší přesnost attention cache, ale menší kontext. Q8 výrazně šetří VRAM a přibližně zdvojnásobuje kontext za cenu malého kompromisu. Změna KV restartuje server, nikoli chat.
+Kvantizace vah a KV cache jsou dvě různé věci: **Q3** u Flash-Next popisuje váhy modelu, **Q8** jeho průběžnou paměť kontextu. F16 používá více paměti pro KV, Q8 ji šetří. Výslednou velikost okna určuje konkrétní profil a dostupná paměť. Změna KV restartuje server, nikoli chat.
 
 ## Thinking
 
@@ -190,11 +223,13 @@ Pište přirozeným jazykem a uveďte požadovaný výsledek, omezení a způsob
 
 ## Steering
 
-Další zpráva během práce modelu přesměruje aktivní úlohu: přijme se okamžitě, model dokončí nejbližší větu, hotový text zůstane uložen, upřesnění se vloží do stejné úlohy a práce pokračuje.
+Při volbě **Upřesnit nyní** další zpráva v právě běžícím chatu přesměruje aktivní úlohu. Hotový text zůstane uložen a práce pokračuje s upřesněním. **Po dokončení** vytvoří samostatný následující požadavek. Zpráva do jiného chatu čeká ve frontě na jediný model. Zpráva doručená těsně při dokončování se neztratí a přejde do čekající práce.
 
 ## Stop
 
 **Stop** obchází běžnou frontu a měkce ukončí generování po nejbližší větě. Současně zruší právě čekající browser operaci nebo synchronní `run_command` a ukončí jeho procesní strom. Samostatný proces spuštěný na pozadí zastavte zvlášť v **Průběh > Procesy**.
+
+Rozlišujte **Zastavit úlohu** u zprávy a **stop** v nastavení modelu. První ukončí aktuální práci a pozastaví frontu, ale model může zůstat připravený v paměti. Druhé zastaví modelový server a uvolní jeho prostředky. Stažené modely zůstávají na disku pro další spuštění.
 
 ## Živý průběh
 
@@ -315,7 +350,7 @@ Zdroje se neskrývají ani nevyhazují podle toho, zda je model považuje za dů
 
 ## Panel výzkumu
 
-**Průběh výzkumu** zobrazuje dotazy, odkazy, přečtené zdroje a stav. Umí exportovat kompletní ledger, hotovou syntézu DOCX a hotovou syntézu PDF. Export již hotové odpovědi nespouští nový výzkum.
+V pravé záložce **Výsledky** otevřete sekci **Výzkum**. **Všechny zdroje** zobrazí podklady aktuální úlohy; tlačítka **PDF**, **DOCX** a **Zdroje** exportují hotovou syntézu nebo její zdrojový záznam. Obecný plán a provozní události jsou v záložce **Průběh**. Export již hotové odpovědi nespouští nový výzkum.
 
 Podporované projektové dokumenty zahrnují Markdown, text, RST, CSV, JSON, YAML, PDF a DOCX. Když Výzkum přečte lokální dokument, zaznamená jej jako zdroj.
 
@@ -475,7 +510,9 @@ Při potvrzení `y` povolí, `n` zamítne a `a` povolí zbývající WRITE akce 
 |---|---|
 | `runtime\models` | GGUF modely a vision projektory |
 | `runtime\llama` | CUDA binárky `llama.cpp` |
-| `runtime\webui-state.json` | Model, KV, jazyk, režim, workspace a aktivní relace |
+| `runtime\workspace-settings.json` | Aktuální nastavení webového pracovního okna a poslední úspěšný model |
+| `runtime\application.sqlite3` | Fronta úloh, trvalé události a registr souborů |
+| `runtime\execution-plans` | Automaticky vypočtené nastavení běhu Flash-Next |
 | `sessions\<id>` | Zprávy, přílohy, task state, research, komprese a exporty |
 | `projects` | Projekty vytvořené aplikací |
 | `projects.json` | Registr projektů |
@@ -483,7 +520,7 @@ Při potvrzení `y` povolí, `n` zamítne a `a` povolí zbývající WRITE akce 
 | `<projekt>\QWEN_MEMORY.md` | Projektová paměť |
 | `skills`, `user-skills`, `<projekt>\.qwen-skills` | Tři vrstvy skillů |
 
-Zálohujte projektové adresáře, `sessions`, `memory`, `user-skills` a `projects.json`.
+Zálohujte projektové adresáře, `sessions`, `memory`, `user-skills`, `projects.json` a stavové soubory v `runtime`. Starší `webui-state.json` slouží pro kompatibilitu a převzetí dřívějších voleb; hlavní UI používá `workspace-settings.json`.
 
 ## Kompletní offline záloha instalace
 
@@ -493,21 +530,21 @@ Aplikace umí vytvořit přenosnou instalační zálohu přímo ze souborů, kte
 - Nainstalované `llama.cpp` a CUDA runtime z `runtime\llama`.
 - Aktuální výběr modelů a `requirements.txt`.
 - Kopii Python balíčků, které už jsou nainstalované v `.venv`.
-- Odpovídající Setup.exe, pokud je dostupný v aktuálním build adresáři.
+- Odpovídající Setup.exe, pokud je dostupný v aktuálním build adresáři; verze 1.8 přednostně přikládá Full s vlastním Pythonem.
 - `manifest.json` s velikostí a SHA-256 hashem každého zálohovaného souboru.
 
 Modely, runtime i Python závislosti se kopírují přímo z aktuálního adresáře Marvin. Při tvorbě zálohy se nic z toho znovu nestahuje. Je potřeba přibližně tolik volného místa, kolik zabírá nainstalovaný runtime; operace může trvat, protože se každý soubor kontrolně hashujete.
 
 ## Instalace z offline zálohy
 
-1. Na cílovém počítači nainstalujte 64bitový Python 3.12 a zapněte **Add Python to PATH**. Samotný Python v záloze není.
-2. Spusťte Setup.exe Marvin, který je součástí zálohy. Pokud při tvorbě zálohy nebyl instalátor k dispozici, použijte odpovídající nebo novější kompatibilní Setup.exe.
+1. Zkopírujte celou offline složku, včetně `manifest.json`, `payload`, `python-dependencies` a přiloženého instalátoru. Kompletní balíček se všemi současnými modely potřebuje přes 200 GB místa.
+2. Spusťte přiložený **Full** instalátor. Obsahuje vlastní Python a nevyžaduje jeho samostatnou instalaci. Jen pokud používáte **Minimal**, musíte mít 64bitový Python 3.12 připravený předem.
 3. Použijte jednu z možností:
    - Pokud je Setup.exe uvnitř zálohy vedle `manifest.json`, spusťte ho přímo tam; zálohu rozpozná automaticky.
    - Položte zálohu vedle Setup.exe a přejmenujte ji přesně na `QwenHarness-Offline-Backup`; instalátor ji rozpozná automaticky.
    - Nainstalujte Marvin, v nabídce Start spusťte **Instalace z offline zálohy** a vyberte složku zálohy.
-4. Běžný setup nejprve použije standardní internetové zdroje. Pokud vybraný model, `llama.cpp` nebo Python závislosti nelze získat online, obnoví ze zvolené lokální zálohy pouze tuto neúspěšnou součást.
-5. Explicitní příkaz **Instalace z offline zálohy** v nabídce Start pořadí obrátí: nejdřív obnoví zálohu a teprve potom získá případné chybějící části.
+4. Když instalátor rozpozná zálohu vedle sebe, první příprava použije místní obnovu přednostně. Úplná obnova přenese všechny modely obsažené v balíčku, včetně Flash-Next, a kontroluje jejich SHA-256. Výběr modelů v průvodci řídí případné další stahování.
+5. Příkaz **Instalace z offline zálohy** v nabídce Start také obnovuje místní data přednostně. Běžné nastavení bez této volby používá internet a zaregistrovanou zálohu jako náhradní zdroj. Pokud součást není ani místně, dokončení vyžaduje její získání.
 
 Tlačítkem **Použít jako zálohu** zaregistrujete složku pro případ budoucího selhání downloadu, **Ověřit SHA-256** zkontroluje každý soubor podle manifestu a **Zapomenout výběr** tuto pojistku vypne. Výběr zálohy nezakazuje přístup k internetu. Setup.exe, `manifest.json`, `README-OFFLINE.txt`, `requirements.txt`, `python-dependencies` a `payload` musí zůstat společně v jedné záložní složce.
 
@@ -524,7 +561,7 @@ Offline instalační záloha neobsahuje chaty, projekty, paměť ani osobní ski
 
 ## Server nestartuje
 
-Zkuste restart v panelu SERVER, ověřte model v `runtime\models`, přečtěte `llama-server.log`, zkontrolujte NVIDIA ovladač, port 8080 a volnou VRAM.
+Otevřete **Nastavení > Model a zařízení**, přečtěte hlášení a zkuste restart. Ověřte kompletní model, kompatibilní NVIDIA ovladač a volnou paměť. Flash-Next potřebuje vedle VRAM také dost systémové RAM. Podrobnosti jsou v `runtime\llama-server.log`.
 
 ## Chybí model nebo projektor
 
@@ -540,7 +577,7 @@ Zkontrolujte kontext, použijte Q5/Q8 192k nebo Q4/Q8 256k, ručně komprimujte,
 
 ## UI vypadá zamrzle
 
-Sledujte živou aktivitu: model může přemýšlet, generovat tool call, zapisovat soubor nebo čekat na proces. Stop ukončí model; proces na pozadí ukončete v **Průběh > Procesy**.
+Sledujte fázi a uplynulý čas: může probíhat stahování, kontrola vah, zpracování dlouhého vstupu, thinking nebo nástroj. U Flash-Next může nový velký vstup trvat několik minut. **Zastavit úlohu** ukončí aktuální požadavek; samostatný proces na pozadí zastavte v **Průběh > Procesy**. Modelový server se zastavuje zvlášť v **Model a zařízení**.
 
 ## Izolovaný browser nestartuje
 
@@ -554,7 +591,7 @@ V **Rozpracovaná úloha** zvolte **Pokračovat v úloze**. Podle možnosti se o
 
 ## Kde je PDF/DOCX
 
-S projektem v `<projekt>\exports`, bez projektu v `sessions\<id>\exports`. Research panel nabídne exportovaný soubor také v UI.
+S projektem v `<projekt>\exports`, bez projektu v `sessions\<id>\exports`. Exportovaný soubor najdete také v pravé záložce **Výsledky**.
 
 ## Jazyk se nezměnil celý
 

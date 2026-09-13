@@ -10,6 +10,8 @@ Principy (UI nikdy nezamykáme):
 """
 from __future__ import annotations
 
+import copy
+import inspect
 import threading
 import time
 from dataclasses import dataclass, replace
@@ -28,6 +30,8 @@ class ModelSwitchSnapshot:
     started_at: float = 0
     phase: str = "idle"
     command: str = ""
+    downloaded_bytes: int = 0
+    total_bytes: int = 0
 
     @property
     def busy(self) -> bool:
@@ -58,9 +62,13 @@ class ModelSwitchController:
         self._lock = threading.Lock()
         self._state = ModelSwitchSnapshot()
         self._thread: threading.Thread | None = None
-        # (model_key, kv_profile|None, restart, on_success) | None
+        # (model_key, kv_profile, restart, on_success, incoming_config, on_failure)
         self._desired: tuple | None = None
         self._gen = 0  # zvýší se při každém requestu/cancelu (zastarávání publikací)
+        self._last_ready: tuple[Config, str] | None = None
+        self._controlled_ensure = "cancelled" in inspect.signature(ensure_fn).parameters
+        self._phase_ensure = "on_phase" in inspect.signature(ensure_fn).parameters
+        self._progress_ensure = "on_download_progress" in inspect.signature(ensure_fn).parameters
 
     def snapshot(self) -> ModelSwitchSnapshot:
         with self._lock:
@@ -68,11 +76,13 @@ class ModelSwitchController:
 
     def request(self, model_key: str, *, restart: bool = False,
                 kv_profile: str | None = None,
-                on_success: Callable[[str], None] | None = None) -> bool:
+                on_success: Callable[[str], None] | None = None,
+                config: Config | None = None,
+                on_failure: Callable[[str | None], None] | None = None) -> bool:
         """Přijme vždy; právě probíhající loading přeruší (uvolní VRAM)."""
         with self._lock:
             interrupted = self._state.busy
-            self._desired = (model_key, kv_profile, restart, on_success)
+            self._desired = (model_key, kv_profile, restart, on_success, config, on_failure)
             self._gen += 1
             self._state = ModelSwitchSnapshot("starting", model_key, started_at=time.time(),
                                               phase="preparing", command="restart" if restart else "start")
@@ -80,7 +90,7 @@ class ModelSwitchController:
                 self._thread = threading.Thread(
                     target=self._run, daemon=True, name="model-switch")
                 self._thread.start()
-        if interrupted or restart:
+        if interrupted and not self._controlled_ensure:
             # zabij bezici/loading server mimo lock - workeruv ensure rychle
             # skončí chybou a smyčka si vezme nový cíl
             try:
@@ -117,17 +127,37 @@ class ModelSwitchController:
         return True
 
     # ------------------------------------------------------------------
+    def _cancelled(self, gen):
+        with self._lock:
+            return self._gen != gen
+
+    def _ensure_controlled(self, cfg, key, gen):
+        kwargs = {}
+        if self._controlled_ensure:
+            kwargs["cancelled"] = lambda: self._cancelled(gen)
+        if self._phase_ensure:
+            kwargs["on_phase"] = lambda phase: self._publish(gen, ModelSwitchSnapshot("starting", key, phase=phase))
+        if self._progress_ensure:
+            kwargs["on_download_progress"] = lambda done, total: self._publish(gen,
+                ModelSwitchSnapshot("starting", key, phase="downloading", downloaded_bytes=done, total_bytes=total))
+        return self._ensure(cfg, key, **kwargs)
+
     def _run(self) -> None:
         while True:
             with self._lock:
                 if self._desired is None:
                     self._thread = None
                     return
-                target, kv_profile, restart, on_success = self._desired
+                target, kv_profile, restart, on_success, incoming, on_failure = self._desired
                 self._desired = None
                 gen = self._gen
+            run_cfg = Config(copy.deepcopy(incoming.data), incoming.root) if incoming else self.cfg
             try:
-                if not restart and self._running(self.cfg, target):
+                profile_changed = kv_profile and kv_profile != self.cfg.kv_cache_mode(target)
+                if not restart and not profile_changed and self._running(self.cfg, target):
+                    if self._cancelled(gen):
+                        continue
+                    self._last_ready = (Config(copy.deepcopy(self.cfg.data), self.cfg.root), target)
                     if on_success is not None:
                         on_success(target)
                     # model už běží (start tlačítko na běžícím modelu) - netřeba restart
@@ -135,10 +165,17 @@ class ModelSwitchController:
                     continue
                 self._stop(self.cfg, quiet=True)
                 if kv_profile:
-                    self.cfg.set_kv_cache_mode(target, kv_profile)
+                    run_cfg.set_kv_cache_mode(target, kv_profile)
+                run_cfg.data["default_model"] = target
+                if self._cancelled(gen):
+                    continue
                 self._publish(gen, ModelSwitchSnapshot("starting", target, phase="loading"))
-                if not self._ensure(self.cfg, target):
+                if not self._ensure_controlled(run_cfg, target, gen):
                     raise RuntimeError("llama-server could not be prepared")
+                if self._cancelled(gen):
+                    continue
+                self.cfg = run_cfg
+                self._last_ready = (Config(copy.deepcopy(run_cfg.data), run_cfg.root), target)
                 callback_error = ""
                 if on_success is not None:
                     try:
@@ -147,8 +184,34 @@ class ModelSwitchController:
                         callback_error = t("Failed to save UI state: {error}", error=exc)
                 self._publish(gen, ModelSwitchSnapshot("ready", target, callback_error))
             except Exception as exc:
+                if self._cancelled(gen):
+                    continue
+                restored = None
+                restore_error = ""
+                if self._last_ready:
+                    previous_cfg, previous_key = self._last_ready
+                    try:
+                        self._stop(run_cfg, quiet=True)
+                        self._publish(gen, ModelSwitchSnapshot("starting", target, phase="restoring"))
+                        if self._ensure_controlled(previous_cfg, previous_key, gen) and not self._cancelled(gen):
+                            if incoming is None:
+                                # The compatibility UI holds the original Config object.
+                                run_cfg.data.clear()
+                                run_cfg.data.update(copy.deepcopy(previous_cfg.data))
+                                self.cfg = run_cfg
+                            else:
+                                self.cfg = previous_cfg
+                            restored = previous_key
+                    except Exception as restore_exc:
+                        restore_error = f"; restore: {restore_exc}"
                 self._publish(gen, ModelSwitchSnapshot(
-                    "failed", target, f"{type(exc).__name__}: {exc}"))
+                    "failed", target, f"{type(exc).__name__}: {exc}{restore_error}"))
+                if on_failure is not None and not self._cancelled(gen):
+                    try:
+                        on_failure(restored)
+                    except Exception as callback_exc:
+                        self._publish(gen, ModelSwitchSnapshot("failed", target,
+                            f"{type(exc).__name__}: {exc}{restore_error}; UI state: {callback_exc}"))
 
     def _publish(self, gen: int, state: ModelSwitchSnapshot) -> None:
         """Publikuj stav jen pokud ho nikdo nepřepsal novějším přáním."""

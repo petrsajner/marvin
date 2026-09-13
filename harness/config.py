@@ -261,6 +261,10 @@ BUILTIN_MODELS: dict[str, dict[str, Any]] = {
     },
 }
 
+from harness.model_catalog import FLASH_NEXT_Q3
+
+BUILTIN_MODELS["flash_next_q3"] = copy.deepcopy(FLASH_NEXT_Q3)
+
 DEFAULTS: dict[str, Any] = {
     "server": {
         "host": "127.0.0.1",
@@ -409,6 +413,10 @@ class Config:
 
     def model_file(self, key: str | None = None) -> Path:
         return self.path("paths.models_dir") / self.model(key)["file"]
+
+    def model_ready(self, key: str | None = None) -> bool:
+        from harness.model_files import model_ready
+        return model_ready(self.path("paths.models_dir"), self.model(key))
 
     def mmproj_file(self, key: str | None = None) -> Path | None:
         """Cesta k vision projektoru; None pro text-only modely (bez mmproj v configu)."""

@@ -55,7 +55,7 @@ def preflight(cfg) -> list[str]:
     problems = []
     if cfg.llama_server_exe() is None:
         problems.append("llama.cpp binaries (runtime/llama)")
-    if not cfg.model_file().exists():
+    if not cfg.model_ready():
         problems.append(f"model {cfg.model_key()} (runtime/models)")
     return problems
 

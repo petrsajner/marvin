@@ -94,7 +94,8 @@ def fits(cfg, model_key: str, profile_key: str, vram_gb: float | None) -> bool:
 
 def download_keys(cfg, vram_gb: float | None) -> list[str]:
     """Modely ke stažení: aspoň jeden profil se vejde (bez VRAM dat = všechny)."""
-    keys = list(cfg.data["models"])
+    keys = [key for key, model in cfg.data["models"].items()
+            if not model.get("optional_download") or key == cfg.model_key()]
     if vram_gb is None:
         return keys
     fitting = [k for k in keys if fitting_profiles(cfg, k, vram_gb)]

@@ -124,6 +124,10 @@ def styles():
             "ManualTable", parent=base["BodyText"], fontName=FONT, fontSize=7.6,
             leading=9.6, textColor=INK,
         ),
+        "table_header": ParagraphStyle(
+            "ManualTableHeader", parent=base["BodyText"], fontName=FONT_BOLD, fontSize=7.6,
+            leading=9.6, textColor=colors.white,
+        ),
         "toc1": ParagraphStyle(
             "ManualTOC1", fontName=FONT_BOLD, fontSize=10, leading=14,
             leftIndent=0, firstLineIndent=0, textColor=INK, spaceBefore=3,
@@ -313,8 +317,8 @@ def markdown_story(text: str, toc_title: str):
             if rows:
                 columns = max(len(row) for row in rows)
                 normalized = [row + [""] * (columns - len(row)) for row in rows]
-                data = [[Paragraph(inline(cell), STYLES["table"]) for cell in row]
-                        for row in normalized]
+                data = [[Paragraph(inline(cell), STYLES["table_header" if index == 0 else "table"]) for cell in row]
+                        for index, row in enumerate(normalized)]
                 weights = [1] * columns
                 if columns == 2:
                     weights = [0.32, 0.68]

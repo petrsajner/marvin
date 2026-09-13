@@ -1,4 +1,4 @@
-# Marvin Architecture & Intelligence Reference (v1.6 – v1.7)
+# Marvin Architecture & Intelligence Reference (v1.8)
 
 This document provides a comprehensive technical overview of Marvin's architecture, UI/UX design, and harness intelligence capabilities.
 
@@ -54,7 +54,7 @@ The following features are explicit non-goals and must not be proposed or introd
                                │ OpenAI-compatible HTTP Stream
 ┌──────────────────────────────▼───────────────────────────────┐
 │  Local Inference Server (llama-server / llama.cpp)           │
-│  - Models: Qwen3.8-27B (Q5/Q4), Ornith 1.5 35B-A3B (Q5)      │
+│  - Qwen3.8-27B, Flash-Next, Ornith, Nemotron                 │
 │  - Native vision projection (mmproj)                         │
 │  - KV cache precision: F16 (accuracy) or Q8 (double context) │
 │  - Native reasoning / thinking effort control                │
@@ -110,7 +110,7 @@ Settings are organized into dedicated tabs (`Dialogs.tsx`):
 - **Memory and Skills**: Interactive editor for Global, Mode, and Project memories; skill catalog viewer, skill designer, and quick links to user & project skills folders.
 - **Data and Backups**: Project export/import archives, JSONL chat imports, offline backup creation and verification.
 - **Appearance and Language**: Theme selection (Dark / Light / System), layout density (Comfortable / Compact), UI language (English / Czech).
-- **Help and Manuals**: Access to English (24 pages) and Czech (18 pages) PDF manuals, slash commands reference.
+- **Help and Manuals**: Access to the current English and Czech PDF manuals and slash commands reference.
 
 ---
 
@@ -170,17 +170,29 @@ When older messages are compressed out of active context, the model can actively
 
 ---
 
-## 5. Runtime, Packaging & Installers (v1.7.0)
+## 5. Runtime, Packaging & Installers (v1.8.0)
 
 Marvin provides two distinct installer options:
-1. **Minimal Installer** (`dist/Marvin-Setup-<version>.exe`, ~15 MB):
+1. **Minimal Installer** (`dist/Marvin-Setup-<version>-Minimal.exe`, ~52 MB):
    - Requires 64-bit Python 3.12 pre-installed on the host system.
    - Creates a dedicated `.venv` and downloads pip dependencies and llama.cpp binaries during setup.
-2. **Full Installer** (`dist/Marvin-Setup-<version>-Full.exe`, ~678 MB):
+2. **Full Installer** (`dist/Marvin-Setup-<version>-Full.exe`, ~727 MB):
    - Fully self-contained offline runtime.
    - Bundles a private CPython 3.12.9 distribution (`runtime/python`), locked wheels (`runtime/python-packages`), and CUDA-accelerated llama.cpp (`runtime/llama`).
    - Completely isolated: does not modify system PATH, system Python, or global environment variables.
    - Safe against conflicting system `PYTHONHOME`, `PYTHONPATH`, or `PYTHONUSERBASE`.
 3. **Model Management**:
-   - Model weights (~59 GiB) are downloaded on demand or restored from `QwenHarness-Offline-Backup`.
+   - Model weights are downloaded on demand or restored from a complete offline backup. The 1.8.0 backup with all seven model variants is approximately 208 GiB; Flash-Next alone occupies 84.65 GiB including its projector.
    - The application automatically remembers and autostarts the last active model and KV profile upon launch.
+
+### Flash-Next preparation and lifecycle
+
+`model_catalog.py` pins the model revision, all three GGUF shards and the vision projector. `model_files.py` owns completeness checks, SHA-256 verification, resumable downloads and cancellation. A tiny metadata-only first shard is not treated as a complete model.
+
+`hardware.py` detects CPU topology and currently available RAM/VRAM. `runtime_plan.py` uses the verified GGUF layout from `gguf_metadata.py` to select 256k, 192k or 128k Q8 KV, CPU expert layers and thread affinity. The model never falls below 128k. The Windows profile uses `--lazy-mode on --load-mode none --no-host`; no user tuning or fork is required. The existing six model variants retain their own profiles.
+
+`runtime_update.py` installs the pinned upstream b10935 into staging, verifies hashes and CUDA loading, and activates it with rollback. `servermgmt.py` scopes lifecycle operations to the owned process, reports preparation progress and stops Flash-Next if free RAM falls below the protective threshold. A failed model switch restores the prior selection and effective profile. The application retains the requested adaptive context separately from the actual allocated context.
+
+The right column has one scrollable detail body; the copyright footer is its sibling and stays fixed at the bottom. Startup screens show the same copyright. Completion and steering handoff share a lock, so a message arriving at the end of a run is queued before the active worker is cleared.
+
+See [Windows distribution](design/windows-distribution.md) for packaging and [release verification](distribution/RELEASE-1.8.0.md) for measured coverage and remaining limits.

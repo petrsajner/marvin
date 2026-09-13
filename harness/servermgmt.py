@@ -5,6 +5,7 @@ Používá se z CLI (scripts/server.py), TUI i web UI.
 from __future__ import annotations
 
 import subprocess
+import json
 import threading
 import time
 from pathlib import Path
@@ -21,6 +22,14 @@ def pid_file(cfg: Config) -> Path:
     return cfg.path("paths.runtime_dir") / "llama-server.pid"
 
 
+def last_failure(cfg: Config) -> dict:
+    try:
+        value = json.loads((cfg.path("paths.runtime_dir") / "model-failure.json").read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
 def health(cfg: Config, timeout: float = 3.0) -> bool:
     try:
         r = requests.get(f"{cfg.base_url}/health", timeout=timeout)
@@ -30,9 +39,11 @@ def health(cfg: Config, timeout: float = 3.0) -> bool:
 
 
 def wait_health(cfg: Config, timeout: float = HEALTH_TIMEOUT,
-                proc: subprocess.Popen | None = None) -> bool:
+                proc: subprocess.Popen | None = None, cancelled=None) -> bool:
     t0 = time.time()
     while time.time() - t0 < timeout:
+        if cancelled and cancelled():
+            return False
         if health(cfg):
             return True
         if proc is not None and proc.poll() is not None:
@@ -112,6 +123,14 @@ def _managed_process(cfg: Config):
         if (proc.name() or "").lower() != "llama-server.exe":
             pid_file(cfg).unlink(missing_ok=True)
             return None
+        expected = cfg.llama_server_exe()
+        argv = proc.cmdline()
+        port_index = argv.index("--port") if "--port" in argv else -1
+        if (expected is None or Path(proc.exe()).resolve() != expected.resolve()
+                or port_index < 0 or port_index + 1 >= len(argv)
+                or argv[port_index + 1] != str(cfg.data["server"]["port"])):
+            pid_file(cfg).unlink(missing_ok=True)
+            return None
         return proc
     except Exception:
         pid_file(cfg).unlink(missing_ok=True)
@@ -131,15 +150,10 @@ def slots_processing(cfg: Config) -> bool | None:
 def stop(cfg: Config, quiet: bool = False) -> bool:
     import psutil
     pf = pid_file(cfg)
-    pid = None
-    try:
-        pid = int(pf.read_text(encoding="utf-8").strip().split(":")[1])
-    except (OSError, ValueError, IndexError):
-        pass
+    proc = _managed_process(cfg)
     killed = False
-    if pid:
+    if proc is not None:
         try:
-            proc = psutil.Process(pid)
             children = proc.children(recursive=True)
             for c in children:
                 c.kill()
@@ -153,29 +167,24 @@ def stop(cfg: Config, quiet: bool = False) -> bool:
             if not health(cfg, timeout=1.0):
                 break
             time.sleep(1)
-    if not killed:
-        # fallback: najdi proces podle jména
-        for p in psutil.process_iter(["name"]):
-            if p.info["name"] and p.info["name"].lower() == "llama-server.exe":
-                try:
-                    p.kill()
-                    killed = True
-                except psutil.NoSuchProcess:
-                    pass
-        pf.unlink(missing_ok=True)
+    pf.unlink(missing_ok=True)
     if not quiet:
         print("[OK] llama-server stopped." if killed else "[INFO] llama-server was not running.")
     return True
 
 
-def start(cfg: Config, model_key: str | None = None, ctx_size: int | None = None) -> int:
+def start(cfg: Config, model_key: str | None = None, ctx_size: int | None = None,
+          *, cancelled=None, on_phase=None, on_download_progress=None) -> int:
     with _start_lock:
-        return _start_locked(cfg, model_key, ctx_size)
+        return _start_locked(cfg, model_key, ctx_size, cancelled=cancelled, on_phase=on_phase,
+                              on_download_progress=on_download_progress)
 
 
 def _start_locked(cfg: Config, model_key: str | None = None,
-                  ctx_size: int | None = None) -> int:
+                  ctx_size: int | None = None, *, cancelled=None, on_phase=None, on_download_progress=None) -> int:
     model_key = model_key or cfg.model_key()
+    if cancelled and cancelled():
+        return 1
     if model_key not in cfg.data["models"]:
         print(f"[ERROR] Unknown model '{model_key}'. Available: {', '.join(cfg.data['models'])}")
         return 1
@@ -189,7 +198,22 @@ def _start_locked(cfg: Config, model_key: str | None = None,
         print(f"[INFO] Model '{current}' is running, switching to '{model_key}' ...")
         stop(cfg, quiet=True)
 
-    exe = cfg.llama_server_exe()
+    model = cfg.model(model_key)
+    requested_context = ctx_size or cfg.context_size(model_key)
+    (cfg.path("paths.runtime_dir") / "model-failure.json").unlink(missing_ok=True)
+    if model.get("assets") and not cfg.model_ready(model_key):
+        if model.get("adaptive_runtime"):
+            from harness.runtime_plan import plan_for
+            plan_for(cfg, model_key, requested_context)
+        from harness.model_files import download_pinned_model
+        if on_phase:
+            on_phase("downloading")
+        download_pinned_model(cfg.path("paths.models_dir"), model, should_stop=cancelled,
+                              on_progress=on_download_progress, on_phase=on_phase)
+    if on_phase:
+        on_phase("preparing")
+    from harness.runtime_update import ensure_runtime
+    exe = ensure_runtime(cfg, model_key, cancelled=cancelled)
     if exe is None:
         print("[ERROR] llama-server.exe not found. Run first: python scripts/download_llama.py")
         return 1
@@ -201,7 +225,13 @@ def _start_locked(cfg: Config, model_key: str | None = None,
         return 1
 
     srv = cfg.data["server"]
-    ctx = ctx_size or cfg.context_size(model_key)
+    ctx = requested_context
+    from harness.runtime_plan import plan_for
+    plan = plan_for(cfg, model_key, ctx)
+    if plan:
+        ctx = plan.context
+    if cancelled and cancelled():
+        return 1
     argv = [
         str(exe),
         "-m", str(mfile),
@@ -226,7 +256,12 @@ def _start_locked(cfg: Config, model_key: str | None = None,
     # profil muze nesit vlastni server args (napr. --n-cpu-moe pretok pro danou kartu)
     profile = cfg.kv_cache_profiles(model_key).get(cfg.kv_cache_mode(model_key), {})
     argv += [str(x) for x in profile.get("server_args", [])]
+    if plan:
+        argv += list(plan.args)
     argv += [str(x) for x in srv.get("extra_args", [])]
+
+    if on_phase:
+        on_phase("loading")
 
     log_path = cfg.path("paths.runtime_dir") / "llama-server.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -241,17 +276,45 @@ def _start_locked(cfg: Config, model_key: str | None = None,
     finally:
         logf.close()
     pid_file(cfg).write_text(f"{model_key}:{proc.pid}", encoding="utf-8")
+    loaded = threading.Event()
+    memory_failure = []
+    if plan:
+        def watch_memory():
+            import psutil
+            low_samples = 0
+            while proc.poll() is None:
+                available = psutil.virtual_memory().available
+                low_samples = low_samples + 1 if available < 2 * 1024**3 else 0
+                stop_loading = not loaded.is_set() and cancelled and cancelled()
+                if low_samples >= 2 or stop_loading:
+                    if low_samples >= 2:
+                        memory_failure.append("Model stopped because system memory became critically low.")
+                        from harness.changes import atomic_write_text
+                        atomic_write_text(cfg.path("paths.runtime_dir") / "model-failure.json",
+                            json.dumps({"model": model_key, "error": memory_failure[0], "time": time.time()}))
+                        with log_path.open("ab") as log:
+                            log.write(b"\n[MEMORY GUARD] Available RAM below 2 GiB; stopping this model.\n")
+                    try:
+                        proc.terminate()
+                    except OSError:
+                        pass
+                    return
+                time.sleep(1)
+        threading.Thread(target=watch_memory, name="model-memory-guard", daemon=True).start()
     print(f"[START] model={model_key}  ctx={ctx}  pid={proc.pid}  -> {cfg.base_url}")
     print(f"        log: {log_path}")
     print("[WAIT] loading the model into VRAM ...", end="", flush=True)
     t0 = time.time()
-    if not wait_health(cfg, proc=proc):
-        print(f"\n[ERROR] Server did not come up within {HEALTH_TIMEOUT}s. Last log lines:")
+    if not wait_health(cfg, proc=proc, cancelled=cancelled):
+        print(f"\n[ERROR] Server startup failed after {time.time() - t0:.0f}s. Last log lines:")
         print(log_path.read_bytes()[-2000:].decode(errors="replace"))
         if proc.poll() is None:
             proc.kill()
         pid_file(cfg).unlink(missing_ok=True)
+        if memory_failure:
+            raise RuntimeError(memory_failure[0])
         return 1
+    loaded.set()
     print(f" OK ({time.time() - t0:.0f}s)")
     print("   ", vram_str())
     return 0
@@ -274,8 +337,9 @@ def status(cfg: Config) -> int:
     return 1
 
 
-def ensure(cfg: Config, model_key: str | None = None) -> bool:
+def ensure(cfg: Config, model_key: str | None = None, *, cancelled=None, on_phase=None, on_download_progress=None) -> bool:
     """Zajišť běžící server se zadaným modelem (případně start/switch)."""
     if health(cfg) and (model_key is None or running_model(cfg) == model_key):
         return True
-    return start(cfg, model_key) == 0
+    return start(cfg, model_key, cancelled=cancelled, on_phase=on_phase,
+                  on_download_progress=on_download_progress) == 0

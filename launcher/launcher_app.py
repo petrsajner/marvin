@@ -35,7 +35,7 @@ if not getattr(sys, "frozen", False):
 
 from harness.dependencies import dependencies_current
 from harness.i18n import detect_language, set_language, t
-from harness.version import APP_VERSION
+from harness.version import APP_COPYRIGHT, APP_VERSION
 
 # UI language for dialogs/splash: user choice > installer file > English
 set_language(detect_language(ROOT) or "en")
@@ -124,15 +124,11 @@ def _cfg_ports() -> tuple[int, int]:
 
 
 def _check_model_files() -> tuple[bool, str]:
-    """Existují modely na SPRÁVNÉM místě (runtime/models v instalačním adresáři)?
-
-    Vrací (ok, popis s přesnými cestami pro zobrazení uživateli).
-    mmproj se nevylučuje - text-only modely (Nemotron) žádný vision projektor nemají;
-    chybějící mmproj u vision modelu jen zaháší servermgmt warningem.
-    """
-    models_dir = ROOT / "runtime" / "models"
-    ggufs = list(models_dir.glob("*.gguf")) if models_dir.exists() else []
-    has_model = any("mmproj" not in g.name.lower() and "mtp" not in g.name.lower() for g in ggufs)
+    """Accept any complete configured model, including models stored in nested shards."""
+    from harness.config import Config, load_config
+    cfg = Config(load_config(ROOT / "config.yaml").data, ROOT)
+    models_dir = cfg.path("paths.models_dir")
+    has_model = any(cfg.model_ready(key) for key in cfg.data["models"])
     detail = t("looking in: {path}", path=models_dir)
     return has_model, detail
 
@@ -227,12 +223,15 @@ def _show_splash() -> None:
                 root.title(f"Marvin v{APP_VERSION}")
                 root.overrideredirect(True)
                 root.attributes("-topmost", True)
+                root.configure(bg="#0b0e14")
                 splash_text = (f"Marvin v{APP_VERSION}\n\n{t('starting …')}")
                 tk.Label(root, text=splash_text,
-                         font=("Segoe UI", 13), padx=36, pady=22,
-                         bg="#0b0e14", fg="#e8f0ff").pack()
+                         font=("Segoe UI", 13), padx=36, pady=16,
+                         bg="#0b0e14", fg="#e8f0ff").pack(fill="both", expand=True)
+                tk.Label(root, text=APP_COPYRIGHT, font=("Segoe UI", 9),
+                         bg="#0b0e14", fg="#8b949e").pack(side="bottom", pady=(0, 12))
                 root.update_idletasks()
-                w, h = 320, 120
+                w, h = 320, 145
                 x = (root.winfo_screenwidth() - w) // 2
                 y = (root.winfo_screenheight() - h) // 2
                 root.geometry(f"{w}x{h}+{x}+{y}")
@@ -274,10 +273,12 @@ border-top-color:#2dd4bf;border-radius:50%;animation:s 1s linear infinite}}
 @keyframes s{{to{{transform:rotate(360deg)}}}}
 h1{{font-size:21px;font-weight:600;margin:0}} h1 b{{color:#2dd4bf}}
 small{{color:#8b949e}}
+.copyright{{position:fixed;bottom:20px;font-size:11px}}
 </style></head><body>
 <div class="r"></div>
 <h1><b>Marvin</b> <small>v{APP_VERSION}</small></h1>
 <small id="s">{loading_msg}</small>
+<small class="copyright">{APP_COPYRIGHT}</small>
 <script>
 const APP='http://127.0.0.1:{web_port}/';
 const t0=Date.now();

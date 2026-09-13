@@ -30,7 +30,7 @@ Selecting a project gives the model access to that directory through tools. It d
 | GPU | NVIDIA RTX 5090 with 32 GB VRAM |
 | Driver | Current NVIDIA driver compatible with the bundled CUDA build |
 | System RAM | Enough for Windows, model mapping, projects, and tools; 64 GB or more is comfortable |
-| Free disk space | At least 65 GiB for all models, runtime, and working data |
+| Free disk space | Depends on selected models; Flash-Next alone requires approximately 90.9 GB |
 | Python | Full: private Python 3.12 included. Minimal: install 64-bit Python 3.12 separately |
 | WebView / browser | Microsoft Edge WebView2 and Microsoft Edge, normally present on Windows 11 |
 
@@ -54,7 +54,13 @@ The default installation directory is:
 %LOCALAPPDATA%\QwenHarness
 ```
 
-The complete download is approximately 59 GiB and includes Qwen Q4, Qwen Q5, Ornith Q5, and the vision projectors. Interrupted Hugging Face downloads can normally be resumed by running **Set up environment and models** again from the Start Menu.
+Download size depends on the selected models. Interrupted downloads can be resumed by running **Set up environment and models** again from the Start Menu. The optional Flash-Next model downloads when selected in the application.
+
+## Qwen3.8-Flash-Next
+
+Select **Qwen 3.8 Flash-Next · Q3** in model settings. Marvin checks available memory before downloading, downloads and verifies every model part including image support, and prepares the model. Transfer progress shows both percentage and data size; it can be stopped and resumed later. Chat, attachments, and tools use the same controls as before.
+
+This model uses Q8 cache and at least 128k context. The application chooses CPU threads and placement in system and graphics memory automatically. If a larger requested context does not fit, it selects a smaller profile down to 128k and displays the actual size. A smaller GPU needs more free system RAM. Processing a long new document can take several minutes; subsequent questions reuse the processed context.
 
 ## First launch
 
@@ -89,7 +95,7 @@ To remove everything after uninstalling, inspect and delete the remaining instal
 
 ```text
 py -3.12 -m venv .venv
-.venv\Scripts\python scripts\setup_env.py --model all
+.venv\Scripts\python scripts\setup_env.py --model auto
 npm --prefix frontend ci
 npm --prefix frontend run build
 .venv\Scripts\python qwen_app.py
@@ -102,6 +108,17 @@ Source development requires Node.js to build the frontend. A normal Setup.exe in
 # 3. Desktop Interface Tour
 
 The workspace has project/chat navigation on the left, the conversation in the center, and a closable detail panel on the right. The prompt stays at the bottom of the conversation. At smaller widths, the detail panel becomes a drawer.
+
+This chapter describes the 1.8.0 workspace. The top bar contains the model and its status. Open the right column with the detail icon above the conversation or the context indicator below the composer. Its content scrolls independently; the bottom **© Petr Sajner 2026** footer stays in place. The same copyright appears during startup.
+
+## Your first task, step by step
+
+1. Click the model name in the top bar and check **Model and device**. Normally leave memory detection on automatic and wait for **Ready**.
+2. Select a project, attach an existing folder through the project menu, or keep **No project**. Click **New chat**.
+3. Choose the work mode beside the chat title, such as **Writing** for a document or **Development** for a repository.
+4. Describe the result you need. Add source material with **Attach**, drag and drop, or clipboard paste when useful.
+5. Send the message. Follow the conversation and the right-hand **Progress** tab. During work, you can clarify the request, queue another message, or stop the task.
+6. Find created files under **Results**, open a preview or their folder, and verify the result. Ordinary text answers remain in the conversation.
 
 ## Navigation and work modes
 
@@ -166,16 +183,32 @@ Thinking depth also stays beside the prompt because it can change between questi
 
 ## Installed model profiles
 
-| Model | Typical role | Weight quantization | KV choices | Tested context |
+| Model | Typical role | Weight quantization | KV choices | Practical profiles |
 |---|---|---|---|---|
 | Qwen 3.8 27B Q5 | Main high-quality model | Q5 | F16 or Q8 | F16 96k; Q8 192k |
 | Qwen 3.8 27B Q4 | Faster and largest-context option | Q4 | F16 or Q8 | F16 128k; Q8 256k |
+| Qwen 3.8 27B IQ3_S | Smaller GPUs, with a quality tradeoff | IQ3_S | F16 or Q8 | GPU-dependent Q8 profiles from 32k to 256k |
 | Ornith 1.5 35B-A3B Abliterated Q5 | Very fast optional reasoning MoE | Q5 | Q8 fixed | Q8 128k |
+| Nemotron 3.5 Lightning Q4 | Fast text-only MoE | Q4_K_XL | Q8 | 128k, 256k, 512k; also profiles using system RAM |
+| Nemotron 3.5 Lightning Q5 | Text-only MoE with higher weight precision | Q5_K_XL | Q8 | 32k, 64k, 128k; 256k using system RAM |
+| Qwen 3.8 Flash-Next Q3 | Large model using GPU and system RAM automatically, with vision | Q3_K_XL | Q8 | 128k, 192k, 256k; requests 256k by default |
 
 The default new-installation profile is Qwen Q5 with Q8 KV and a 192k context. The application remembers the last selected model and each model's KV choice.
 
 
-Additional configured model profiles include Qwen IQ3 for smaller GPUs and Nemotron Q4/Q5. Nemotron is text-only. The model list shows whether each file is installed, and the KV dropdown shows the profiles configured for that model. These are configuration choices, not a claim that every profile has been benchmarked on every PC.
+Nemotron is text-only. Qwen, Ornith, and Flash-Next use their own image support. The model list reports file availability; Flash-Next requires every shard and its projector. Qwen also offers compact profiles for smaller cards. The table does not promise that every combination will run on every PC; the selected model's settings show its exact profile choices.
+
+## Flash-Next settings and realistic waiting times
+
+Flash-Next downloads approximately **90.9 GB** across four files. Subsequent starts use the local copy, and changing KV does not download the weights again. Preparation shows downloading, file verification, and model loading separately. Transfer progress includes percentage and data size.
+
+The default request is **256k Q8**. Marvin uses currently available RAM and VRAM to choose 256k, 192k, or 128k, sets CPU threads and weight placement, and displays the actual profile. It never assigns less than 128k to this model. If memory is insufficient, it explains the problem and attempts to restore the previous working model after a failed switch.
+
+On an RTX 5090 / 64 GB RAM / Core Ultra 7 265K, we measured approximately **27 generated tokens per second**. Processing a new input of 122,397 tokens took **17 minutes 34 seconds**. The following question reused the context and took **1.27 seconds**. Generation speed therefore does not tell you how long a large new document will take to read.
+
+The 128k profile passed that long-input test. The 256k profile passed tool, image, agent, and 24k-input tests, but its entire window was not filled. This variant has not yet been measured on physical 16 GB and 24 GB cards. Smaller VRAM requires more free system RAM; installed RAM alone is not enough to predict whether it fits.
+
+Profile names 128k/192k/256k refer to 131,072 / 196,608 / 262,144 tokens. The numeric indicator may round the same capacity to a value such as 262k.
 
 ## Choosing Qwen Q5 or Q4
 
@@ -196,12 +229,12 @@ Ornith supports thinking on/off natively. The intermediate depths are prompt-gui
 
 ## KV cache precision
 
-KV cache stores the model's attention history. It is separate from the quantization of the model weights.
+KV cache stores the model's attention history. It is separate from weight quantization: **Q3** describes Flash-Next's weights, while **Q8** describes its context cache. Changing KV does not change the downloaded weight files.
 
 | Setting | Benefit | Tradeoff |
 |---|---|---|
-| F16 | Highest KV precision | Approximately half the context of Q8 on the same GPU |
-| Q8 | Much larger context with lower VRAM use | Small precision tradeoff in the attention cache |
+| F16 | Higher KV precision | Uses more memory for the same context |
+| Q8 | Lower cache memory use | Some cache precision is exchanged for memory savings; capacity depends on the profile |
 
 Changing KV precision restarts the server. It does not delete or reset the chat.
 
@@ -231,7 +264,7 @@ Images can be photographs, diagrams, screenshots, UI references, error messages,
 
 ## Steering a running task
 
-Sending another message while the model is working does not merely queue a second independent task. It steers the active one:
+With **Clarify now** selected, another message in the running chat steers the active task:
 
 1. The clarification is accepted immediately and the composer clears.
 2. The current generation stops after the nearest completed sentence or safe chunk.
@@ -241,11 +274,15 @@ Sending another message while the model is working does not merely queue a secon
 
 Use steering for corrections such as "keep the existing camera behavior", "do not change the API", or "also export this as PDF".
 
+Choose **After completion** for a separate next request. A message in another chat waits for the single model worker. A message arriving at the completion boundary is retained as queued work instead of being stranded.
+
 ## Stop
 
 **Stop** directly signals the independent run controller, including while no stream bytes arrive. It requests a graceful generation stop and normally allows the nearest sentence to finish. It also cancels the currently awaited browser operation or synchronous `run_command`, terminating that command's process tree. Finished partial text and captured command output are retained. A new prompt starts cleanly afterward.
 
-Long-running operating-system processes have their own termination control in **Long-running operations**. Stopping generation does not necessarily stop a background process that was already launched; use the process panel when required.
+Long-running operating-system processes have their own termination controls in **Progress > Processes**. Stopping generation does not necessarily stop an already launched background process.
+
+**Stop task** beside the composer ends the current work and pauses the queue; the model can remain loaded. **stop** in **Model and device** stops the model server and releases its resources. Downloaded weights remain available for the next start.
 
 ## Live progress
 
@@ -508,13 +545,13 @@ Sources are not hidden, discarded, or ranked because the model considers them un
 
 ## Research panel and exports
 
-The **Research progress** panel shows queries, links, sources read, and status. It can export:
+Open **Research** in the right-hand **Results** tab. **All sources** opens the current task's source records; **PDF**, **DOCX**, and **Sources** export:
 
 - Complete research ledger containing plans and source material.
 - Completed synthesis as DOCX.
 - Completed synthesis as PDF.
 
-Asking to export an already completed answer does not start a second research run.
+The general task plan and activity history are in **Progress**. Asking to export an already completed answer does not start a second research run.
 
 ## Project documents
 
@@ -704,7 +741,9 @@ During confirmation, `y` allows, `n` denies, and `a` allows all remaining writes
 |---|---|
 | `runtime\models` | GGUF models and vision projectors |
 | `runtime\llama` | `llama.cpp` CUDA binaries |
-| `runtime\webui-state.json` | Last model, KV choice, language, mode, workspace, and active session |
+| `runtime\workspace-settings.json` | Current workspace UI preferences and the last successful model |
+| `runtime\application.sqlite3` | Durable task queue, events, and file registry |
+| `runtime\execution-plans` | Automatically calculated Flash-Next runtime settings |
 | `sessions\<id>` | Messages, metadata, attachments, task state, research, compression, exports |
 | `projects` | Managed project folders created by the app |
 | `projects.json` | Registered project list |
@@ -723,6 +762,9 @@ Back up at least:
 - `memory`.
 - `user-skills`.
 - `projects.json`.
+- State files in `runtime`, including workspace preferences and the application database.
+
+The older `webui-state.json` supports compatibility and migration of earlier preferences; the main workspace uses `workspace-settings.json`.
 
 The application can also create a complete reusable installation backup from files that are already present on this computer. Open **Settings > Data and backups** and select **Create backup**. Choose a parent directory on another disk when possible. The application creates a timestamped `QwenHarness-Offline-Backup-*` folder containing:
 
@@ -730,21 +772,21 @@ The application can also create a complete reusable installation backup from fil
 - The installed `llama.cpp` and CUDA runtime from `runtime\llama`.
 - The current model selection and `requirements.txt`.
 - A snapshot of the Python packages already installed in `.venv`.
-- The matching Setup.exe when it is available in the current build directory.
+- The matching Setup.exe when available in the build directory; version 1.8 prefers Full with private Python.
 - `manifest.json` with the size and SHA-256 hash of every backed-up file.
 
 Backup creation copies model, runtime, and Python dependency files directly from the current Marvin directory. It does not download any of them again. It needs free space approximately equal to the installed runtime and may take time because every copied file is hashed.
 
 ## Installing from the offline backup
 
-1. Install 64-bit Python 3.12 on the destination computer and enable **Add Python to PATH**. Python itself is not stored in the backup.
-2. Run the Marvin Setup.exe included in the backup. If an installer was not available when the backup was created, use a matching or newer compatible Setup.exe.
+1. Copy the entire offline folder, including `manifest.json`, `payload`, `python-dependencies`, and the included installer. The complete bundle with all current models requires over 200 GB of storage.
+2. Run the included **Full** installer. It includes private Python and needs no separate Python installation. Only when using **Minimal**, prepare 64-bit Python 3.12 first.
 3. Use either of these methods:
    - When Setup.exe is inside the backup folder beside `manifest.json`, run it there; it detects the backup automatically.
    - Put the backup beside Setup.exe and rename it exactly to `QwenHarness-Offline-Backup`; the installer detects it automatically.
    - Install Marvin, open the Start Menu, run **Set up from offline backup**, and select the backup folder.
-4. Normal setup first uses the standard internet sources. If a selected model, `llama.cpp`, or the Python dependencies cannot be obtained online, setup restores only that failed component from the selected local backup.
-5. The explicit Start Menu command **Set up from offline backup** reverses the order: it restores the backup immediately and then only obtains anything that is still missing.
+4. When Setup recognizes a backup beside itself, the first preparation restores local files first. A complete restore copies every model included in the bundle, including Flash-Next, and verifies SHA-256. The wizard's model selection governs any additional downloads.
+5. The Start Menu command **Set up from offline backup** also restores locally first. Ordinary setup without that selection uses the internet and a registered backup as fallback. Anything absent from the local bundle still has to be obtained separately.
 
 Use **Use as fallback** to register a backup for future download failures, **Verify SHA-256** to check every file against its manifest, and **Clear selection** to stop using that fallback. Selecting a backup does not disable internet access. Keep Setup.exe, `manifest.json`, `README-OFFLINE.txt`, `requirements.txt`, `python-dependencies`, and `payload` together in the same backup folder.
 
@@ -763,12 +805,12 @@ The offline installation backup does not include chats, projects, memory, or per
 
 ## Server does not start
 
-- Open the Server panel and try Restart.
-- Confirm the selected model exists in `runtime\models`.
+- Open **Settings > Model and device**, read the error, and try restart.
+- Confirm all selected model files are complete, including Flash-Next's shards and projector.
 - Read `runtime\llama-server.log`.
 - Check NVIDIA driver/GPU availability.
 - Stop another process using port 8080.
-- If VRAM allocation fails, close other GPU applications, select a smaller model/context, or use the tested profile.
+- If memory allocation fails, check both free VRAM and system RAM. Flash-Next requires both; a smaller GPU needs more system RAM.
 
 ## Web UI port is occupied
 
@@ -801,7 +843,7 @@ Read the live activity line. The model may be thinking, generating a large tool 
 
 ## Stop did not end an operating-system process
 
-Stop ends model generation. Open **Long-running operations** and terminate the process separately.
+Stop ends the current model request. Open **Progress > Processes** and terminate the background process separately.
 
 ## A task was interrupted by restart
 
@@ -815,7 +857,7 @@ The project list marks missing directories. Reattach the correct folder, move af
 
 - Project active: `<project>\exports`.
 - No project: `sessions\<chat-id>\exports`.
-- Research panel synthesis export: the selected file is also presented by the UI.
+- Research synthesis export: the selected file is also listed in **Results**.
 
 ## Language did not fully change
 

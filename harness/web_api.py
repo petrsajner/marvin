@@ -68,7 +68,7 @@ def create_app(cfg=None, *, service=None):
                 "session_id": selected, "sessions": sessions, "projects": Projects(cfg).list_all(),
                 "modes": [{"id": key, "label": value.label} for key, value in WORK_MODES.items()],
                 "models": [{"id": key, "name": model.get("status_label") or model["alias"],
-                            "vision": bool(model.get("mmproj")), "installed": cfg.model_file(key).is_file(),
+                            "vision": bool(model.get("mmproj")), "installed": cfg.model_ready(key),
                             "profiles": [{"id": p, **spec} for p, spec in cfg.kv_cache_profiles(key).items()],
                             "profile": service.preferences.get("kv_cache_modes", {}).get(key, cfg.kv_cache_mode(key))}
                            for key, model in cfg.data["models"].items()],
@@ -321,11 +321,15 @@ def create_app(cfg=None, *, service=None):
                 if key not in cfg.data["models"] or profile not in cfg.kv_cache_profiles(key):
                     raise ValueError("Unknown KV profile")
             allowed = {"model", "thinking", "language", "theme", "density", "autonomy", "send_mode", "kv_cache_modes", "vram_gb"}
+            for key, profile in payload.get("kv_cache_modes", {}).items():
+                if (cfg.model(key).get("adaptive_runtime")
+                        and profile != service.preferences.get("kv_cache_modes", {}).get(key)):
+                    service.preferences.setdefault("adaptive_kv_requests", {})[key] = profile
             service.preferences.update({key: value for key, value in payload.items() if key in allowed})
             if service.manage_model and "vram_gb" in payload:
                 service.fit_hardware()
             service.save_preferences()
-            if service.manage_model and not service.active and ("model" in payload or "kv_cache_modes" in payload):
+            if service.manage_model and not service.active and any(key in payload for key in ("model", "kv_cache_modes", "vram_gb")):
                 service.start_model(restart=True)
             service.store.emit(None, "settings_changed", service.preferences)
             return service.preferences
@@ -334,14 +338,21 @@ def create_app(cfg=None, *, service=None):
 
     @app.get("/api/runtime")
     def runtime():
-        if time.monotonic() - runtime_cache["at"] < 1:
-            return {**runtime_cache["value"], "switch": service.models.snapshot().__dict__}
         from harness import servermgmt
         snapshot = service.models.snapshot()
-        value = {"status": servermgmt.server_state(cfg), "switch": snapshot.__dict__,
-                 "model": servermgmt.running_model(cfg), "vram": servermgmt.vram_value(),
-                 "python": __import__("platform").python_version(), "version": APP_VERSION}
-        runtime_cache.update(at=time.monotonic(), value=value)
+        fresh = time.monotonic() - runtime_cache["at"] >= 1
+        if fresh:
+            value = {"status": servermgmt.server_state(cfg), "switch": snapshot.__dict__,
+                     "model": servermgmt.running_model(cfg), "vram": servermgmt.vram_value(),
+                     "python": __import__("platform").python_version(), "version": APP_VERSION}
+        else:
+            value = {**runtime_cache["value"], "switch": snapshot.__dict__}
+        failure = servermgmt.last_failure(cfg)
+        if value["status"] == "down" and not snapshot.busy and failure.get("error"):
+            value["switch"] = {**snapshot.__dict__, "status": "failed", "target": failure.get("model"),
+                               "error": failure["error"]}
+        if fresh:
+            runtime_cache.update(at=time.monotonic(), value=value)
         return value
 
     @app.post("/api/runtime/{command}")

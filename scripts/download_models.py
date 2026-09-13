@@ -74,6 +74,10 @@ def main() -> int:
     mmproj_done: set[tuple[str, str]] = set()
     for key in which:
         m = cfg.data["models"][key]
+        if m.get("assets"):
+            from harness.model_files import download_pinned_model
+            download_pinned_model(models_dir, m)
+            continue
         target = models_dir / m["file"]
         if target.exists() and target.stat().st_size > 1 << 30:
             print(f"[OK] {key}: {m['file']} already downloaded")
@@ -81,6 +85,8 @@ def main() -> int:
             print(f"[DOWNLOAD] {key}: {m['alias']}")
             hf_download(m["repo"], m["file"], models_dir)
             print(f"[DONE] {key}: {m['file']}")
+        if not m.get("mmproj"):
+            continue
         mmproj_repo = cfg.mmproj_repo(key)
         mmproj_id = (mmproj_repo, m["mmproj"])
         if mmproj_id not in mmproj_done:
