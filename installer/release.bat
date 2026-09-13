@@ -21,6 +21,8 @@ echo  RELEASE %VERSION%  (testy -^> exe -^> instalator)
 echo ============================================================
 
 echo [FRONTEND] Building the local workspace...
+".venv\Scripts\python.exe" -B scripts\download_webview2.py
+if errorlevel 1 ( echo [ERROR] WebView2 payload verification failed. & exit /b 1 )
 call npm --prefix frontend ci --no-audit --no-fund
 if errorlevel 1 ( echo [ERROR] Frontend dependencies failed. & exit /b 1 )
 call npm --prefix frontend run build
@@ -36,7 +38,7 @@ if errorlevel 1 (
     pause & exit /b 1
 )
 echo        OK - vsechny testy prosly.
-".venv\Scripts\python.exe" -B -m unittest tests.test_workspace tests.test_runtime_support tests.test_prompt_performance tests.test_history_recovery
+".venv\Scripts\python.exe" -B -m unittest tests.test_workspace tests.test_runtime_support tests.test_prompt_performance tests.test_history_recovery tests.test_webview_runtime
 if errorlevel 1 ( echo [ERROR] Workspace integration tests failed. & exit /b 1 )
 
 echo [2/3] Build Marvin.exe...

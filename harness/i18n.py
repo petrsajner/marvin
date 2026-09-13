@@ -475,6 +475,8 @@ _CS = {
 
     # ------------------------------------------------ launcher
     "starting …": "startuji …",
+    "Desktop components could not be prepared. Connect to the internet and start Marvin again, or run the Full installer for offline setup.":
+        "Součásti aplikace se nepodařilo připravit. Připojte se k internetu a spusťte Marvin znovu, nebo použijte Full instalátor pro instalaci bez internetu.",
     "starting the interface… (first run takes a while)": "startuji rozhraní… (první spuštění chvíli trvá)",
     "still starting… (details: runtime/launcher.log)": "stále startuje… (detaily: runtime/launcher.log)",
     "No free Web UI port in range {start}-{end}": "Žádný volný Web UI port v rozsahu {start}-{end}",

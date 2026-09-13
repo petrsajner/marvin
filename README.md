@@ -214,7 +214,7 @@ from the web UI (buttons).
 ```
 
 - **START**: automatically starts llama-server (if not running) + the web UI and
-  opens a native window (WebView2). If the environment is missing it offers a repair.
+  opens a native window (WebView2). Missing WebView2 is prepared automatically during installation or startup: Full includes it offline, Minimal downloads it when needed. No separate WebView2 installation is required. Other missing environment components open the setup workflow.
 - **END**: closing the window stops the web UI **and llama-server** and frees VRAM
   (verified: 28 GB → 3.4 GB). Fallback without pywebview: system browser.
 

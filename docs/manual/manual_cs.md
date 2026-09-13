@@ -32,11 +32,14 @@ Výběr projektu dá modelu přístup k danému adresáři prostřednictvím ná
 | Systémová RAM | Dost pro Windows, mapování modelu, projekty a nástroje; komfortní je 64 GB a více |
 | Volné místo | Podle vybraných modelů; Flash-Next samostatně potřebuje přibližně 90,9 GB |
 | Python | Full: vlastní Python 3.12 přibalený. Minimal: 64bitový Python 3.12 instalovaný samostatně |
-| WebView | Microsoft Edge WebView2, běžně součást Windows 11 |
+| Desktopové okno | WebView2 se připraví automaticky; Full obsahuje offline runtime |
+| Prohlížečové nástroje | Microsoft Edge, běžně součást Windows 11 |
 
 Jiné NVIDIA karty mohou fungovat, ale dodané kontexty a kvantizace byly nastaveny a ověřeny pro RTX 5090 s 32 GB. Karty s menší VRAM potřebují menší kontext, nižší kvantizaci, méně GPU vrstev nebo CPU offload.
 
 > POZNÁMKA: K dispozici jsou dva instalátory. **Minimal** stahuje balíčky a llama.cpp a vyžaduje samostatně nainstalovaný Python 3.12. **Full** obsahuje vlastní Python 3.12, uzamčené balíčky a llama.cpp/CUDA knihovny. Full vytvoří nové izolované venv místně, neregistruje Python a nemění systémový PATH. Obě varianty stahují modely samostatně; ovladač NVIDIA instaluje uživatel. Offline Backup zůstává samostatným balíčkem.
+
+WebView2 se při instalaci automaticky rozpozná a připraví. Full obsahuje celý runtime; Minimal jej stáhne jen v případě potřeby. Existující kompatibilní runtime se použije beze změny. Pokud je WebView2 později odstraněn, Marvin jej znovu připraví při spuštění. Není potřeba navštěvovat stránky Microsoftu ani jej instalovat samostatně.
 
 ## Instalace pomocí Setup.exe
 

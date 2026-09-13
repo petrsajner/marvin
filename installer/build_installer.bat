@@ -32,6 +32,8 @@ if not defined ISCC (
 )
 
 echo [BUILD] Kompiluji instalator (%ISCC%)...
+"..\.venv\Scripts\python.exe" -B "..\scripts\download_webview2.py"
+if errorlevel 1 ( echo [ERROR] WebView2 payload verification failed. & exit /b 1 )
 "%ISCC%" "/DMyAppVersion=%VERSION%" "marvin.iss"
 if errorlevel 1 ( echo [CHYBA] Kompilace selhala. & pause & exit /b 1 )
 

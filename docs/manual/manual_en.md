@@ -32,11 +32,14 @@ Selecting a project gives the model access to that directory through tools. It d
 | System RAM | Enough for Windows, model mapping, projects, and tools; 64 GB or more is comfortable |
 | Free disk space | Depends on selected models; Flash-Next alone requires approximately 90.9 GB |
 | Python | Full: private Python 3.12 included. Minimal: install 64-bit Python 3.12 separately |
-| WebView / browser | Microsoft Edge WebView2 and Microsoft Edge, normally present on Windows 11 |
+| Desktop window | WebView2 prepared automatically; Full includes the offline runtime |
+| Browser tools | Microsoft Edge, normally present on Windows 11 |
 
 Other NVIDIA GPUs may work, but the supplied contexts and quantizations were tuned and tested for a 32 GB RTX 5090. Lower-VRAM cards require smaller contexts, lower quantization, fewer GPU layers, or CPU offload.
 
 > NOTE: There are two installers: **Minimal** downloads packages and llama.cpp and requires separately installed Python 3.12. **Full** includes its own Python 3.12, locked packages and llama.cpp/CUDA libraries. Full creates a new isolated venv locally and does not register Python or change the system PATH. Both download models separately; the NVIDIA driver is installed by the user. Offline Backup remains a separate package.
+
+WebView2 is detected and installed automatically during setup. Full includes the complete runtime; Minimal downloads it only when needed. An existing compatible runtime is reused. If WebView2 is removed later, Marvin prepares it again at startup. You do not need to visit Microsoft websites or install it separately.
 
 ## Installing with Setup.exe
 

@@ -67,6 +67,10 @@ Name: "en"; MessagesFile: "compiler:Default.isl"
 Name: "cze"; MessagesFile: "compiler:Languages\Czech.isl"
 
 [CustomMessages]
+en.PrepareDesktop=Preparing desktop components...
+cze.PrepareDesktop=Příprava součástí aplikace...
+en.DesktopSetupFailed=Desktop components could not be prepared. Connect to the internet and run Setup again, or use the Full installer for offline setup.
+cze.DesktopSetupFailed=Součásti aplikace se nepodařilo připravit. Připojte se k internetu a spusťte instalátor znovu, nebo použijte Full instalátor pro instalaci bez internetu.
 en.SetupEnvMenu=Set up environment and models
 cze.SetupEnvMenu=Instalace prostředí a modelů
 en.BackupSetupMenu=Set up from offline backup
@@ -81,17 +85,22 @@ cze.RunSetupDesc=Nainstalovat prostředí a modely (vyžaduje samostatně nainst
 
 [Messages]
 #ifdef FullBuild
-en.WelcomeLabel2=Marvin Full includes a private Python 3.12 runtime, Python packages and llama.cpp/CUDA libraries.%n%nNo system Python or PATH changes are required. NVIDIA drivers remain your responsibility. Models are downloaded separately.%n%nContinue?
-cze.WelcomeLabel2=Marvin Full obsahuje vlastni Python 3.12, Python balicky a llama.cpp/CUDA knihovny.%n%nNepotrebuje systemovy Python a nemeni PATH. Ovladac NVIDIA instaluje uzivatel. Modely se stahuji samostatne.%n%nPokracovat?
+en.WelcomeLabel2=Marvin Full includes a private Python 3.12 runtime, Python packages, llama.cpp/CUDA libraries and the offline WebView2 installer.%n%nWebView2 is prepared automatically. No system Python or PATH changes are required. NVIDIA drivers remain your responsibility. Models are downloaded separately.%n%nContinue?
+cze.WelcomeLabel2=Marvin Full obsahuje vlastni Python 3.12, Python balicky, llama.cpp/CUDA knihovny a offline instalator WebView2.%n%nWebView2 se pripravi automaticky. Nepotrebuje systemovy Python a nemeni PATH. Ovladac NVIDIA instaluje uzivatel. Modely se stahuji samostatne.%n%nPokracovat?
 #else
-en.WelcomeLabel2=This wizard will install [name/ver], a local AI application.%n%nREQUIRED: Install 64-bit Python 3.12 separately and enable "Add Python to PATH" before continuing. Python is not bundled.%n%nAfter installation, the environment and selected models will be prepared from an offline backup or downloaded. Download size depends on your model selection.%n%nContinue?
-cze.WelcomeLabel2=Tento pruvodce nainstaluje [name/ver] - lokalni AI aplikaci.%n%nVYZADOVANO: Pred pokracovanim samostatne nainstalujte 64bitovy Python 3.12 a zapnete "Add Python to PATH". Python neni soucasti instalatoru.%n%nPo instalaci se prostredi a vybrane modely pripravi z offline zalohy nebo stahnou. Objem zavisi na vyberu modelu.%n%nPOKRACOVAT?
+en.WelcomeLabel2=This wizard will install [name/ver], a local AI application.%n%nREQUIRED: Install 64-bit Python 3.12 separately and enable "Add Python to PATH" before continuing. Python is not bundled. WebView2 is prepared automatically; internet is required when it is missing.%n%nAfter installation, the environment and selected models will be prepared from an offline backup or downloaded. Download size depends on your model selection.%n%nContinue?
+cze.WelcomeLabel2=Tento pruvodce nainstaluje [name/ver] - lokalni AI aplikaci.%n%nVYZADOVANO: Pred pokracovanim samostatne nainstalujte 64bitovy Python 3.12 a zapnete "Add Python to PATH". Python neni soucasti instalatoru. WebView2 se pripravi automaticky; pokud chybi, je potreba internet.%n%nPo instalaci se prostredi a vybrane modely pripravi z offline zalohy nebo stahnou. Objem zavisi na vyberu modelu.%n%nPOKRACOVAT?
 #endif
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
+Source: "webview2.json"; DestDir: "{app}\runtime\webview2"; Flags: ignoreversion
+Source: "..\runtime\webview2\MicrosoftEdgeWebview2Setup.exe"; DestDir: "{app}\runtime\webview2"; Flags: ignoreversion
+#ifdef FullBuild
+Source: "..\runtime\webview2\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; DestDir: "{app}\runtime\webview2"; Flags: ignoreversion
+#endif
 #ifdef FullBuild
 Source: "..\build\full-payload-{#MyAppVersion}\python\*"; DestDir: "{app}\runtime\python"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\build\full-payload-{#MyAppVersion}\packages\*"; DestDir: "{app}\runtime\python-packages"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -295,6 +304,7 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   I: Integer;
+  DesktopResult: Integer;
   Selection: String;
   OldGroup: String;
   BackupDir: String;
@@ -318,6 +328,14 @@ begin
       SaveStringToFile(ExpandConstant('{app}\runtime\offline-backup-path.txt'), BackupDir, False);
       SaveStringToFile(ExpandConstant('{app}\runtime\offline-setup-once.txt'), '1', False);
     end;
+    // The frozen launcher shares detection/repair with normal startup. It needs
+    // neither system Python nor a prepared venv, and verifies the runtime itself.
+    WizardForm.StatusLabel.Caption := CustomMessage('PrepareDesktop');
+    if not Exec(ExpandConstant('{app}\{#MyAppExeName}'), '--prepare-webview2',
+                ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, DesktopResult) then
+      RaiseException(CustomMessage('DesktopSetupFailed'));
+    if DesktopResult <> 0 then
+      RaiseException(CustomMessage('DesktopSetupFailed'));
     // uloz vyber modelu z wizardu (comma list; run_setup.bat ho preda downloadu)
     Selection := '';
     if Assigned(ModelList) then

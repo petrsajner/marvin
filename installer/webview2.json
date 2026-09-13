@@ -1,0 +1,26 @@
+{
+  "bootstrapper": {
+    "filename": "MicrosoftEdgeWebview2Setup.exe",
+    "source": "https://go.microsoft.com/fwlink/p/?LinkId=2124703",
+    "url": "https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/474c9f1d-0fd5-49da-b3b0-df536d328170/MicrosoftEdgeWebview2Setup.exe",
+    "size": 1783000,
+    "sha256": "17debf797a6c737959bc588236e897936ffac1af5f7e515e674ab32f9edfe719",
+    "signature": {
+      "status": "Valid",
+      "subject": "CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+      "thumbprint": "4028CAD637509D4744B17EC5B42AED8D7A31E6AF"
+    }
+  },
+  "standalone": {
+    "filename": "MicrosoftEdgeWebView2RuntimeInstallerX64.exe",
+    "source": "https://go.microsoft.com/fwlink/p/?LinkId=2124701",
+    "url": "https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/5bdafa0b-8f06-4cab-b664-252bfeca6c75/MicrosoftEdgeWebView2RuntimeInstallerX64.exe",
+    "size": 212745424,
+    "sha256": "ebebc5ec130378ff1ab513f3917be791a9cf84f849e970b1695ff01801a9d348",
+    "signature": {
+      "status": "Valid",
+      "subject": "CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+      "thumbprint": "4028CAD637509D4744B17EC5B42AED8D7A31E6AF"
+    }
+  }
+}

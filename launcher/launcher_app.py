@@ -37,6 +37,7 @@ if not getattr(sys, "frozen", False):
 from harness.dependencies import dependencies_current
 from harness.i18n import detect_language, set_language, t
 from harness.version import APP_COPYRIGHT, APP_VERSION
+from harness.webview_runtime import ensure_webview2
 
 # UI language for dialogs/splash: user choice > installer file > English
 set_language(detect_language(ROOT) or "en")
@@ -310,6 +311,14 @@ const t0=Date.now();
 
 
 def main() -> int:
+    if "--prepare-webview2" in sys.argv:
+        # Called by Setup after files are copied; no venv, backend or model needed.
+        try:
+            ensure_webview2(ROOT, _log)
+            return 0
+        except Exception as exc:
+            _log(f"Desktop preparation failed: {exc}")
+            return 1
     smoke = "--smoke" in sys.argv
     srv_port, web_port = _cfg_ports()
     base_srv = f"http://127.0.0.1:{srv_port}"
@@ -317,6 +326,14 @@ def main() -> int:
 
     if not smoke:
         _show_splash()
+        try:
+            ensure_webview2(ROOT, _log)
+        except Exception as exc:
+            _log(f"Desktop preparation failed: {exc}")
+            _close_splash()
+            _alert(t("Desktop components could not be prepared. Connect to the internet and "
+                     "start Marvin again, or run the Full installer for offline setup."))
+            return 1
 
     for key in ("PYTHONHOME", "PYTHONPATH", "PYTHONUSERBASE", "PYTHONSTARTUP"):
         os.environ.pop(key, None)

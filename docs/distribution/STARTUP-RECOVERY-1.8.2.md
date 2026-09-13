@@ -32,6 +32,8 @@ Podklady jsou v lokálním archivu ověření 1.8.2. Obsahuje soukromý snímek 
 
 ## Balíčky
 
+Následující kontrolní součty zachycují původní sestavení opravy historie. Instalátory 1.8.2 byly následně na výslovné přání vlastníka nahrazeny sestavením s automatickou přípravou WebView2. Aktuální soubory a kontrolní součty jsou v [manifestu vydání](release-1.8.2.json).
+
 | Soubor v `dist/` | Bajty | SHA-256 |
 |---|---:|---|
 | `Marvin-Setup-1.8.2-Minimal.exe` | 52 349 925 | `c70be547575dcbbfaf49f164044f406b4c0df17980c747c3d2ac4b8554fae79f` |

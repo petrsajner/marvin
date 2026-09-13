@@ -90,6 +90,11 @@ def _runtime_sources(root: Path) -> list[tuple[Path, Path, str]]:
             if source.is_file():
                 rel = Path("payload") / "runtime" / "llama" / source.relative_to(llama)
                 sources.append((source, rel, "llama"))
+    webview = runtime / "webview2"
+    if webview.is_dir():
+        for source in sorted(webview.iterdir()):
+            if source.is_file() and source.suffix.lower() in {".exe", ".json"}:
+                sources.append((source, Path("payload/runtime/webview2") / source.name, "webview2"))
     selection = runtime / "model-selection.txt"
     if selection.is_file():
         sources.append((selection, Path("payload/runtime/model-selection.txt"), "settings"))
@@ -114,6 +119,7 @@ def _write_readme(path: Path) -> None:
         "On another Windows PC:\n"
         "1. Run the Marvin-Setup executable included in this folder.\n"
         "   The Full installer includes private Python; no system Python is needed.\n"
+        "   WebView2 is prepared automatically; Full includes it for offline setup.\n"
         "   Only when using a Minimal installer, prepare 64-bit Python 3.12 first.\n"
         "   The installer detects manifest.json beside itself automatically.\n"
         "   With another compatible Setup.exe, use the Start Menu command\n"
