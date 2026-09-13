@@ -12,7 +12,7 @@ import urllib.parse
 from io import BytesIO
 
 from harness.safety import Risk
-from harness.tools.base import AgentContext, Tool, truncate
+from harness.tools.base import AgentContext, Tool
 
 _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
        "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
@@ -205,20 +205,35 @@ class WebFetchTool(Tool):
     name = "web_fetch"
     description = ("Download a web page (http/https) and return its readable text "
                    "(scripts/styles removed). Use after web_search to read details, "
-                   "or for any public documentation page. Not for local files.")
+                   "or for any public documentation page. For long lists/tables, use query "
+                   "to read relevant passages instead of loading the entire page into context. "
+                   "Use start to read more text. Repeated reads reuse the fetched page unless "
+                   "refresh=true. Not for local files.")
     parameters = {
         "url": {"type": "string", "description": "Full URL including http(s)://"},
         "max_chars": {"type": "integer", "description": "Max characters to return (default from config)"},
+        "query": {"type": "string", "description": "Find a literal phrase; use | between alternatives. Returns matching passages with character positions."},
+        "start": {"type": "integer", "description": "Start at this character offset (default 0); also skips earlier query matches."},
+        "refresh": {"type": "boolean", "description": "Download a fresh copy instead of reusing this task's fetched page."},
     }
     required = ["url"]
     risk = Risk.SAFE  # read-only GET
 
-    def run(self, ctx: AgentContext, url: str = "", max_chars: int = 0) -> str:
+    def run(self, ctx: AgentContext, url: str = "", max_chars: int = 0,
+            query: str = "", start: int = 0, refresh: bool = False) -> str:
         url = (url or "").strip()
         if not url.startswith(("http://", "https://")):
             return "ERROR: url must start with http:// or https://"
         if not _web_cfg(ctx).get("enabled", True):
             return "ERROR: web access is disabled in config (web.enabled: false)"
+        limit = max(1, int(max_chars or _web_cfg(ctx).get("max_chars", 12000)))
+        start = max(0, int(start))
+        pages = getattr(ctx, "_web_pages", None)
+        if pages is None:
+            pages = ctx._web_pages = {}
+        if not refresh and url in pages:
+            page = pages[url]
+            return self._excerpt(page["text"], page["url"], limit, start, query)
         import requests
         try:
             r = requests.get(url, headers={"User-Agent": _UA, "Accept-Language": "cs,en"},
@@ -250,8 +265,46 @@ class WebFetchTool(Tool):
                 r.url, title, text, ctype or "unknown", requested_url=url,
                 max_chars=max_source,
             )
-        limit = int(max_chars or _web_cfg(ctx).get("max_chars", 12000))
-        return truncate(text, limit, "web_fetch")
+        if len(pages) >= 16 and url not in pages:
+            pages.pop(next(iter(pages)))
+        pages[url] = {"text": text, "url": r.url}
+        return self._excerpt(text, r.url, limit, start, query)
+
+    @staticmethod
+    def _excerpt(text: str, url: str, limit: int, start: int, query: str) -> str:
+        header = f"Source: {url}\nLength: {len(text)} characters.\n"
+        if start >= len(text):
+            return header + "No text at or after this offset."
+        terms = [term.strip() for term in query.split("|") if term.strip()]
+        if terms:
+            pattern = "|".join(re.escape(term) for term in terms)
+            ranges = []
+            for match in re.finditer(pattern, text[start:], re.I):
+                left = max(start, start + match.start() - 250)
+                right = min(len(text), start + match.end() + 350)
+                if ranges and left <= ranges[-1][1]:
+                    ranges[-1][1] = max(ranges[-1][1], right)
+                else:
+                    ranges.append([left, right])
+            if not ranges:
+                return header + "No literal match. Try another phrase or omit query to read the page."
+            parts, remaining, next_start = [], limit, None
+            for left, right in ranges:
+                if remaining <= 0:
+                    next_start = left
+                    break
+                end = min(right, left + remaining)
+                parts.append(f"[characters {left}:{end}]\n{text[left:end]}")
+                remaining -= end - left
+                if end < right:
+                    next_start = end
+                    break
+            suffix = (f"\nMore matching text remains. Read from start={next_start} (omit query to continue a cut passage)."
+                      if next_start is not None else "\nAll matching passages shown; other page text remains available without query.")
+            return header + "\n\n".join(parts) + suffix
+        end = min(len(text), start + limit)
+        suffix = f"\n[More text available: web_fetch with start={end}, or query for a specific passage.]" if end < len(text) else ""
+        return header + f"[characters {start}:{end}]\n" + text[start:end] + suffix
 
 
 def register_web_tools(reg) -> None:

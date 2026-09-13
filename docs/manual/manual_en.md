@@ -527,6 +527,10 @@ The catalog refreshes automatically. Keep the description specific because it is
 
 All work modes can use `web_search` and `web_fetch` for current information, public documentation, error messages, and web pages. `web_fetch` handles HTML and can extract text from supported PDF and DOCX downloads.
 
+For long pages, the model can find a specific phrase or read the next passage without downloading the page again. The complete fetched source remains in the research record within its technical storage limit; a focused excerpt does not replace it. This is particularly useful for large models that perform part of their computation in system RAM.
+
+During input processing, **Reading context** shows progress through new text and the number of tokens reused from cache. This is separate from generating reasoning and the answer. Reading a long document for the first time may be slow even when a follow-up question reuses nearly all prior context. These optimizations do not change reasoning effort or the chosen quantization.
+
 The default search backend is Google; `config.yaml` can select Google, Bing, or automatic fallback. Fetching is read-only HTTP/HTTPS.
 
 ## Research workflow

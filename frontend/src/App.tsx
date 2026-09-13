@@ -62,6 +62,8 @@ type Dialog = { type: string; file?: FileItem; section?: string; data?: any };
 const COPYRIGHT = "© Petr Sajner 2026";
 const phases: Record<string, [string, string]> = {
   preparing: ["Preparing request", "Připravuji dotaz"],
+  reading_context: ["Reading context", "Načítám kontext"],
+  generating: ["Generating", "Generuji"],
   loading_model: ["Loading model", "Načítám model"],
   thinking: ["Thinking", "Přemýšlím"],
   answering: ["Writing answer", "Píšu odpověď"],
@@ -917,11 +919,18 @@ export function App() {
                         ? tr("Summarizing conversation", "Shrnuji konverzaci")
                         : tr(...(phases[live?.phase] || phases.preparing))}
                       {live?.tool && " · " + live.tool}
+                      {live?.phase === "reading_context" && live.prompt_progress && (
+                        " · " + Math.max(0, Math.min(100, Math.round(
+                          100 * (Number(live.prompt_progress.processed || 0) - Number(live.prompt_progress.cache || 0)) /
+                          Math.max(1, Number(live.prompt_progress.total || 0) - Number(live.prompt_progress.cache || 0)),
+                        ))) + "% · " + formatTokens(Number(live.prompt_progress.cache || 0)) +
+                        tr(" tok reused", " tok z cache")
+                      )}
                       {live?.tool_chars > 0 &&
                         " · " + Math.round(live.tool_chars / 1024) + " KB"}
-                      {live?.started &&
+                      {(live?.phase_started || live?.started) &&
                         " · " +
-                          Math.max(0, Math.round(now / 1000 - live.started)) +
+                          Math.max(0, Math.round(now / 1000 - (live.phase_started || live.started))) +
                           " s"}
                       {" · ~" +
                         formatTokens(

@@ -170,7 +170,7 @@ When older messages are compressed out of active context, the model can actively
 
 ---
 
-## 5. Runtime, Packaging & Installers (v1.8.0)
+## 5. Runtime, Packaging & Installers (v1.8.1)
 
 Marvin provides two distinct installer options:
 1. **Minimal Installer** (`dist/Marvin-Setup-<version>-Minimal.exe`, ~52 MB):
@@ -196,3 +196,5 @@ Marvin provides two distinct installer options:
 The right column has one scrollable detail body; the copyright footer is its sibling and stays fixed at the bottom. Startup screens show the same copyright. Completion and steering handoff share a lock, so a message arriving at the end of a run is queued before the active worker is cleared.
 
 See [Windows distribution](design/windows-distribution.md) for packaging and [release verification](distribution/RELEASE-1.8.0.md) for measured coverage and remaining limits.
+
+Version 1.8.1 preserves the exact request prefix by persisting only changed context sections as hidden internal messages; unchanged pinned documents are not repeated when the task plan changes. Native prompt progress reports new-token processing separately from cached history. Web fetch supports literal passage search, pagination and task-local reuse while retaining the full fetched source in the research ledger. Weights, Q8 KV, reasoning settings and runtime are unchanged. See [performance measurements](distribution/PERFORMANCE-1.8.1.md).

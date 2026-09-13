@@ -149,6 +149,8 @@ class LLMClient:
                                   write=30.0, pool=30.0),
         )
         self.model_name = "local-model"  # llama-server akceptuje cokoliv
+        self.on_prompt_progress = None
+        self.on_generation_started = None
 
     # ------------------------------------------------------------------
     def stream(self, messages: list[dict], tools: list[dict] | None = None,
@@ -157,10 +159,14 @@ class LLMClient:
                on_text: Callable[[str], None] | None = None,
                on_reasoning: Callable[[str], None] | None = None,
                on_tool_delta: Callable[[str, str], None] | None = None,
+               on_prompt_progress: Callable[[dict], None] | None = None,
                should_stop: Callable[[], bool] | None = None) -> AssistantResult:
         """Streamující volání; vrací složený výsledek (text + tool_calls)."""
+        on_prompt_progress = on_prompt_progress or getattr(self, "on_prompt_progress", None)
         s = dict(sampling or self.cfg.sampling())
         extra_body = _template_kwargs(self.cfg)
+        if on_prompt_progress:
+            extra_body["return_progress"] = True
         if thinking is not None:
             extra_body["chat_template_kwargs"] = {"enable_thinking": bool(thinking)}
         if "top_k" in s:
@@ -184,6 +190,7 @@ class LLMClient:
         reasoning_parts: list[str] = []
         tc_acc: dict[int, dict] = {}
         stop_started = None
+        generation_started = False
         parser = ThinkStreamParser(on_text=on_text, on_reasoning=on_reasoning)
         if should_stop and should_stop():
             res.stopped = True
@@ -254,9 +261,15 @@ class LLMClient:
                     raise chunk
                 last_chunk_at = time.monotonic()
                 idle_probes = 0
+                progress = getattr(chunk, "prompt_progress", None)
+                if isinstance(progress, dict) and on_prompt_progress:
+                    on_prompt_progress(progress)
+                timings = getattr(chunk, "timings", None)
                 usage = getattr(chunk, "usage", None)
                 if usage:
                     res.usage = usage.model_dump() if hasattr(usage, "model_dump") else dict(usage)
+                if isinstance(timings, dict):
+                    res.usage["timings"] = timings
                 if not chunk.choices:
                     continue
                 delta = chunk.choices[0].delta
@@ -264,6 +277,11 @@ class LLMClient:
                     continue
                 # reasoning (llama.cpp posílá reasoning_content, případně reasoning)
                 r = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
+                if not generation_started and (r or delta.content or delta.tool_calls):
+                    generation_started = True
+                    generation_callback = getattr(self, "on_generation_started", None)
+                    if generation_callback:
+                        generation_callback()
                 if r:
                     reasoning_parts.append(r)
                     if on_reasoning:

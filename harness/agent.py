@@ -143,6 +143,10 @@ class Agent:
         self.work_mode = normalize_work_mode(work_mode, mode)
         self.mode = WORK_MODES[self.work_mode].agent_mode
         self.on_event = on_event
+        if isinstance(llm, LLMClient):
+            # Also cover planning, synthesis and compression calls sharing this client.
+            llm.on_prompt_progress = lambda progress: self.emit("prompt_progress", progress)
+            llm.on_generation_started = lambda: self.emit("generation_started", None)
         self.abort_flag = abort_flag or threading.Event()
         configured_workspace = cfg.agent.get("workspace")
         candidate_workspace = (Path(configured_workspace).resolve()
@@ -252,38 +256,71 @@ class Agent:
                 self.mode, self.cfg, self.ctx.project_workspace, self.work_mode)
             self.session.messages[0]["content"] = prompt
 
-    def _dynamic_context_block(self) -> str:
-        blocks: list[str] = []
+    def _dynamic_context_sections(self) -> dict[str, str]:
+        blocks: dict[str, str] = {}
         if self.ctx.repo_index and WORK_MODES[self.work_mode].repo_snapshot:
-            blocks.append("## CURRENT PROJECT SNAPSHOT\n" + self.ctx.repo_index.summary())
+            blocks["project"] = "## CURRENT PROJECT SNAPSHOT\n" + self.ctx.repo_index.summary()
         elif self.ctx.repo_index:
-            blocks.append("## CURRENT PROJECT DOCUMENT LIBRARY\n"
-                          + self.ctx.repo_index.document_catalog())
+            blocks["project"] = "## CURRENT PROJECT DOCUMENT LIBRARY\n" + self.ctx.repo_index.document_catalog()
         if self.ctx.repo_index:
             instructions = self.ctx.repo_index.instruction_context(self._active_context_paths)
             if instructions:
-                blocks.append("## ACTIVE PROJECT INSTRUCTIONS\n" + instructions)
+                blocks["instructions"] = "## ACTIVE PROJECT INSTRUCTIONS\n" + instructions
         if self.ctx.project_workspace:
             from harness.decisions import DecisionStore
             decisions = DecisionStore(self.ctx.project_workspace).context()
             if decisions:
-                blocks.append(decisions)
+                blocks["decisions"] = decisions
         if self.tools_enabled and self.ctx.task_plan:
-            blocks.append("## OPERATIONAL TASK STATE\n" + self.ctx.task_plan.context_block())
+            blocks["plan"] = "## OPERATIONAL TASK STATE\n" + self.ctx.task_plan.context_block()
         pinned = self.session.pinned_context_block()
         if pinned:
-            blocks.append(pinned)
-        return "\n\n".join(blocks)
+            blocks["pins"] = pinned
+        return blocks
+
+    def _dynamic_context_block(self) -> str:
+        return "\n\n".join(self._dynamic_context_sections().values())
+
+    def _context_update(self, messages: list[dict]) -> str:
+        prefix = ("[DYNAMIC TASK CONTEXT - section updates; latest value for each section "
+                  "supersedes earlier values; empty value clears that section]\n\n")
+        previous = {}
+        for message in messages:
+            content = message.get("content")
+            if message.get("role") == "user" and isinstance(content, str) and content.startswith(prefix):
+                try:
+                    values = json.loads(content[len(prefix):])
+                    if isinstance(values, dict):
+                        previous.update({k: v for k, v in values.items() if isinstance(v, str)})
+                except ValueError:
+                    pass
+        current = self._dynamic_context_sections()
+        updates = {key: current.get(key, "") for key in dict.fromkeys([*previous, *current])
+                   if current.get(key, "") != previous.get(key, "")}
+        # A plan update must not resend an unchanged, potentially large pinned file.
+        return prefix + json.dumps(updates, ensure_ascii=False, indent=2) if updates else ""
 
     def _api_messages(self) -> list[dict]:
-        """Build request messages with volatile context at the cache-friendly tail."""
+        """Preview the next request without rewriting any previously sent prefix."""
         messages = self.session.to_api_messages(include_pins=False)
-        dynamic = self._dynamic_context_block()
-        if dynamic:
+        content = self._context_update(messages)
+        if content:
             messages.append({
                 "role": "user",
-                "content": "[DYNAMIC TASK CONTEXT - current, not chat history]\n\n" + dynamic,
+                "content": content,
             })
+        return messages
+
+    def _request_messages(self) -> list[dict]:
+        messages = self._api_messages()
+        # Keep the exact context that preceded this response. Removing an ephemeral
+        # tail on the next tool step invalidates the cache for the generated reply.
+        if messages and messages[-1].get("role") == "user":
+            content = messages[-1].get("content", "")
+            if (isinstance(content, str) and content.startswith("[DYNAMIC TASK CONTEXT")
+                    and (not self.session.messages
+                         or self.session.messages[-1].get("content") != content)):
+                self.session.add("user", content)
         return messages
 
     def estimate_context_tokens(self) -> int:
@@ -292,13 +329,14 @@ class Agent:
     def context_usage_breakdown(self) -> dict[str, int]:
         import json as _json
         messages = self.session.estimate_context_tokens(include_pins=False)
-        dynamic = len(self._dynamic_context_block()) * 10 // 36
+        dynamic = len(self._context_update(self.session.to_api_messages(include_pins=False))) * 10 // 36
         schemas = len(_json.dumps(self.registry.schemas(), ensure_ascii=False)) * 10 // 36
         return {"messages": messages, "dynamic": dynamic, "tool_schemas": schemas}
 
     def new_task(self, text: str, images: list[Path] | None = None) -> None:
         """Zaloguje uživatelský vstup a resetuje počítadla."""
         self.abort_flag.clear()
+        self.ctx._web_pages = {}
         self._steps = 0
         self._pending = []
         self._pending_text = ""
@@ -601,11 +639,12 @@ class Agent:
         tools = self.registry.schemas() if self.registry.names() else None
         try:
             res = self.llm.stream(
-                self._api_messages(),
+                self._request_messages(),
                 tools=tools,
                 on_text=lambda t: self.emit("text", t),
                 on_reasoning=lambda t: self.emit("reasoning", t),
                 on_tool_delta=lambda name, args: self.emit("tool_delta", (name, args)),
+                on_prompt_progress=lambda progress: self.emit("prompt_progress", progress),
                 should_stop=self.abort_flag.is_set,
             )
         except KeyboardInterrupt:

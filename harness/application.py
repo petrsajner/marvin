@@ -332,6 +332,7 @@ class ApplicationService:
                 self.store.emit(sid, "live", dict(live))
 
         def event(kind, payload):
+            previous_phase = live["phase"]
             if kind == "text":
                 live["text"] += payload
                 live["phase"] = "answering"
@@ -343,6 +344,11 @@ class ApplicationService:
                 live["tool"] = name or live["tool"]
                 live["tool_chars"] += len(arguments or "")
                 live["phase"] = "preparing_tool"
+            elif kind == "prompt_progress":
+                live["phase"] = "reading_context"
+                live["prompt_progress"] = payload
+            elif kind == "generation_started":
+                live["phase"] = "generating"
             elif kind == "tool_start":
                 live["phase"] = "executing"
                 live["tool"] = payload[0]
@@ -354,6 +360,8 @@ class ApplicationService:
             elif kind == "info":
                 live["info"] = str(payload)
                 self.store.emit(sid, "notice", {"text": str(payload), "run_id": rid, "created": time.time()})
+            if live["phase"] != previous_phase:
+                live["phase_started"] = time.time()
             flush(kind in ("tool_start", "tool_result", "info"))
 
         def message_saved(message):
@@ -454,7 +462,8 @@ class ApplicationService:
             approve = job.get("approve")
             capture_context()
             while True:
-                live.update(step=live["step"] + 1, text="", reasoning="", tool="", tool_chars=0, phase="preparing")
+                live.update(step=live["step"] + 1, text="", reasoning="", tool="", tool_chars=0,
+                            phase="preparing", prompt_progress=None, phase_started=time.time())
                 session.step_id = live["step"]
                 flush(True)
                 result = agent.step(approve=approve)

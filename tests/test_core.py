@@ -118,8 +118,8 @@ def test_config() -> None:
     version_files = [p for p in _version_candidates() if p.exists()]
     installer_version = (version_files[0].read_text(encoding="utf-8").strip()
                          if version_files else "")
-    check(bool(installer_version) and APP_VERSION == installer_version and APP_VERSION == "1.8.0",
-          "viditelná verze aplikace odpovídá instalátoru 1.8.0")
+    check(bool(installer_version) and APP_VERSION == installer_version and APP_VERSION == "1.8.1",
+          "viditelná verze aplikace odpovídá instalátoru 1.8.1")
     invariants = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     check(all(item in invariants for item in (
         "Language servers or an LSP runtime/distribution layer",
