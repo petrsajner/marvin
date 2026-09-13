@@ -1,34 +1,34 @@
 {
   "version": "1.8.2",
   "tag": "v1.8.2",
-  "application_commit": "6820286991438ce016098b40eb29c1a0f28bc300",
+  "application_commit": "2e66cc80016fb1a02068b91c45fec8972a6bcb15",
   "release_url": "https://github.com/petrsajner/marvin/releases/tag/v1.8.2",
   "assets": [
     {
       "name": "Marvin-Setup-Full.exe",
-      "bytes": 727137000,
-      "sha256": "81af7e0c0980b0d7cc4dbc724cd7538e217f91d0da04dac5dd3de7a6aa8c8fa6",
+      "bytes": 941449279,
+      "sha256": "8002d526289d046e507211d6bac1cbf8550490d7573de7adc1d0bdb6ea12e837",
       "url": "https://github.com/petrsajner/marvin/releases/download/v1.8.2/Marvin-Setup-Full.exe",
       "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Full.exe"
     },
     {
       "name": "Marvin-Setup-Minimal.exe",
-      "bytes": 52349925,
-      "sha256": "c70be547575dcbbfaf49f164044f406b4c0df17980c747c3d2ac4b8554fae79f",
+      "bytes": 54020316,
+      "sha256": "19b3d5259eba69c88dc665b73cceb804cb045e50a646cab199bb95725f7b71de",
       "url": "https://github.com/petrsajner/marvin/releases/download/v1.8.2/Marvin-Setup-Minimal.exe",
       "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Minimal.exe"
     },
     {
       "name": "Marvin-Manual-EN.pdf",
-      "bytes": 182357,
-      "sha256": "bfd04d1e1c9cd3310eb1b7c630cc550dfb2bb226a6798836c0f6169b256d84b5",
+      "bytes": 182639,
+      "sha256": "b4d4ae07fd7b8b30912fe19afd7ffb9ac1e1e8bdb71f3107ff912a18c9a339ad",
       "url": "https://github.com/petrsajner/marvin/releases/download/v1.8.2/Marvin-Manual-EN.pdf",
       "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Manual-EN.pdf"
     },
     {
       "name": "Marvin-Manual-CS.pdf",
-      "bytes": 175695,
-      "sha256": "c4abd6d09123e31cbd1e6506e616833aa7eda7db642575df35f1b6352dc90319",
+      "bytes": 175928,
+      "sha256": "d5ead6b5b7185386c08d097b9c7a9b86e3e4d4bc07b40edba5162215f40d13f0",
       "url": "https://github.com/petrsajner/marvin/releases/download/v1.8.2/Marvin-Manual-CS.pdf",
       "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Manual-CS.pdf"
     },
@@ -40,5 +40,6 @@
       "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Workspace.jpg"
     }
   ],
-  "preview": "Real application UI with seeded English demonstration content; no personal conversations."
+  "preview": "Real application UI with seeded English demonstration content; no personal conversations.",
+  "installer_refresh": "Same version: automatic WebView2 preparation. Minimal includes bootstrapper; Full includes offline x64 standalone installer."
 }
