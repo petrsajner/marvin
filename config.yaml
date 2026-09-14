@@ -36,8 +36,8 @@ models:
     ctx_size: 49152
     kv_cache: "q8_0"
     kv_cache_profiles:
-      q8_0: {label: "8-bit - context 48k (16 GB borderline)", label_cs: "8 bit - kontext 48k (16 GB hraniční)", ctx_size: 49152, min_vram_gb: 15}
-      q8_0_32k: {cache_type: q8_0, label: "8-bit - context 32k (16 GB safe)", label_cs: "8 bit - kontext 32k (16 GB bezpečné)", ctx_size: 32768, min_vram_gb: 14}
+      q8_0: {label: "8-bit - context 48k (17 GB+)", label_cs: "8 bit - kontext 48k (17 GB+)", ctx_size: 49152, min_vram_gb: 17}
+      q8_0_32k: {cache_type: q8_0, label: "8-bit - context 32k (16 GB safe)", label_cs: "8 bit - kontext 32k (16 GB bezpečné)", ctx_size: 32768, min_vram_gb: 15.5, server_args: ["-b", "1024", "-ub", "128", "--no-mmproj-offload"]}
       q8_0_128k: {cache_type: q8_0, label: "8-bit - context 128k (24 GB)", label_cs: "8 bit - kontext 128k (24 GB)", ctx_size: 131072, min_vram_gb: 20}
       f16_96k: {cache_type: f16, label: "16-bit - context 96k (24 GB, max precision)", label_cs: "16 bit - kontext 96k (24 GB, max přesnost)", ctx_size: 98304, min_vram_gb: 23}
       q8_0_256k: {cache_type: q8_0, label: "8-bit - context 256k (32 GB)", label_cs: "8 bit - kontext 256k (32 GB)", ctx_size: 262144, min_vram_gb: 26}
@@ -52,8 +52,9 @@ models:
     ctx_size: 98304
     kv_cache: "q8_0"
     kv_cache_profiles:
-      f16: {label: "16-bit - more precise, context 96k", label_cs: "16 bit - přesnější, kontext 96k", ctx_size: 98304, min_vram_gb: 24}
+      f16: {label: "16-bit - more precise, context 96k", label_cs: "16 bit - přesnější, kontext 96k", ctx_size: 98304, min_vram_gb: 27}
       q8_0: {label: "8-bit - larger context 192k", label_cs: "8 bit - větší kontext 192k", ctx_size: 196608, min_vram_gb: 30}
+      q8_0_compact: {cache_type: q8_0, label: "8-bit - compact for 24 GB, context 64k", label_cs: "8 bit - kompaktní pro 24 GB, kontext 64k", ctx_size: 65536, min_vram_gb: 23.75, server_args: ["-b", "1024", "-ub", "128", "--no-mmproj-offload"]}
     server_args: ["-fa", "on"]
   ornith_q5:
     alias: "Ornith 1.5 35B-A3B Abliterated Q5 (23.0 GB, reasoning, context 128k)"
@@ -95,9 +96,8 @@ hardware:
       q8_0_128k: {cache_type: q8_0, label: "8-bit - context 128k", label_cs: "8 bit - kontext 128k", ctx_size: 131072, min_vram_gb: 27}
       q8_0_256k: {cache_type: q8_0, label: "8-bit - context 256k", label_cs: "8 bit - kontext 256k", ctx_size: 262144, min_vram_gb: 28}
       q8_0_512k: {cache_type: q8_0, label: "8-bit - context 512k", label_cs: "8 bit - kontext 512k", ctx_size: 524288, min_vram_gb: 29.5}
-      q8_0_1m: {cache_type: q8_0, label: "8-bit - context 1M (borderline)", label_cs: "8 bit - kontext 1M (hraniční)", ctx_size: 1048576, min_vram_gb: 31.5}
-      q8_0_256k_spill: {cache_type: q8_0, label: "8-bit - context 256k, MoE overflow to RAM (24 GB)", label_cs: "8 bit - kontext 256k, MoE přeteče do RAM (24 GB)", ctx_size: 262144, min_vram_gb: 24, server_args: ["--n-cpu-moe", "14"]}
-      q8_0_512k_spill: {cache_type: q8_0, label: "8-bit - context 512k, MoE overflow to RAM (24 GB)", label_cs: "8 bit - kontext 512k, MoE přeteče do RAM (24 GB)", ctx_size: 524288, min_vram_gb: 24, server_args: ["--n-cpu-moe", "18"]}
+      q8_0_256k_spill: {cache_type: q8_0, label: "8-bit - context 256k, MoE overflow to RAM (24 GB)", label_cs: "8 bit - kontext 256k, MoE přeteče do RAM (24 GB)", ctx_size: 262144, min_vram_gb: 23, server_args: ["--n-cpu-moe", "14"]}
+      q8_0_512k_spill: {cache_type: q8_0, label: "8-bit - context 512k, MoE overflow to RAM (24 GB)", label_cs: "8 bit - kontext 512k, MoE přeteče do RAM (24 GB)", ctx_size: 524288, min_vram_gb: 23, server_args: ["--n-cpu-moe", "18"]}
     server_args: ["-fa", "on"]
     supports_reasoning_effort: false
     sampling:

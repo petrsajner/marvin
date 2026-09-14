@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import subprocess
 import time
+import math
 
 NO_WINDOW = 0x08000000
 
@@ -32,14 +33,31 @@ def vram_total_gb() -> float | None:
     return value
 
 
+def normalize_vram_setting(value):
+    if value == "auto":
+        return "auto"
+    if isinstance(value, bool):
+        raise ValueError("GPU memory must be automatic or a positive number of GiB")
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise ValueError("GPU memory must be automatic or a positive number of GiB") from None
+    if not math.isfinite(number) or number <= 0:
+        raise ValueError("GPU memory must be automatic or a positive number of GiB")
+    return number
+
+
 def effective_vram_gb(cfg) -> float | None:
     """VRAM podle configu: hardware.vram_gb (auto|číslo) s fallbackem na detekci."""
     setting = (cfg.data.get("hardware", {}) or {}).get("vram_gb", "auto")
-    if isinstance(setting, (int, float)) and setting > 0:
-        return float(setting)
-    if isinstance(setting, str) and setting.strip().replace(".", "").isdigit():
-        return float(setting)
-    return vram_total_gb()
+    detected = vram_total_gb()
+    try:
+        setting = normalize_vram_setting(setting)
+    except ValueError:
+        setting = "auto"
+    if setting == "auto":
+        return detected
+    return min(setting, detected) if detected else setting
 
 
 def profile_min_vram(profile: dict) -> float:
@@ -69,7 +87,10 @@ def best_fit(cfg, vram_gb: float | None) -> tuple[str, str] | None:
     if vram_gb is None:
         return None
     default_key = cfg.model_key()
-    ordered = [default_key] + [k for k in cfg.data["models"] if k != default_key]
+    def family(key):
+        return cfg.model(key).get("family", "qwen" if key in ("q3", "q4", "q5") else key)
+    related = [k for k in cfg.data["models"] if k != default_key and family(k) == family(default_key)]
+    ordered = [default_key] + related + [k for k in cfg.data["models"] if k != default_key and k not in related]
     best: tuple | None = None  # (order, ctx, has_limit, model, profile)
     for order, key in enumerate(ordered):
         for prof_key, prof in fitting_profiles(cfg, key, vram_gb).items():
@@ -90,6 +111,24 @@ def fits(cfg, model_key: str, profile_key: str, vram_gb: float | None) -> bool:
     if profile is None:
         return True
     return profile_min_vram(profile) <= vram_gb
+
+
+def lower_memory_profiles(cfg, model_key=None):
+    key = model_key or cfg.model_key()
+    profiles = cfg.kv_cache_profiles(key)
+    current_key = cfg.kv_cache_mode(key)
+    current = profiles.get(current_key, {})
+    context = cfg.context_size(key)
+    minimum = 131072 if cfg.model(key).get("adaptive_runtime") else 0
+    current_gpu = profile_min_vram(current)
+    candidates = []
+    for name, profile in profiles.items():
+        size = int(profile.get("ctx_size", 0))
+        gpu = profile_min_vram(profile)
+        if (name != current_key and minimum <= size <= context and gpu <= current_gpu
+                and (size < context or gpu < current_gpu)):
+            candidates.append((size, gpu, name))
+    return [name for _, _, name in sorted(candidates, reverse=True)]
 
 
 def download_keys(cfg, vram_gb: float | None) -> list[str]:

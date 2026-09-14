@@ -32,6 +32,7 @@ class ModelSwitchSnapshot:
     command: str = ""
     downloaded_bytes: int = 0
     total_bytes: int = 0
+    restored_model: str | None = None
 
     @property
     def busy(self) -> bool:
@@ -73,6 +74,11 @@ class ModelSwitchController:
     def snapshot(self) -> ModelSwitchSnapshot:
         with self._lock:
             return self._state
+
+    def remember_configuration(self, cfg: Config, key: str) -> None:
+        """Seed rollback from a previously successful, still installed model."""
+        with self._lock:
+            self._last_ready = (Config(copy.deepcopy(cfg.data), cfg.root), key)
 
     def request(self, model_key: str, *, restart: bool = False,
                 kv_profile: str | None = None,
@@ -154,16 +160,24 @@ class ModelSwitchController:
             run_cfg = Config(copy.deepcopy(incoming.data), incoming.root) if incoming else self.cfg
             try:
                 profile_changed = kv_profile and kv_profile != self.cfg.kv_cache_mode(target)
-                if not restart and not profile_changed and self._running(self.cfg, target):
+                from harness.gpu import effective_vram_gb
+                before = {k: v for k, v in self.cfg.data.get("hardware", {}).items() if k != "vram_gb"}
+                after = {k: v for k, v in run_cfg.data.get("hardware", {}).items() if k != "vram_gb"}
+                hardware_changed = before != after or effective_vram_gb(run_cfg) != effective_vram_gb(self.cfg)
+                if not restart and not profile_changed and not hardware_changed and self._running(self.cfg, target):
                     if self._cancelled(gen):
                         continue
+                    run_cfg.data["default_model"] = target
+                    self.cfg = run_cfg
                     self._last_ready = (Config(copy.deepcopy(self.cfg.data), self.cfg.root), target)
                     if on_success is not None:
                         on_success(target)
                     # model už běží (start tlačítko na běžícím modelu) - netřeba restart
                     self._publish(gen, ModelSwitchSnapshot("ready", target))
                     continue
-                self._stop(self.cfg, quiet=True)
+                self._publish(gen, ModelSwitchSnapshot("starting", target, phase="releasing"))
+                if self._stop(self.cfg, quiet=True) is False:
+                    raise RuntimeError("The previous model could not release its memory")
                 if kv_profile:
                     run_cfg.set_kv_cache_mode(target, kv_profile)
                 run_cfg.data["default_model"] = target
@@ -191,9 +205,13 @@ class ModelSwitchController:
                 if self._last_ready:
                     previous_cfg, previous_key = self._last_ready
                     try:
-                        self._stop(run_cfg, quiet=True)
                         self._publish(gen, ModelSwitchSnapshot("starting", target, phase="restoring"))
-                        if self._ensure_controlled(previous_cfg, previous_key, gen) and not self._cancelled(gen):
+                        restored_ok = self._running(previous_cfg, previous_key)
+                        if not restored_ok:
+                            if self._stop(run_cfg, quiet=True) is False:
+                                raise RuntimeError("The stopped model has not released its memory")
+                            restored_ok = self._ensure_controlled(previous_cfg, previous_key, gen)
+                        if restored_ok and not self._cancelled(gen):
                             if incoming is None:
                                 # The compatibility UI holds the original Config object.
                                 run_cfg.data.clear()
@@ -205,7 +223,7 @@ class ModelSwitchController:
                     except Exception as restore_exc:
                         restore_error = f"; restore: {restore_exc}"
                 self._publish(gen, ModelSwitchSnapshot(
-                    "failed", target, f"{type(exc).__name__}: {exc}{restore_error}"))
+                    "failed", target, f"{type(exc).__name__}: {exc}{restore_error}", restored_model=restored))
                 if on_failure is not None and not self._cancelled(gen):
                     try:
                         on_failure(restored)

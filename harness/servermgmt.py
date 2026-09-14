@@ -158,7 +158,9 @@ def stop(cfg: Config, quiet: bool = False) -> bool:
             for c in children:
                 c.kill()
             proc.kill()
-            psutil.wait_procs(children + [proc], timeout=5)
+            _, alive = psutil.wait_procs(children + [proc], timeout=5)
+            if alive:
+                return False
             killed = True
         except psutil.NoSuchProcess:
             pass
@@ -188,6 +190,9 @@ def _start_locked(cfg: Config, model_key: str | None = None,
     if model_key not in cfg.data["models"]:
         print(f"[ERROR] Unknown model '{model_key}'. Available: {', '.join(cfg.data['models'])}")
         return 1
+    from harness.gpu import normalize_vram_setting
+    cfg.data.setdefault("hardware", {})["vram_gb"] = normalize_vram_setting(
+        cfg.data.get("hardware", {}).get("vram_gb", "auto"))
 
     if health(cfg):
         current = running_model(cfg)
@@ -196,9 +201,19 @@ def _start_locked(cfg: Config, model_key: str | None = None,
             print("   ", vram_str())
             return 0
         print(f"[INFO] Model '{current}' is running, switching to '{model_key}' ...")
-        stop(cfg, quiet=True)
+        if not stop(cfg, quiet=True):
+            raise RuntimeError("The previous model has not released its memory")
 
     model = cfg.model(model_key)
+    if not model.get("adaptive_runtime"):
+        from harness.gpu import effective_vram_gb, fitting_profiles, fits
+        budget = effective_vram_gb(cfg)
+        if not fits(cfg, model_key, cfg.kv_cache_mode(model_key), budget):
+            profiles = fitting_profiles(cfg, model_key, budget)
+            if not profiles:
+                raise RuntimeError(f"This model has no supported profile for the {budget:g} GiB GPU budget. Choose a smaller model.")
+            selected = max(profiles, key=lambda name: int(profiles[name].get("ctx_size", 0)))
+            cfg.set_kv_cache_mode(model_key, selected)
     requested_context = ctx_size or cfg.context_size(model_key)
     (cfg.path("paths.runtime_dir") / "model-failure.json").unlink(missing_ok=True)
     if model.get("assets") and not cfg.model_ready(model_key):
@@ -258,6 +273,8 @@ def _start_locked(cfg: Config, model_key: str | None = None,
     argv += [str(x) for x in profile.get("server_args", [])]
     if plan:
         argv += list(plan.args)
+    elif cfg.data.get("hardware", {}).get("vram_gb", "auto") != "auto":
+        argv += ["--fit", "off"]
     argv += [str(x) for x in srv.get("extra_args", [])]
 
     if on_phase:
@@ -278,22 +295,39 @@ def _start_locked(cfg: Config, model_key: str | None = None,
     pid_file(cfg).write_text(f"{model_key}:{proc.pid}", encoding="utf-8")
     loaded = threading.Event()
     memory_failure = []
-    if plan:
+    requested_budget = cfg.data.get("hardware", {}).get("vram_gb", "auto")
+    from harness.hardware import detect_hardware
+    hw = detect_hardware(fresh=True)
+    capacity = min(hw.vram_total, int(float(requested_budget) * 1024**3)) if requested_budget != "auto" else hw.vram_total
+    if plan or capacity:
         def watch_memory():
             import psutil
             low_samples = 0
+            gpu_samples = 0
+            last_gpu_check = 0.0
+            gpu_used = 0
             while proc.poll() is None:
                 available = psutil.virtual_memory().available
-                low_samples = low_samples + 1 if available < 2 * 1024**3 else 0
+                low_samples = low_samples + 1 if plan and available < 4 * 1024**3 else 0
+                if capacity and time.monotonic() - last_gpu_check >= 2:
+                    last_gpu_check = time.monotonic()
+                    current = detect_hardware(fresh=True)
+                    gpu_used = current.vram_total - current.vram_available
+                    gpu_samples = gpu_samples + 1 if gpu_used > capacity - 256 * 1024**2 else 0
                 stop_loading = not loaded.is_set() and cancelled and cancelled()
-                if low_samples >= 2 or stop_loading:
-                    if low_samples >= 2:
-                        memory_failure.append("Model stopped because system memory became critically low.")
+                if low_samples >= 2 or gpu_samples >= 2 or stop_loading:
+                    if low_samples >= 2 or gpu_samples >= 2:
+                        code = "ram_pressure" if low_samples >= 2 else "vram_pressure"
+                        memory_failure.append("The model needs more system RAM for the current memory profile." if code == "ram_pressure"
+                                              else "The selected GPU memory budget is not sufficient for this profile and other running programs.")
                         from harness.changes import atomic_write_text
                         atomic_write_text(cfg.path("paths.runtime_dir") / "model-failure.json",
-                            json.dumps({"model": model_key, "error": memory_failure[0], "time": time.time()}))
+                            json.dumps({"model": model_key, "error": memory_failure[0], "time": time.time(),
+                                        "code": code, "context": ctx, "vram_used_bytes": gpu_used,
+                                        "available_ram_bytes": available,
+                                        "vram_gb": cfg.data.get("hardware", {}).get("vram_gb", "auto")}))
                         with log_path.open("ab") as log:
-                            log.write(b"\n[MEMORY GUARD] Available RAM below 2 GiB; stopping this model.\n")
+                            log.write(f"\n[MEMORY GUARD] {code}; requesting a safer profile.\n".encode())
                     try:
                         proc.terminate()
                     except OSError:
@@ -310,6 +344,10 @@ def _start_locked(cfg: Config, model_key: str | None = None,
         print(log_path.read_bytes()[-2000:].decode(errors="replace"))
         if proc.poll() is None:
             proc.kill()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("The stopped model has not released its memory yet")
         pid_file(cfg).unlink(missing_ok=True)
         if memory_failure:
             raise RuntimeError(memory_failure[0])
@@ -341,5 +379,25 @@ def ensure(cfg: Config, model_key: str | None = None, *, cancelled=None, on_phas
     """Zajišť běžící server se zadaným modelem (případně start/switch)."""
     if health(cfg) and (model_key is None or running_model(cfg) == model_key):
         return True
-    return start(cfg, model_key, cancelled=cancelled, on_phase=on_phase,
-                  on_download_progress=on_download_progress) == 0
+    key = model_key or cfg.model_key()
+    while True:
+        try:
+            if start(cfg, key, cancelled=cancelled, on_phase=on_phase,
+                     on_download_progress=on_download_progress) == 0:
+                return True
+        except RuntimeError:
+            if last_failure(cfg).get("code") not in ("ram_pressure", "vram_pressure"):
+                raise
+        if cancelled and cancelled():
+            return False
+        failure = last_failure(cfg)
+        if failure.get("code") not in ("ram_pressure", "vram_pressure") or failure.get("model") != key:
+            return False
+        from harness.gpu import lower_memory_profiles
+        lower = lower_memory_profiles(cfg, key)
+        if not lower:
+            raise RuntimeError(failure.get("error") or "There is not enough free system RAM")
+        cfg.set_kv_cache_mode(key, lower[0])
+        cfg.data["_memory_profile_recovered"] = True
+        if on_phase:
+            on_phase("preparing")

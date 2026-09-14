@@ -62,6 +62,22 @@ class ApplicationService:
         if self.preferences["model"] not in cfg.data["models"]:
             self.preferences["model"] = cfg.model_key()
         self.preferences.setdefault("vram_gb", legacy.get("vram_gb", cfg.data.get("hardware", {}).get("vram_gb", "auto")))
+        from harness.gpu import normalize_vram_setting
+        for setting in ("vram_gb", "last_running_vram_gb"):
+            if setting in self.preferences:
+                try:
+                    self.preferences[setting] = normalize_vram_setting(self.preferences[setting])
+                except ValueError:
+                    self.preferences[setting] = "auto"
+        previous_key = self.preferences.get("last_running_model")
+        if previous_key in cfg.data["models"] and cfg.model_ready(previous_key):
+            previous = Config(copy.deepcopy(cfg.data), cfg.root)
+            previous.data["default_model"] = previous_key
+            previous.data.setdefault("hardware", {})["vram_gb"] = self.preferences.get("last_running_vram_gb", "auto")
+            previous_profile = self.preferences.get("last_running_kv")
+            if previous_profile in previous.kv_cache_profiles(previous_key):
+                previous.set_kv_cache_mode(previous_key, previous_profile)
+            self.models.remember_configuration(previous, previous_key)
         if manage_model:
             self.fit_hardware()
         from harness.i18n import detect_language
@@ -84,6 +100,13 @@ class ApplicationService:
         with self.lock:
             self.preferences["last_running_model"] = key
             self.preferences["last_running_kv"] = profile
+            self.preferences["last_running_vram_gb"] = self.models.cfg.data.get("hardware", {}).get("vram_gb", "auto")
+            budget = self.preferences["last_running_vram_gb"]
+            preset_key = "auto" if budget == "auto" else f"{float(budget):g}"
+            self.preferences.setdefault("memory_presets", {})[preset_key] = {
+                "model": key, "profile": profile,
+                "requested_profile": (self.preferences.get("adaptive_kv_requests", {}).get(key, profile)
+                                      if self.models.cfg.model(key).get("adaptive_runtime") else profile)}
             self.save_preferences()
 
     def start_model(self, *, restart=False):
@@ -91,6 +114,8 @@ class ApplicationService:
         profile = self.preferences.get("kv_cache_modes", {}).get(key, self.cfg.kv_cache_mode(key))
         if self.cfg.model(key).get("adaptive_runtime"):
             profile = self.preferences.get("adaptive_kv_requests", {}).get(key, self.cfg.kv_cache_mode(key))
+        if profile not in self.cfg.kv_cache_profiles(key):
+            profile = self.cfg.kv_cache_mode(key)
         data = copy.deepcopy(self.cfg.data)
         data["default_model"] = key
         data.setdefault("hardware", {})["vram_gb"] = self.preferences.get("vram_gb", "auto")
@@ -102,6 +127,8 @@ class ApplicationService:
     def model_became_ready(self, model):
         with self.lock:
             profile = self.models.cfg.kv_cache_mode(model)
+            if self.models.cfg.data.pop("_memory_profile_recovered", False) and self.preferences["model"] == model:
+                self.preferences.setdefault("adaptive_kv_requests", {})[model] = profile
             self.preferences.setdefault("kv_cache_modes", {})[model] = profile
             self.remember_running_model(model, profile)
             self.store.emit(None, "settings_changed", copy.deepcopy(self.preferences))
@@ -120,6 +147,12 @@ class ApplicationService:
             return
         key = self.preferences.get("last_running_model", self.preferences["model"])
         if key in self.cfg.data["models"]:
+            if "last_running_vram_gb" in self.preferences:
+                self.preferences["vram_gb"] = self.preferences["last_running_vram_gb"]
+            elif key != self.preferences["model"]:
+                # Older releases did not persist the applied budget. A pending
+                # failed model selection must not poison the restored model.
+                self.preferences["vram_gb"] = self.cfg.data.get("hardware", {}).get("vram_gb", "auto")
             self.preferences["model"] = key
             profile = self.preferences.get("last_running_kv")
             if profile in self.cfg.kv_cache_profiles(key):
@@ -138,6 +171,9 @@ class ApplicationService:
             return
         candidate.data["default_model"] = key
         profile = self.preferences.get("kv_cache_modes", {}).get(key, candidate.kv_cache_mode(key))
+        if profile not in candidate.kv_cache_profiles(key):
+            profile = candidate.kv_cache_mode(key)
+            self.preferences.setdefault("kv_cache_modes", {})[key] = profile
         if profile in candidate.kv_cache_profiles(key):
             candidate.set_kv_cache_mode(key, profile)
         vram = effective_vram_gb(candidate)
@@ -319,10 +355,89 @@ class ApplicationService:
             text += "\n\nAttached documents available through read_document:\n" + "\n".join(f["path"] for f in docs)
         return text or "Please analyze the attached image(s)."
 
+    @staticmethod
+    def _seal_interrupted_tools(session):
+        answered = {m.get("tool_call_id") for m in session.messages if m.get("role") == "tool"}
+        pending = [call for m in session.messages for call in m.get("tool_calls", []) if call["id"] not in answered]
+        for call in pending:
+            session.add("tool", "Execution was interrupted; outcome unknown. Inspect actual state before retrying.",
+                        tool_call_id=call["id"], name=call["function"]["name"])
+
+    def _recover_memory_profile(self, cfg, job, live, session):
+        """Retry a pressure-interrupted model call with a smaller context, at most
+        once per available context. Completed tool results remain in history."""
+        if not self.manage_model or self.abort.is_set():
+            return False
+        from harness import servermgmt
+        failure = servermgmt.last_failure(cfg)
+        if (failure.get("code") not in ("ram_pressure", "vram_pressure") or failure.get("model") != cfg.model_key()
+                or failure.get("time", 0) < live["started"]):
+            return False
+        from harness.gpu import lower_memory_profiles
+        choices = lower_memory_profiles(cfg)
+        if not choices:
+            return False
+        profile = choices[0]
+        key = cfg.model_key()
+        if live.get("text") or live.get("reasoning"):
+            session.add("assistant", live.get("text", ""), reasoning=live.get("reasoning", ""))
+        self._seal_interrupted_tools(session)
+        self.store.emit(session.id, "notice", {"text": "Adjusting the memory profile and continuing the task.",
+                                              "run_id": job["id"], "created": time.time()})
+        live.update(phase="loading_model", phase_started=time.time(), text="", reasoning="", prompt_progress=None)
+        self.models.request(key, restart=True, kv_profile=profile, config=cfg,
+                            on_success=self.model_became_ready,
+                            on_failure=lambda restored: self.model_switch_failed(key, restored))
+        while self.models.snapshot().busy and not self.abort.wait(.1):
+            pass
+        if self.abort.is_set() or self.models.snapshot().status != "ready":
+            return False
+        if not servermgmt.health(cfg) or servermgmt.running_model(cfg) != key:
+            return False
+        applied = self.models.cfg.kv_cache_mode(key)
+        if applied == cfg.kv_cache_mode(key):
+            return False
+        cfg.set_kv_cache_mode(key, applied)
+        job["config"] = copy.deepcopy(cfg.data)
+        job["settings"].setdefault("kv_cache_modes", {})[key] = applied
+        self.store.save_job(job, "running")
+        with self.lock:
+            if (self.preferences["model"] == key and cfg.model(key).get("adaptive_runtime")
+                    and self.preferences.get("vram_gb", "auto") == cfg.data.get("hardware", {}).get("vram_gb", "auto")):
+                self.preferences.setdefault("adaptive_kv_requests", {})[key] = applied
+            self.remember_running_model(key, applied)
+        return True
+
     def _drive(self, job):
         sid, rid = job["session_id"], job["id"]
         session = self.session(sid)
         cfg = Config(copy.deepcopy(job["config"]), self.cfg.root)
+        if self.manage_model:
+            # Device limits and corrected profile definitions belong to this PC,
+            # not to the date when an old queued request was recorded.
+            from harness.gpu import best_fit, effective_vram_gb, fits
+            key, profile = cfg.model_key(), cfg.kv_cache_mode()
+            with self.lock:
+                cfg.data["models"] = copy.deepcopy(self.cfg.data["models"])
+                cfg.data.setdefault("hardware", {})["vram_gb"] = self.preferences.get("vram_gb", "auto")
+            if key not in cfg.data["models"]:
+                key = self.preferences["model"]
+            cfg.data["default_model"] = key
+            if profile in cfg.kv_cache_profiles(key):
+                cfg.set_kv_cache_mode(key, profile)
+            budget = effective_vram_gb(cfg)
+            if not cfg.model(key).get("adaptive_runtime") and not fits(cfg, key, cfg.kv_cache_mode(key), budget):
+                choice = best_fit(cfg, budget)
+                if not choice:
+                    raise RuntimeError("No model profile fits the current GPU memory budget")
+                key, profile = choice
+                cfg.data["default_model"] = key
+                cfg.set_kv_cache_mode(key, profile)
+            job["config"] = copy.deepcopy(cfg.data)
+            job["settings"]["model"] = key
+            job["settings"]["vram_gb"] = cfg.data["hardware"]["vram_gb"]
+            job["settings"].setdefault("kv_cache_modes", {})[key] = cfg.kv_cache_mode(key)
+            self.store.save_job(job, "running")
         cfg.agent["workspace"] = session.meta.get("workspace")
         mode = cfg.data["work_mode"]
         spec = WORK_MODES[mode]
@@ -452,11 +567,7 @@ class ApplicationService:
                 if saved_live.get("text") and not any(m.get("content") == saved_live["text"] for m in session.messages[-8:]):
                     session.add("assistant", saved_live["text"], reasoning=saved_live.get("reasoning"))
                 # A missing tool result after a crash must be inspected, never blindly replayed.
-                answered = {m.get("tool_call_id") for m in session.messages if m.get("role") == "tool"}
-                pending = [call for m in session.messages for call in m.get("tool_calls", []) if call["id"] not in answered]
-                for call in pending:
-                    session.add("tool", "Execution was interrupted; outcome unknown. Inspect actual state before retrying.",
-                                tool_call_id=call["id"], name=call["function"]["name"])
+                self._seal_interrupted_tools(session)
                 agent.refresh_system_prompt()
             else:
                 for previous in self.store.jobs(("interrupted", "stopped", "failed", "waiting_confirmation")):
@@ -498,8 +609,21 @@ class ApplicationService:
                     continue
                 if result.status is Status.CONTINUE:
                     continue
-                status = {Status.FINAL: "complete", Status.ABORTED: "stopped",
-                          Status.ERROR: "failed", Status.NEEDS_CONFIRMATION: "waiting_confirmation"}[result.status]
+                if result.status is Status.ERROR and self._recover_memory_profile(cfg, job, live, session):
+                    agent._overflow_retried = False
+                    agent.refresh_system_prompt()
+                    capture_context()
+                    continue
+                if result.status is Status.ERROR and self.manage_model:
+                    from harness import servermgmt
+                    failure = servermgmt.last_failure(cfg)
+                    if (failure.get("model") == cfg.model_key() and failure.get("time", 0) >= live["started"]
+                            and failure.get("code") in ("ram_pressure", "vram_pressure")):
+                        result.text = failure["error"]
+                        job["error"] = result.text
+                status = "stopped" if self.abort.is_set() else {
+                    Status.FINAL: "complete", Status.ABORTED: "stopped",
+                    Status.ERROR: "failed", Status.NEEDS_CONFIRMATION: "waiting_confirmation"}[result.status]
                 self.store.save_job(job, status)
                 if status in ("stopped", "failed") and (live["text"] or live["reasoning"]):
                     if not any(m.get("role") == "assistant" and m.get("step_id") == live["step"]

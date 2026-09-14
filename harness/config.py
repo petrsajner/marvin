@@ -45,13 +45,14 @@ BUILTIN_MODELS: dict[str, dict[str, Any]] = {
         "ctx_size": 49152,
         "kv_cache": "q8_0",
         "kv_cache_profiles": {
-            "q8_0": {"label": "8-bit - context 48k (16 GB borderline)",
-                     "label_cs": "8 bit - kontext 48k (16 GB hraniční)",
-                     "ctx_size": 49152, "min_vram_gb": 15},
+            "q8_0": {"label": "8-bit - context 48k (17 GB+)",
+                     "label_cs": "8 bit - kontext 48k (17 GB+)",
+                     "ctx_size": 49152, "min_vram_gb": 17},
             "q8_0_32k": {"cache_type": "q8_0",
                          "label": "8-bit - context 32k (16 GB safe)",
                          "label_cs": "8 bit - kontext 32k (16 GB bezpečné)",
-                         "ctx_size": 32768, "min_vram_gb": 14},
+                         "ctx_size": 32768, "min_vram_gb": 15.5,
+                         "server_args": ["-b", "1024", "-ub", "128", "--no-mmproj-offload"]},
             "q8_0_128k": {"cache_type": "q8_0",
                           "label": "8-bit - context 128k (24 GB)",
                           "label_cs": "8 bit - kontext 128k (24 GB)",
@@ -82,10 +83,14 @@ BUILTIN_MODELS: dict[str, dict[str, Any]] = {
         "kv_cache_profiles": {
             "f16": {"label": "16-bit - more precise, context 96k",
                     "label_cs": "16 bit - přesnější, kontext 96k",
-                    "ctx_size": 98304, "min_vram_gb": 24},
+                    "ctx_size": 98304, "min_vram_gb": 27},
             "q8_0": {"label": "8-bit - larger context 192k",
                      "label_cs": "8 bit - větší kontext 192k",
-                     "ctx_size": 196608, "min_vram_gb": 30},
+                    "ctx_size": 196608, "min_vram_gb": 30},
+            "q8_0_compact": {"cache_type": "q8_0", "ctx_size": 65536, "min_vram_gb": 23.75,
+                             "label": "8-bit - compact for 24 GB, context 64k",
+                             "label_cs": "8 bit - kompaktní pro 24 GB, kontext 64k",
+                             "server_args": ["-b", "1024", "-ub", "128", "--no-mmproj-offload"]},
         },
         "server_args": ["-fa", "on"],
     },
@@ -151,19 +156,12 @@ BUILTIN_MODELS: dict[str, dict[str, Any]] = {
                             "ctx_size": 524288,
                             "min_vram_gb": 29.5
                     },
-                    "q8_0_1m": {
-                            "cache_type": "q8_0",
-                            "label": "8-bit - context 1M (borderline)",
-                            "label_cs": "8 bit - kontext 1M (hraniční)",
-                            "ctx_size": 1048576,
-                            "min_vram_gb": 31.5
-                    },
                     "q8_0_256k_spill": {
                             "cache_type": "q8_0",
                             "label": "8-bit - context 256k, MoE overflow to RAM (24 GB)",
                             "label_cs": "8 bit - kontext 256k, MoE přeteče do RAM (24 GB)",
                             "ctx_size": 262144,
-                            "min_vram_gb": 24,
+                            "min_vram_gb": 23,
                             "server_args": [
                                     "--n-cpu-moe",
                                     "14"
@@ -174,7 +172,7 @@ BUILTIN_MODELS: dict[str, dict[str, Any]] = {
                             "label": "8-bit - context 512k, MoE overflow to RAM (24 GB)",
                             "label_cs": "8 bit - kontext 512k, MoE přeteče do RAM (24 GB)",
                             "ctx_size": 524288,
-                            "min_vram_gb": 24,
+                            "min_vram_gb": 23,
                             "server_args": [
                                     "--n-cpu-moe",
                                     "18"
@@ -386,6 +384,26 @@ def _remove_legacy_agent_limits(user: dict[str, Any]) -> None:
         agent["semi_max_steps"] = 0
 
 
+def _migrate_memory_profiles(user: dict[str, Any]) -> None:
+    """Replace exact old shipped memory claims without rewriting config.yaml."""
+    for key, profile_key, old_min in (("q3", "q8_0", 15), ("q3", "q8_0_32k", 14), ("q5", "f16", 24),
+                                     ("nemotron_q4", "q8_0_256k_spill", 24), ("nemotron_q4", "q8_0_512k_spill", 24)):
+        model = user.get("models", {}).get(key, {})
+        builtin = BUILTIN_MODELS[key]
+        if model.get("file", builtin["file"]) != builtin["file"]:
+            continue
+        profile = model.get("kv_cache_profiles", {}).get(profile_key, {})
+        current = builtin["kv_cache_profiles"][profile_key]
+        if profile.get("min_vram_gb") == old_min and profile.get("ctx_size") == current["ctx_size"]:
+            for field in ("min_vram_gb", "label", "label_cs"):
+                profile[field] = current[field]
+            if "server_args" not in profile and "server_args" in current:
+                profile["server_args"] = list(current["server_args"])
+    model = user.get("models", {}).get("nemotron_q4", {})
+    if model.get("file", BUILTIN_MODELS["nemotron_q4"]["file"]) == BUILTIN_MODELS["nemotron_q4"]["file"]:
+        model.get("kv_cache_profiles", {}).pop("q8_0_1m", None)
+
+
 class Config:
     """Konfigurace s helpery pro cesty a modely."""
 
@@ -498,5 +516,6 @@ def load_config(path: Path | None = None) -> Config:
             user = yaml.safe_load(f) or {}
     _migrate_builtin_models(user)
     _migrate_kv_labels(user)
+    _migrate_memory_profiles(user)
     _remove_legacy_agent_limits(user)
     return Config(_deep_merge(DEFAULTS, user))

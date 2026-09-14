@@ -441,7 +441,7 @@ def test_gpu_autofit() -> None:
     check(fits(cfg, "q4", "f16_compact", 24.0), "F16 kompaktní profil pro 24 GB existuje")
     check(not fits(cfg, "q5", "q8_0", 24.0), "Q5 s 192k kontextem se na 24 GB nevejde")
     choice = best_fit(cfg, 24.0)
-    check(choice == ("q5", "f16") or choice == ("q4", "q8_0_compact"),
+    check(choice == ("q5", "q8_0_compact") or choice == ("q4", "q8_0_compact"),
           f"auto-fit pro 24 GB vybírá proveditelnou kombinaci ({choice})")
     check(set(fitting_profiles(cfg, "ornith_q5", 24.0)) == set(),
           "Ornith na 24 GB nemá žádný profil")
@@ -449,8 +449,8 @@ def test_gpu_autofit() -> None:
           "setup pro 24 GB stahuje jen modely, které se vejdou (Nemotron Q4 s pretokem)")
     check(set(download_keys(cfg, 16.0)) == {"q3"},
           "setup pro 16 GB stahuje jen IQ3_S (hraniční provoz)")
-    check(best_fit(cfg, 16.0) == ("q3", "q8_0"),
-          "auto-fit pro 16 GB vybere IQ3_S")
+    check(best_fit(cfg, 16.0) == ("q3", "q8_0_32k"),
+          "auto-fit pro 16 GB vybere overeny IQ3_S / 32k")
     q3_profiles = cfg.kv_cache_profiles("q3")
     check(set(q3_profiles) == {"q8_0", "q8_0_32k", "q8_0_128k", "f16_96k",
                                "q8_0_256k", "f16_192k"},

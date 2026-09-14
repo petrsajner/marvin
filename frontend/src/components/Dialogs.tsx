@@ -308,7 +308,7 @@ export function DialogView(props: any) {
                     {app.models
                       .find((m: any) => m.id === app.preferences.model)
                       ?.profiles.map((p: any) => (
-                        <option key={p.id} value={p.id}>
+                        <option key={p.id} value={p.id} disabled={p.fits_gpu_budget === false}>
                           {cs ? p.label_cs || p.label : p.label}
                         </option>
                       ))}
@@ -322,7 +322,7 @@ export function DialogView(props: any) {
                     : tr("text-only model", "pouze textový model")}
                 </p>
                 <label>
-                  {tr("GPU VRAM", "Paměť GPU")}
+                  {tr("GPU memory budget", "Limit paměti GPU")}
                   <select
                     value={app.preferences.vram_gb || "auto"}
                     onChange={(e) =>
@@ -337,7 +337,7 @@ export function DialogView(props: any) {
                     }
                   >
                     {["auto", 16, 24, 32, 48, 64, 96].map((value) => (
-                      <option key={value} value={value}>
+                      <option key={value} value={value} disabled={value !== "auto" && app.memory?.vram_detected_gb && Number(value) > Math.ceil(app.memory.vram_detected_gb)}>
                         {value === "auto"
                           ? tr("Automatic detection", "Automatická detekce")
                           : value + " GB"}
@@ -345,8 +345,17 @@ export function DialogView(props: any) {
                     ))}
                   </select>
                 </label>
+                <p>{tr(
+                  "Changing the budget restarts the model automatically when no task is running. A compatible context or smaller model is selected when needed.",
+                  "Změna limitu automaticky restartuje model, pokud neběží úloha. Podle potřeby se vybere vhodný kontext nebo menší model.",
+                )}</p>
+                {app.models.find((m: any) => m.id === app.preferences.model)?.uses_system_ram && <p>{tr(
+                  "Flash-Next also uses system RAM. A smaller GPU budget needs more free RAM; GPU capacity alone does not determine compatibility.",
+                  "Flash-Next používá i systémovou RAM. Menší limit GPU vyžaduje více volné RAM; samotná velikost grafické paměti nestačí.",
+                )}</p>}
                 <p>
                   VRAM: {runtime.vram || "—"} · Python {runtime.python || "—"}
+                  {app.memory && <> · {tr("Free RAM", "Volná RAM")}: {app.memory.ram_available_gb} / {app.memory.ram_total_gb} GiB</>}
                 </p>
                 {app.active && (
                   <p className="amber">

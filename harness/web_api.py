@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 from contextlib import asynccontextmanager
 import json
 import mimetypes
@@ -56,6 +57,12 @@ def create_app(cfg=None, *, service=None):
     @app.get("/api/state")
     def state(session_id: str | None = None):
         with service.lock:
+            import psutil
+            from harness.gpu import effective_vram_gb, fits, vram_total_gb
+            memory = psutil.virtual_memory()
+            selected_cfg = Config(copy.deepcopy(cfg.data), cfg.root)
+            selected_cfg.data.setdefault("hardware", {})["vram_gb"] = service.preferences.get("vram_gb", "auto")
+            budget = effective_vram_gb(selected_cfg)
             sessions = Session.list_sessions(cfg, limit=100000)
             selected = session_id or service.preferences.get("session_id")
             if not selected or (selected not in service.sessions and not any(item["id"] == selected for item in sessions)):
@@ -65,11 +72,16 @@ def create_app(cfg=None, *, service=None):
             if not any(item["id"] == selected for item in sessions):
                 sessions.insert(0, {**session.meta, "id": selected, "messages": len(session.messages)})
             return {"version": APP_VERSION, "preferences": service.preferences,
+                "memory": {"vram_detected_gb": vram_total_gb(), "vram_budget_gb": budget,
+                           "ram_total_gb": round(memory.total / 1024**3, 1),
+                           "ram_available_gb": round(memory.available / 1024**3, 1)},
                 "session_id": selected, "sessions": sessions, "projects": Projects(cfg).list_all(),
                 "modes": [{"id": key, "label": value.label} for key, value in WORK_MODES.items()],
                 "models": [{"id": key, "name": model.get("status_label") or model["alias"],
                             "vision": bool(model.get("mmproj")), "installed": cfg.model_ready(key),
-                            "profiles": [{"id": p, **spec} for p, spec in cfg.kv_cache_profiles(key).items()],
+                            "uses_system_ram": bool(model.get("adaptive_runtime")),
+                            "profiles": [{"id": p, **spec, "fits_gpu_budget": fits(cfg, key, p, budget)}
+                                         for p, spec in cfg.kv_cache_profiles(key).items()],
                             "profile": service.preferences.get("kv_cache_modes", {}).get(key, cfg.kv_cache_mode(key))}
                            for key, model in cfg.data["models"].items()],
                 "active": {k: service.active[k] for k in ("id", "session_id", "text")} if service.active else None,
@@ -313,6 +325,9 @@ def create_app(cfg=None, *, service=None):
     @app.patch("/api/settings")
     def update_settings(payload: dict):
         with service.lock:
+            if "vram_gb" in payload:
+                from harness.gpu import normalize_vram_setting
+                payload["vram_gb"] = normalize_vram_setting(payload["vram_gb"])
             if "model" in payload and payload["model"] not in cfg.data["models"]:
                 raise ValueError("Unknown model")
             if "thinking" in payload and payload["thinking"] not in ("off", "low", "medium", "xhigh"):
@@ -320,17 +335,31 @@ def create_app(cfg=None, *, service=None):
             for key, profile in payload.get("kv_cache_modes", {}).items():
                 if key not in cfg.data["models"] or profile not in cfg.kv_cache_profiles(key):
                     raise ValueError("Unknown KV profile")
+            preset = None
+            if "vram_gb" in payload and payload["vram_gb"] != service.preferences.get("vram_gb", "auto") and "model" not in payload:
+                value = payload["vram_gb"]
+                preset_key = "auto" if value == "auto" else f"{float(value):g}"
+                candidate = service.preferences.get("memory_presets", {}).get(preset_key, {})
+                if (candidate.get("model") in cfg.data["models"]
+                        and candidate.get("profile") in cfg.kv_cache_profiles(candidate["model"])):
+                    preset = candidate
+                    payload["model"] = preset["model"]
+                    payload["kv_cache_modes"] = {**payload.get("kv_cache_modes", {}), preset["model"]: preset["profile"]}
             allowed = {"model", "thinking", "language", "theme", "density", "autonomy", "send_mode", "kv_cache_modes", "vram_gb"}
             for key, profile in payload.get("kv_cache_modes", {}).items():
                 if (cfg.model(key).get("adaptive_runtime")
                         and profile != service.preferences.get("kv_cache_modes", {}).get(key)):
                     service.preferences.setdefault("adaptive_kv_requests", {})[key] = profile
-            service.preferences.update({key: value for key, value in payload.items() if key in allowed})
-            if service.manage_model and "vram_gb" in payload:
+            service.preferences.update({key: value for key, value in payload.items() if key in allowed and key != "kv_cache_modes"})
+            service.preferences.setdefault("kv_cache_modes", {}).update(payload.get("kv_cache_modes", {}))
+            if (preset and cfg.model(preset["model"]).get("adaptive_runtime")
+                    and preset.get("requested_profile") in cfg.kv_cache_profiles(preset["model"])):
+                service.preferences.setdefault("adaptive_kv_requests", {})[preset["model"]] = preset["requested_profile"]
+            if service.manage_model and any(key in payload for key in ("model", "kv_cache_modes", "vram_gb")):
                 service.fit_hardware()
             service.save_preferences()
             if service.manage_model and not service.active and any(key in payload for key in ("model", "kv_cache_modes", "vram_gb")):
-                service.start_model(restart=True)
+                service.start_model()
             service.store.emit(None, "settings_changed", service.preferences)
             return service.preferences
 
