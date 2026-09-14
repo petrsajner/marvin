@@ -1,4 +1,4 @@
-"""Thread-safe bridge mezi blokujícím agentem a streamujícím UI."""
+"""Thread-safe bridge between a blocking agent and a streaming UI."""
 from __future__ import annotations
 
 import threading
@@ -28,7 +28,7 @@ class SteeringQueue:
 
 
 class StreamHub:
-    """Sbírá tokenové a tool události z worker vlákna pro průběžný render."""
+    """Collect token and tool events from a worker for incremental rendering."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -128,13 +128,13 @@ class StreamHub:
 
 
 def step_threaded(agent, approve: bool | None):
-    """Spustí jeden agent.step ve worker vlákně a vrátí thread + result box."""
+    """Run one agent step in a worker thread and return the thread and result container."""
     box: dict[str, Any] = {}
 
     def worker() -> None:
         try:
             box["r"] = agent.step(approve=approve)
-        except BaseException as exc:  # výjimku zpracuje UI vlákno
+        except BaseException as exc:  # The UI thread handles the exception.
             box["e"] = exc
 
     thread = threading.Thread(target=worker, daemon=True, name="agent-step")

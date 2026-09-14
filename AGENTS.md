@@ -20,6 +20,20 @@ background process tools as the shell fallback. Improve the single-agent web
 experience, reliability, context quality, and practical local tools rather than
 expanding into these non-goals.
 
+## Source language and localization
+
+- Write code, identifiers, comments, docstrings, model/tool prompts, test fixtures,
+  scripts and contributor documentation in English.
+- English is the default UI language. Keep optional Czech UI text and legacy
+  Czech compatibility data in `harness/locales/cs.json`; installer translations
+  belong in `installer/locales/`. Both Python and React use the shared catalog.
+- Keep the English and Czech user manuals and installation guides. These user
+  documents are the intentional documentation exceptions. Do not rewrite user
+  conversations, personal memory or Git history to enforce source language.
+- Run `python -m unittest tests.test_localization` when changing localization,
+  templates or packaging. Its character scan supplements manual review; it is
+  not a complete natural-language detector.
+
 ## Current Architecture & UI/UX Model (v1.6+)
 
 - **Workspace Frontend**: React + TypeScript workspace (`frontend/src/` -> `ui_dist/`)

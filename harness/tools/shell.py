@@ -1,4 +1,4 @@
-"""Shell nástroj - run_command s volbou shellu (bash/powershell/cmd)."""
+"""run_command with Bash, PowerShell and cmd support."""
 from __future__ import annotations
 
 import re
@@ -13,8 +13,8 @@ from pathlib import Path
 from harness.safety import Risk
 from harness.tools.base import AgentContext, Tool
 
-# Minimální pojistka proti catastrofickým příkazem (potvrzování řeší safety vrstva,
-# tohle je jen záchranná síť pro auto režim).
+# Basic protection against catastrophic commands; confirmation is handled by SafetyPolicy.
+# This is an additional safeguard for automatic mode.
 BLOCKED_PATTERNS = [
     r"\bformat\s+[a-z]:",
     r"\brm\s+(-[a-z]+\s+)*/(\s|$)",          # rm -rf /
@@ -76,7 +76,7 @@ def _is_windows_bash_shim(path: Path) -> bool:
 
 @lru_cache(maxsize=1)
 def find_bash() -> str | None:
-    """Najde skutečný Git Bash na Windows, jinak běžný bash z PATH."""
+    """Find Git Bash on Windows, or use Bash from PATH on other systems."""
     if sys.platform != "win32":
         return shutil.which("bash")
 
@@ -109,14 +109,14 @@ def find_bash() -> str | None:
     return None
 
 
-# Příkazy, které pouze čtou (nepotřebují potvrzení ani v supervised režimu).
+# Read-only commands do not require confirmation, including in supervised mode.
 SAFE_CMDS = {"ls", "dir", "cat", "type", "head", "tail", "grep", "find", "wc", "file",
              "stat", "du", "df", "pwd", "whoami", "which", "where", "tree", "echo",
              "date", "uname", "hostname", "ipconfig"}
-# Git subcommandy, které pouze čtou (bez dvojznačných: branch/tag/remote/config umí i zapisovat).
+# Read-only Git subcommands; exclude ambiguous commands that can also modify state.
 SAFE_GIT_SUB = {"status", "log", "diff", "show", "blame", "rev-parse",
                 "ls-files", "describe", "shortlog", "help"}
-# Klíčová slova, která cokoliv mění - nesmí se vyskytnout v žádném segmentu.
+# Reject mutation-related keywords in every command segment.
 UNSAFE_RE = re.compile(
     r"\b(rm|del|rd|move|mv|cp|copy|touch|mkdir|rmdir|chmod|chown|kill|taskkill|"
     r"curl|wget|invoke-webrequest|invoke-restmethod|start-process|iex|invoke-expression|"
@@ -127,11 +127,9 @@ UNSAFE_RE = re.compile(
 
 
 def is_read_only_command(command: str) -> bool:
-    """Konzervativní heuristika: je příkaz čistě čtecí?
+    """Conservatively classify a command as read-only.
 
-    Pravidla: žádné přesměrování (<, >), substituce (`, $()), nebezpečná klíčová
-    slova; každý segment (oddělený |, &&, ||, ;) musí začínat bezpečným příkazem.
-    """
+    Reject redirection, command substitution and mutation keywords. Every segment separated by pipes or command operators must start with an allowed command."""
     if not command or not command.strip():
         return False
     if "<" in command or ">" in command or "`" in command or "$(" in command:
@@ -170,7 +168,7 @@ class RunCommandTool(Tool):
     risk = Risk.WRITE
 
     def risk_for(self, args: dict) -> Risk:
-        """Čtecí příkazy (ls, cat, grep, git log...) nepotřebují potvrzení."""
+        """Read-only commands such as ls, cat, grep and git log need no confirmation."""
         return Risk.SAFE if is_read_only_command(str(args.get("command", ""))) else Risk.WRITE
 
     def run(self, ctx: AgentContext, command: str, shell: str = "bash", cwd: str | None = None, timeout: int | None = None) -> str:

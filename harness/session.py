@@ -1,8 +1,6 @@
-"""Perzistence konverzace - JSONL záznamy + obrázky v session adresáři.
+"""Conversation persistence: JSONL messages and session-local images.
 
-Zprávy ukládáme ve zjednodušené podobě (obrázky jako reference na soubory),
-pro API volání se renderují do OpenAI formátu včetně base64 data URL.
-"""
+Stored messages reference image files. API messages are rendered in OpenAI-compatible format with base64 data URLs."""
 from __future__ import annotations
 
 import base64
@@ -33,20 +31,20 @@ class Session:
         self.dir = cfg.path("paths.sessions_dir") / self.id
         self.img_dir = self.dir / "images"
         self.messages: list[dict[str, Any]] = []
-        # ne-destruktivní komprese: model vidí [system + souhrn + messages[cut:]],
-        # uživatel kompletní messages (UI + JSONL zůstávají nedotčené)
+        # Compression changes the model view to system prompt, summary and recent messages.
+        # The UI and JSONL retain the complete message history.
         self.compression: dict[str, Any] | None = None  # {"cut": int, "summary": str}
-        self.compression_rev = 0  # inkrement při každé změně (pro UI marker)
+        self.compression_rev = 0  # Increment after each compression change for the UI marker.
         self.meta: dict[str, Any] = {"workspace": workspace, "title": None,
                                      "created": time.time(), "updated": time.time(),
                                      "pinned_files": [], "work_mode": work_mode}
-        # transient = nový neuložený chat: žije jen v paměti, na disk se zapíše
-        # až s první uživatelskou zprávou (persist()) - neplní se prázdné chatty
+        # A transient chat exists only in memory until its first real user message.
+        # persist() writes it then, avoiding empty conversation directories.
         self.transient = transient
         if system_prompt:
             self.add("system", system_prompt)
 
-    # -- přidávání zpráv ---------------------------------------------------
+    # Message insertion.
     def add(self, role: str, content: Any, *, images: list[Path] | None = None,
             tool_calls: list[dict] | None = None, tool_call_id: str | None = None,
             name: str | None = None, reasoning: str | None = None) -> dict:
@@ -66,12 +64,12 @@ class Session:
         if name:
             msg["name"] = name
         if self.transient and role == "user":
-            self.persist()  # první skutečná zpráva → chat se zapisuje na disk
+            self.persist()  # Persist the conversation when its first real message arrives.
         if images:
             msg["images"] = [str(self._store_image(p)) for p in images]
         self.messages.append(msg)
         self._append_jsonl(msg)
-        # 🧾 meta: titulek z prvního uživatelského dotazu + čas aktualizace
+        # Update the title from the first user message and refresh the timestamp.
         if role == "user" and not self.meta.get("title") and isinstance(content, str) \
                 and content.strip() and not content.startswith("["):
             self.meta["title"] = content.strip().replace("\n", " ")[:70]
@@ -84,17 +82,17 @@ class Session:
         return msg
 
     def _store_image(self, path: Path) -> Path:
-        """Zkopíruje obrázek do session adresáře a vrátí novou cestu."""
+        """Copy an image into the session directory and return its new path."""
         if self.transient:
             self.persist()
         self.img_dir.mkdir(parents=True, exist_ok=True)
         if self.dir.resolve() in path.resolve().parents:
-            return path  # už je v session (screenshoty apod.)
+            return path  # The image is already in the session, for example a screenshot.
         dest = self.img_dir / f"{uuid.uuid4().hex[:8]}-{path.name}"
         shutil.copy2(path, dest)
         return dest
 
-    # -- render pro API ----------------------------------------------------
+    # -- render for the API ----------------------------------------------------
     SUMMARY_PREFIX = ("[SESSION HISTORY SUMMARY - older conversation was auto-compressed. "
                       "Use it as context, do not re-ask the user about these facts:]\n\n")
     INTERNAL_USER_PREFIXES = (
@@ -105,7 +103,7 @@ class Session:
     )
 
     def _view_messages(self) -> list[dict]:
-        """Zprávy, které VIDÍ MODEL (po aplikaci komprese)."""
+        """Return the model-visible message view after applying compression."""
         if not self.compression:
             return self.messages
         cut = min(self.compression["cut"], len(self.messages))
@@ -114,7 +112,7 @@ class Session:
         return head + [summary_msg] + self.messages[cut:]
 
     def to_api_messages(self, max_images: int = 8, include_pins: bool = True) -> list[dict]:
-        """Převeď na OpenAI formát; posledních max_images obrázků jako data URL."""
+        """Render API messages, encoding only the most recent max_images images."""
         view = self._view_messages()
         image_paths = [p for m in view for p in m.get("images", [])]
         recent = set(image_paths[-max_images:])
@@ -160,11 +158,11 @@ class Session:
         b64 = base64.b64encode(path.read_bytes()).decode()
         return f"data:{mime};base64,{b64}"
 
-    # -- odhad kontextu / komprese -----------------------------------------
-    IMAGE_TOKENS = 1400  # orientační počet tokenů na obrázek (po downscale)
+    # -- context estimate / compression -----------------------------------------
+    IMAGE_TOKENS = 1400  # Approximate token cost per downscaled image.
 
     def estimate_context_tokens(self, include_pins: bool = True) -> int:
-        """Odhad tokenů skutečně odesílaných do API (po omezení obrázků)."""
+        """Estimate the actual API input after limiting image references."""
         import json as _json
         view = self._view_messages()
         image_paths = [p for m in view for p in m.get("images", [])]
@@ -180,14 +178,14 @@ class Session:
                         if part.get("type") == "text":
                             total += len(str(part.get("text", "")))
                         elif part.get("type") == "image_url":
-                            total += self.IMAGE_TOKENS * 4  # v chars, přepočet níže
+                            total += self.IMAGE_TOKENS * 4  # Character-equivalent cost, converted to tokens below.
             total += sum(1 for p in m.get("images", []) if p in recent) * self.IMAGE_TOKENS * 4
             if m.get("tool_calls"):
                 total += len(_json.dumps(m["tool_calls"], ensure_ascii=False))
             total += len(str(m.get("reasoning") or m.get("reasoning_content") or ""))
         if include_pins:
             total += len(self.pinned_context_block())
-        # ~3.6 znaku na token (mix češtiny, kódu, JSON)
+        # Approximately 3.6 characters per token for multilingual prose, code and JSON.
         return total * 10 // 36
 
     def pin_context_file(self, path: Path) -> bool:
@@ -252,7 +250,7 @@ class Session:
         }
 
     def _msg_tokens(self, m: dict) -> int:
-        """Orientační počet tokenů jedné zprávy (text + obrázky + tool_calls)."""
+        """Estimate one message's token cost, including images and tool calls."""
         import json as _json
         c = m.get("content") or ""
         if not isinstance(c, str):
@@ -273,7 +271,7 @@ class Session:
 
     def compression_cut(self, min_keep: int = 6,
                         keep_tokens: int | None = None) -> int | None:
-        """Najde user hranici, od které se má zachovat živý ocas konverzace."""
+        """Find a user-message boundary for the retained recent conversation segment."""
         msgs = self.messages
         head_len = 1 if msgs and msgs[0]["role"] == "system" else 0
         if len(msgs) - head_len <= min_keep:
@@ -302,29 +300,25 @@ class Session:
     def compress_to_summary(self, summary: str, min_keep: int = 6,
                             keep_tokens: int | None = None,
                             cut: int | None = None) -> bool:
-        """Zaregistruj kompresi kontextu (NE-destruktivně).
+        """Record a compression boundary without deleting history.
 
-        Zprávy zůstávají v self.messages (UI + JSONL nedotčené); model od teď
-        vidí [system + souhrn + messages[cut:]]. Cut vždy na hranici 'user'
-        zprávy, aby se nerozbily dvojice assistant(tool_calls) → tool.
+        All messages remain in memory and JSONL. The model sees the system prompt, a summary and messages after the cut. Cuts use user-message boundaries to preserve assistant tool-call/result pairs.
 
-        keep_tokens: cílový rozpočet ponechané části (největší výhodnější cut,
-        který se do něj vejde). Bez něj platí jen min_keep zpráv.
-        """
+        keep_tokens limits the retained segment; otherwise only min_keep applies."""
         cut = cut if cut is not None else self.compression_cut(min_keep, keep_tokens)
         if cut is None:
-            return False  # nový cut musí být za starým
+            return False  # The new cut must advance beyond the previous one.
         self.compression = {"cut": cut, "summary": summary}
         self.compression_rev += 1
         self._save_compression()
         return True
 
     def trim_to_budget(self, budget_tokens: int, min_keep: int = 6) -> bool:
-        """Tvrdý fallback: posuň kompresní cut dál (historie zůstává pro UI)."""
+        """Fallback: advance the model-view cut while retaining full history for the UI."""
         changed = False
         while self.estimate_context_tokens() > budget_tokens and len(self.messages) > min_keep + 1:
             cur = self.compression["cut"] if self.compression else 1
-            # nejbližší user hranice za aktuálním cutem
+            # Find the next user-message boundary after the current cut.
             nxt = next((i for i in range(cur + 1, len(self.messages) - min_keep + 1)
                         if self._is_user_boundary(self.messages[i])), None)
             if nxt is None:
@@ -340,13 +334,13 @@ class Session:
             self._save_compression()
         return self.estimate_context_tokens() <= budget_tokens
 
-    # -- perzistence ---------------------------------------------------------
+    # -- persistence ---------------------------------------------------------
     @property
     def _jsonl(self) -> Path:
         return self.dir / "messages.jsonl"
 
     def persist(self) -> None:
-        """Zapiš transient session na disk (celou) a opusť transient režim."""
+        """Write the complete transient conversation and leave transient mode."""
         if not self.transient:
             return
         self.transient = False
@@ -364,7 +358,7 @@ class Session:
             f.write(dump_record(msg) + "\n")
 
     def _rewrite_jsonl(self) -> None:
-        """Přepiš celý JSONL (po opravách historie)."""
+        """Rewrite the complete JSONL file after history repair."""
         self.dir.mkdir(parents=True, exist_ok=True)
         tmp = self._jsonl.with_suffix(".tmp")
         with history_lock(self._jsonl):
@@ -433,7 +427,7 @@ class Session:
         export_dir.mkdir(parents=True, exist_ok=True)
         target = export_dir / f"{self.id}.md"
         lines = [f"# {self.meta.get('title') or 'Qwen chat'}", ""]
-        role_names = {"user": "Uživatel", "assistant": "Asistent", "tool": "Nástroj"}
+        role_names = {"user": "User", "assistant": "Asistent", "tool": "Tool"}
         for message in self.messages:
             role = message.get("role")
             content = message.get("content")
@@ -443,10 +437,10 @@ class Session:
             if not content and message.get("tool_calls"):
                 names = ", ".join(call.get("function", {}).get("name", "tool")
                                   for call in message["tool_calls"])
-                content = f"Volání nástrojů: {names}"
+                content = f"Tool calls: {names}"
             lines.extend([f"## {role_names.get(role, str(role))}", "", str(content or ""), ""])
             for image in message.get("images", []):
-                lines.append(f"Příloha: `{Path(image).name}`\n")
+                lines.append(f"Attachment: `{Path(image).name}`\n")
         atomic = "\n".join(lines)
         target.write_text(atomic, encoding="utf-8", newline="\n")
         return target
@@ -548,14 +542,14 @@ class Session:
         s = cls(cfg, session_id=session_id)
         f = s._jsonl
         if not f.exists():
-            raise FileNotFoundError(f"Session {session_id} nenalezena ({f})")
+            raise FileNotFoundError(f"Session {session_id} not found ({f})")
         s.messages = []
         records = read_history(f, cfg.path("paths.runtime_dir") / "application.sqlite3")
         for index, message in enumerate(records):
             message.setdefault("id", f"{s.id}:{index}")
             s.messages.append(message)
         s._load_meta()
-        # titulek pro starší sessions bez meta
+        # Derive a title for older sessions without metadata.
         if not s.meta.get("title"):
             for m in s.messages:
                 if m["role"] == "user" and isinstance(m.get("content"), str) \
@@ -581,15 +575,15 @@ class Session:
             try:
                 message = json.loads(line)
             except ValueError as exc:
-                raise ValueError(f"Neplatný JSONL na řádku {number}: {exc}") from exc
+                raise ValueError(f"Invalid JSONL on line {number}: {exc}") from exc
             if not isinstance(message, dict) or message.get("role") not in {
                     "system", "user", "assistant", "tool"}:
-                raise ValueError(f"Neplatná zpráva na řádku {number}")
+                raise ValueError(f"Invalid message on line {number}")
             if message.get("images"):
                 message["images"] = [raw for raw in message["images"] if Path(raw).is_file()]
             messages.append(message)
         if not messages:
-            raise ValueError("Importovaný chat neobsahuje žádné zprávy")
+            raise ValueError("The imported conversation contains no messages")
         if messages[0].get("role") == "system":
             messages[0]["content"] = system_prompt
         else:
@@ -604,7 +598,7 @@ class Session:
             (str(message.get("content", ""))[:70] for message in messages
              if message.get("role") == "user"
              and not str(message.get("content", "")).startswith(cls.INTERNAL_USER_PREFIXES)),
-            "Importovaný chat",
+            "Imported conversation",
         )
         session.meta["updated"] = time.time()
         session._rewrite_jsonl()
@@ -613,7 +607,7 @@ class Session:
 
     @classmethod
     def delete(cls, cfg: Config, session_id: str) -> bool:
-        """Smaž session (celou složku včetně obrázků). Vrací True při úspěchu."""
+        """Remove a session directory and its images; return True on success."""
         import shutil
         d = cfg.path("paths.sessions_dir") / session_id
         if d.exists() and d.is_dir():
@@ -627,18 +621,16 @@ class Session:
         return False
 
     def adopt_workspace(self, workspace: str | None) -> None:
-        """Přiřaď session projekt (workspace), pokud ho ještě nemá.
+        """Assign a project workspace to a session that has none.
 
-        Používá se u starých sessions bez meta - např. po načtení pod
-        aktuálním projektem si ho 'osvojí' a objeví se v jeho historii.
-        """
+        Older sessions without metadata can inherit the currently selected project and appear in its history."""
         if workspace and not self.meta.get("workspace"):
             self.meta["workspace"] = workspace
             self._save_meta()
 
     @staticmethod
     def list_sessions(cfg: Config, limit: int = 60) -> list[dict]:
-        """Sessions s metadaty (workspace, titulek, časy) - nové první."""
+        """List sessions with workspace, title and timestamps, newest first."""
         base = cfg.path("paths.sessions_dir")
         if not base.exists():
             return []

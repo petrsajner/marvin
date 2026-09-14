@@ -1,4 +1,4 @@
-export type Activity = { id: number; label: [string, string]; started: number; outcome?: "accepted" | "failed" };
+export type Activity = { id: number; label: string; started: number; outcome?: "accepted" | "failed" };
 let sequence = 0;
 let snapshot: Activity[] = [];
 const listeners = new Set<() => void>();
@@ -7,36 +7,36 @@ const publish = () => listeners.forEach((listener) => listener());
 export const subscribeActivity = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 export const getActivities = () => snapshot;
 
-function labelFor(path: string): [string, string] {
-  const labels: [RegExp, string, string][] = [
-    [/runtime\/start/, "Starting model", "Spouštění modelu"],
-    [/runtime\/restart/, "Restarting model", "Restart modelu"],
-    [/runtime\/stop/, "Stopping model", "Zastavování modelu"],
-    [/attachments/, "Uploading attachments", "Nahrávání příloh"],
-    [/export/, "Exporting document", "Export dokumentu"],
-    [/import/, "Importing data", "Import dat"],
-    [/compress/, "Preparing compression", "Příprava komprese"],
-    [/handoff/, "Preparing handoff", "Příprava předání"],
-    [/restore/, "Restoring files", "Obnova souborů"],
-    [/checkpoint/, "Creating restore point", "Vytváření bodu obnovy"],
-    [/settings/, "Saving settings", "Ukládání nastavení"],
-    [/memory/, "Saving memory", "Ukládání paměti"],
-    [/delete/, "Deleting", "Mazání"],
-    [/rename/, "Renaming", "Přejmenování"],
-    [/move/, "Moving conversation", "Přesun konverzace"],
-    [/submit/, "Sending message", "Odesílání zprávy"],
-    [/stop/, "Stopping task", "Zastavování úlohy"],
-    [/preview|library|read_skill/, "Loading content", "Načítání obsahu"],
-    [/maintenance/, "Starting maintenance", "Spouštění údržby"],
-    [/backup/, "Preparing backup", "Příprava zálohy"],
-    [/pick/, "Selecting a file or folder", "Výběr souboru nebo složky"],
-    [/\/open/, "Opening file", "Otevírání souboru"],
-    [/\/run/, "Starting program", "Spouštění programu"],
-    [/projects/, "Updating project", "Aktualizace projektu"],
-    [/sessions/, "Updating conversation", "Aktualizace konverzace"],
+function labelFor(path: string): string {
+  const labels: [RegExp, string][] = [
+    [/runtime\/start/, "Starting model"],
+    [/runtime\/restart/, "Restarting model"],
+    [/runtime\/stop/, "Stopping model"],
+    [/attachments/, "Uploading attachments"],
+    [/export/, "Exporting document"],
+    [/import/, "Importing data"],
+    [/compress/, "Preparing compression"],
+    [/handoff/, "Preparing handoff"],
+    [/restore/, "Restoring files"],
+    [/checkpoint/, "Creating restore point"],
+    [/settings/, "Saving settings"],
+    [/memory/, "Saving memory"],
+    [/delete/, "Deleting"],
+    [/rename/, "Renaming"],
+    [/move/, "Moving conversation"],
+    [/submit/, "Sending message"],
+    [/stop/, "Stopping task"],
+    [/preview|library|read_skill/, "Loading content"],
+    [/maintenance/, "Starting maintenance"],
+    [/backup/, "Preparing backup"],
+    [/pick/, "Selecting a file or folder"],
+    [/\/open/, "Opening file"],
+    [/\/run/, "Starting program"],
+    [/projects/, "Updating project"],
+    [/sessions/, "Updating conversation"],
   ];
   const match = labels.find(([pattern]) => pattern.test(path));
-  return match ? [match[1], match[2]] : ["Processing request", "Zpracování požadavku"];
+  return match ? match[1] : "Processing request";
 }
 
 export function beginActivity(path: string, method: string) {

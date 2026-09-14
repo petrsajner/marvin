@@ -1,4 +1,4 @@
-"""SQLite FTS index uživatelských a asistentských zpráv napříč sessions."""
+"""SQLite FTS index of user and assistant messages across sessions."""
 from __future__ import annotations
 
 import json

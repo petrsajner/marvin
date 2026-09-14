@@ -1,4 +1,4 @@
-"""Nástroje pro viditelný a připnutý kontext modelu."""
+"""Tools for visible and pinned model context."""
 from __future__ import annotations
 
 import json

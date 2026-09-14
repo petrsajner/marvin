@@ -1,3 +1,4 @@
+import { translate } from "../i18n";
 import { useEffect, useState } from "react";
 import { LoaderCircle, Check, AlertCircle } from "lucide-react";
 
@@ -10,20 +11,20 @@ export function ModelStatus({ runtime, cs }: { runtime: any; cs: boolean }) {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [busy]);
-  const phases: Record<string, [string, string]> = {
-    preparing: ["Preparing model server", "Připravuji server modelu"],
-    releasing: ["Freeing memory for the new configuration", "Uvolňuji paměť pro nové nastavení"],
-    downloading: ["Downloading model", "Stahuji model"],
-    verifying: ["Checking downloaded files", "Kontroluji stažené soubory"],
-    loading: ["Loading model", "Načítám model"],
-    restoring: ["Restoring the previous model", "Obnovuji předchozí model"],
-    stopping: ["Stopping model and freeing GPU memory", "Zastavuji model a uvolňuji paměť grafické karty"],
+  const phases: Record<string, string> = {
+    preparing: "Preparing model server",
+    releasing: "Freeing memory for the new configuration",
+    downloading: "Downloading model",
+    verifying: "Checking downloaded files",
+    loading: "Loading model",
+    restoring: "Restoring the previous model",
+    stopping: "Stopping model and freeing GPU memory",
   };
   const failed = state.status === "failed";
   const restored = failed && state.restored_model && runtime.status === "running";
   return <div className={"model-progress " + (busy ? "running" : failed && !restored ? "failed" : "")} role="status">
     {busy ? <LoaderCircle className="spin" /> : failed && !restored ? <AlertCircle /> : <Check />}
-    <div><strong>{busy ? (phases[state.phase] || phases.preparing)[cs ? 1 : 0] : failed ? (state.restored_model ? (cs ? "Předchozí funkční nastavení bylo obnoveno" : "Previous working configuration restored") : (cs ? "Spuštění modelu selhalo" : "Model failed to start")) : runtime.status === "running" ? (cs ? "Model je připravený" : "Model is ready") : (cs ? "Model je zastavený" : "Model is stopped")}</strong>
+    <div><strong>{busy ? translate(phases[state.phase] || phases.preparing, cs ? "cs" : "en") : failed ? (state.restored_model ? (translate("Previous working configuration restored", cs ? "cs" : "en")) : (translate("Model failed to start", cs ? "cs" : "en"))) : runtime.status === "running" ? (translate("Model is ready", cs ? "cs" : "en")) : (translate("Model is stopped", cs ? "cs" : "en"))}</strong>
     {busy && <small>{Math.max(0, Math.floor(now / 1000 - (state.started_at || now / 1000)))} s · VRAM {runtime.vram || "—"}</small>}
     {busy && state.phase === "downloading" && state.total_bytes > 0 && <small>
       {Math.min(100, Math.floor(100 * state.downloaded_bytes / state.total_bytes))}% · {(

@@ -1,7 +1,6 @@
-"""Správa llama-serveru (inference backend) - start/stop/switch/status.
+"""Manage the llama-server inference backend: start, stop, switch and status.
 
-Používá se z CLI (scripts/server.py), TUI i web UI.
-"""
+Shared by the CLI, TUI and web application."""
 from __future__ import annotations
 
 import subprocess
@@ -14,7 +13,7 @@ import requests
 
 from harness.config import Config
 
-HEALTH_TIMEOUT = 900  # s - první načtení ~17-20GB modelu z disku chvíli trvá
+HEALTH_TIMEOUT = 900  # Seconds; the initial load of a large model can take time.
 _start_lock = threading.Lock()
 
 
@@ -52,13 +51,13 @@ def wait_health(cfg: Config, timeout: float = HEALTH_TIMEOUT,
     return False
 
 
-NO_WINDOW = 0x08000000  # CREATE_NO_WINDOW - žádné problikávající konzole
+NO_WINDOW = 0x08000000  # CREATE_NO_WINDOW prevents console flashes.
 
 _vram_cache: dict = {"ts": 0.0, "value": ""}
 
 
 def vram_str() -> str:
-    """VRAM řetězec s 10s cache (nvidia-smi subprocess je drahý)."""
+    """Format GPU memory usage with a 10-second cache for the nvidia-smi subprocess."""
     import time as _t
     now = _t.time()
     if now - _vram_cache["ts"] < 10 and _vram_cache["value"]:
@@ -78,16 +77,14 @@ def vram_str() -> str:
 
 
 def vram_value() -> str:
-    """Samotná hodnota VRAM bez "GPU VRAM:" prefixu (pro složené UI řádky)."""
+    """Return GPU memory usage without the label, for composite UI rows."""
     return vram_str().removeprefix("GPU VRAM: ")
 
 
 def server_state(cfg: Config) -> str:
-    """Stav serveru: 'down' | 'starting' | 'running'.
+    """Return down, starting or running.
 
-    'starting' = pidfile existuje, ale health ještě neodpovídá
-    (typicky načítání modelu do VRAM).
-    """
+    Starting means the managed process exists but its health endpoint is not yet ready, typically while model weights are loading."""
     if health(cfg):
         return "running"
     if _managed_process(cfg) is not None:
@@ -109,7 +106,7 @@ def _pid_record(cfg: Config) -> tuple[str, int] | None:
 
 
 def _managed_process(cfg: Config):
-    """Vrátí živý llama-server z PID souboru; stale záznam rovnou uklidí."""
+    """Resolve a live owned server from its PID file, removing stale records."""
     record = _pid_record(cfg)
     if record is None:
         pid_file(cfg).unlink(missing_ok=True)
@@ -138,7 +135,7 @@ def _managed_process(cfg: Config):
 
 
 def slots_processing(cfg: Config) -> bool | None:
-    """Zpracovává server právě nějaký požadavek? (None = endpoint nedostupný)."""
+    """Check whether the server is processing a request; None means unavailable."""
     try:
         r = requests.get(f"{cfg.base_url}/slots", timeout=3)
         slots = r.json()
@@ -252,23 +249,23 @@ def _start_locked(cfg: Config, model_key: str | None = None,
         "-m", str(mfile),
         "-ngl", str(srv.get("n_gpu_layers", 999)),
         "-c", str(ctx),
-        "-np", "1",              # jeden slot = celý kontext jedinému proudu (single-user)
+        "-np", "1",              # One slot assigns the entire context to the single user stream.
         "--host", srv["host"],
         "--port", str(srv["port"]),
-        "--jinja",               # plná chat template + tool calling
-        "--reasoning-preserve",  # zachování reasoning mezi tool-call koly
-        "--image-min-tokens", "1024",  # přesnější vision grounding (computer use)
+        "--jinja",               # Enable the model chat template and tool calling.
+        "--reasoning-preserve",  # Preserve reasoning between tool-call rounds.
+        "--image-min-tokens", "1024",  # Use sufficient image tokens for precise computer-use grounding.
         "--alias", model_key,
     ]
     if mmproj is None:
-        pass  # text-only model (bez vision) - mmproj neni treba
+        pass  # Text-only models do not need a multimodal projector.
     elif mmproj.exists():
         argv += ["--mmproj", str(mmproj)]
     else:
         print(f"[WARNING] mmproj not found ({mmproj}) - vision (images) will not work!")
     argv += cfg.kv_cache_server_args(model_key)
     argv += [str(x) for x in cfg.model(model_key).get("server_args", [])]
-    # profil muze nesit vlastni server args (napr. --n-cpu-moe pretok pro danou kartu)
+    # Profiles may supply server arguments, such as --n-cpu-moe for a specific GPU budget
     profile = cfg.kv_cache_profiles(model_key).get(cfg.kv_cache_mode(model_key), {})
     argv += [str(x) for x in profile.get("server_args", [])]
     if plan:
@@ -376,7 +373,7 @@ def status(cfg: Config) -> int:
 
 
 def ensure(cfg: Config, model_key: str | None = None, *, cancelled=None, on_phase=None, on_download_progress=None) -> bool:
-    """Zajišť běžící server se zadaným modelem (případně start/switch)."""
+    """Ensure the requested model is running, starting or switching it as needed."""
     if health(cfg) and (model_key is None or running_model(cfg) == model_key):
         return True
     key = model_key or cfg.model_key()

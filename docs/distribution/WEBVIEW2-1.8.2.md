@@ -1,30 +1,30 @@
-# Marvin 1.8.2 — automatická příprava WebView2
+# Marvin 1.8.2: automatic WebView2 setup
 
-Instalátory vydání 1.8.2 byly na výslovné přání vlastníka aktualizovány pod stejným číslem a se stejnými veřejnými odkazy. Aktuální soubory a SHA-256 uvádí [manifest vydání](release-1.8.2.json).
+At the owner's request, installers were updated under the same 1.8.2 version and public links. The [release manifest](release-1.8.2.json) records current files and SHA-256 values.
 
-## Instalace a spuštění
+## Installation and startup
 
-- Minimal obsahuje Microsoft Evergreen Bootstrapper (1 783 000 bajtů). Pokud kompatibilní WebView2 chybí, bootstrapper jej automaticky stáhne a nainstaluje.
-- Full navíc obsahuje kompletní Evergreen x64 Standalone Installer (212 745 424 bajtů); příprava desktopového okna tak nevyžaduje internet. Váhy modelů zůstávají samostatné.
-- Existující kompatibilní runtime se použije beze změny. Instalace běží ve stávajícím uživatelském kontextu, bez samostatného průvodce Microsoftu.
-- Instalátor po zkopírování aplikace spustí zabalený `Marvin.exe --prepare-webview2`. Tento režim nepotřebuje systémový Python, připravené venv, backend ani model. Normální spuštění používá stejnou funkci před vytvořením okna.
-- Pokud je runtime později odstraněn, použije se přednostně místní standalone soubor nebo registrovaná offline záloha, potom bootstrapper. Chybějící či poškozený bootstrapper se znovu stáhne z připnutého zdroje a ověří.
-- Microsoft Edge je nadále potřebný pro volitelné prohlížečové nástroje. Desktopové WebView2 není totéž jako prohlížeč Edge.
+- Minimal includes Microsoft's Evergreen Bootstrapper (1,783,000 bytes), which downloads and installs WebView2 automatically when a compatible runtime is absent.
+- Full also includes the complete Evergreen x64 Standalone Installer (212,745,424 bytes), enabling offline desktop-window setup. Model weights remain separate.
+- Existing compatible runtimes are reused. Installation uses the current user context without a separate Microsoft wizard.
+- After copying the application, Setup runs the packaged `Marvin.exe --prepare-webview2`. This mode needs no system Python, prepared virtual environment, backend or model. Normal startup calls the same preparation function before creating a window.
+- If WebView2 is later removed, recovery prefers the local standalone payload or registered offline backup, then the bootstrapper. A missing/corrupt bootstrapper is downloaded from the pinned source and verified.
+- Optional browser tools still require Microsoft Edge. Edge and desktop WebView2 are separate components.
 
-## Implementace a ověření
+## Implementation and evidence
 
-`harness/webview_runtime.py` kontroluje verzi `pv` stabilního runtime v HKCU/HKLM, v obou pohledech registru. Minimální verze odpovídá zabalenému pywebview. Instalátory Microsoftu se spouštějí skrytě s `/silent /install`; návratový kód sám o sobě neznamená úspěch. Rozhoduje následná registrace použitelného runtime, včetně krátkého čekání na dokončení registrace jiným updaterem. Vypršení časového limitu násilně nezastaví probíhající aktualizátor.
+`harness/webview_runtime.py` checks the stable runtime's `pv` version in both HKCU/HKLM registry views. The minimum version follows the packaged pywebview. Microsoft installers run hidden with `/silent /install`. A process exit code alone does not prove success: a usable registered runtime must appear. A short registration wait covers another updater completing its work; a timeout does not forcibly kill that updater.
 
-`scripts/download_webview2.py` při sestavení ověřuje SHA-256 i platný Authenticode podpis Microsoft Corporation. Přesné zdroje, velikosti a podpisy jsou v `installer/webview2.json`. Běžné sestavení verze nestahuje jinou aktuální verzi pod stejným hashem; změna připnutí vyžaduje explicitní `--refresh`. Před spuštěním se kontrolní součet ověřuje znovu.
+`scripts/download_webview2.py` verifies SHA-256 and a valid Microsoft Corporation Authenticode signature at build time. Pinned sources, sizes and signatures are in `installer/webview2.json`. Ordinary builds do not silently substitute a newer payload under an old hash; repinning requires `--refresh`. Hashes are checked again before execution.
 
-Prošlo 366 základních kontrol a 80 servisních testů. Z toho 15 nových testů pokrývá detekci registru, opětovné použití runtime bez sítě a payloadu, offline přednost, Minimal, poškozené soubory, ověřené stažení, skryté parametry procesu, opožděnou registraci, falešný úspěch instalačního procesu, timeout, samostatný režim launcheru a obnovu z offline zálohy.
+366 core checks and 80 service tests passed. Fifteen new tests covered registry detection, reuse without network/payload, offline precedence, Minimal, corrupt files, verified downloads, hidden process flags, delayed registration, false process success, timeout, standalone launcher mode and offline restoration.
 
-Případy chybějícího runtime jsou ověřovány řízenými testy, které nemění sdílený systémový WebView2. Na tomto hostiteli je WebView2 152.0.4191.66; skutečný launcher a instalátor ověřují jeho opětovné použití. Čistý Windows virtuální stroj bez WebView2 není v tomto prostředí dostupný, proto takovou zkoušku toto vydání nedeklaruje.
+Missing-runtime scenarios use controlled tests without modifying shared system WebView2. This host had WebView2 152.0.4191.66; real launcher/installer runs exercised reuse. A clean Windows VM without WebView2 was unavailable, and is not claimed as tested.
 
-Skutečný upgrade dokončily oba instalátory s návratovým kódem 0 (Minimal 21 s, Full 76 s). V nainstalované aplikaci následně prošlo všech 80 servisních testů; 75 Python zdrojů, oba PDF manuály i oba instalační soubory Microsoftu odpovídají výsledné distribuci. Běžný `Marvin.exe` otevřel pracovní rozhraní 1.8.2. Full prošel i samostatnou zkouškou přemístěného Python prostředí bez systémového Pythonu, včetně API a načtení DLL llama.cpp.
+Both real upgrades exited 0 (Minimal 21 seconds, Full 76 seconds). All 80 service tests passed in the installed app. Its 75 Python sources, both PDF manuals and both Microsoft payloads matched the distribution. Normal `Marvin.exe` opened the 1.8.2 workspace. Full also passed relocated private-Python checks without system Python, including API startup and llama.cpp DLL loading.
 
-Distribuční ZIP má sedm položek s ověřenými CRC a SHA-256. Offline sada má 82 položek; 73 původních položek zachovalo velikost, čas změny a uložený kontrolní součet. SHA-256 aktualizovaného offline manifestu: `0e619dd2e229be830e93a669728faeeddadc7a2af1fe481c096035eb4a24832c`.
+The distribution ZIP contained seven entries with verified CRC/SHA-256. The offline set contained 82 entries; 73 original entries retained sizes, modification times and stored hashes. Offline manifest SHA-256: `0e619dd2e229be830e93a669728faeeddadc7a2af1fe481c096035eb4a24832c`.
 
-Oficiální postup distribuce, detekce a tiché instalace: [Microsoft WebView2 distribution](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution).
+[Microsoft's distribution, detection and silent-install guidance](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution).
 
-Inference prostředí, uzamčené Python balíčky, llama.cpp, modely, Q3 váhy a Q8 KV zůstávají beze změny. Offline sada dostává pouze aktualizovaný Full instalátor, návody, manuály, tři soubory WebView2 a nový manifest; váhy ani snapshot Python prostředí se znovu nebalí.
+Inference dependencies, pinned Python packages, llama.cpp, Q3 weights and Q8 KV were unchanged. The offline update replaced the Full installer, guides, manuals, three WebView2 files and manifest; it did not repack weights or the Python snapshot.

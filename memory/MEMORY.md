@@ -1,5 +1,5 @@
-# Paměť pracovního režimu: Vývoj
+# Work-mode memory: Development
 
-<!-- Model sem ukládá pravidla a preference pro vývoj a coding (nástrojem save_memory,
-     scope="mode"). Tento soubor můžeš libovolně upravovat - model změnu uvidí
-     při dalším startu úlohy. Piš stručně, po jednom faktu na řádek. -->
+<!-- Facts, rules and preferences for development across projects.
+     Use save_memory with scope="mode". Keep one concise fact per line.
+     Edits become visible to the model when the next task starts. -->

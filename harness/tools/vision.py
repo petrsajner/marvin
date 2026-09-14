@@ -1,4 +1,4 @@
-"""Vision nástroj - přiložení obrázku do konverzace (model ho uvidí)."""
+"""Attach an image to the conversation for the model to inspect."""
 from __future__ import annotations
 
 from pathlib import Path

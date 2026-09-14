@@ -1,4 +1,4 @@
-"""Nástroje trvalé paměti - globální, režimová a projektová vrstva."""
+"""Tools for global, work-mode and project memory."""
 from __future__ import annotations
 
 from harness.safety import Risk
@@ -22,7 +22,7 @@ class ReadMemoryTool(Tool):
     def run(self, ctx: AgentContext, scope: str = "mode") -> str:
         from harness.memory import MemoryStore
         store = MemoryStore(ctx.cfg, ctx.project_workspace, ctx.work_mode)
-        return store.read(scope) or "(prázdné)"
+        return store.read(scope) or "(empty)"
 
 
 class SaveMemoryTool(Tool):
@@ -38,7 +38,7 @@ class SaveMemoryTool(Tool):
                   "description": "Which memory layer should own the fact"},
     }
     required = ["fact", "scope"]
-    risk = Risk.SAFE  # append-only na pevnou cestu mimo uživatelské soubory
+    risk = Risk.SAFE  # Append only to the fixed memory path outside ordinary user files.
 
     def run(self, ctx: AgentContext, fact: str, scope: str = "mode") -> str:
         from harness.memory import MemoryStore

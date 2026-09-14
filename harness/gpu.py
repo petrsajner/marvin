@@ -1,9 +1,6 @@
-"""Detekce VRAM a výběr model/KV kombinace, která se vejde na kartu.
+"""Detect GPU memory and select compatible model/context profiles.
 
-Profil v configu může nést `min_vram_gb` (konzervativní odhad potřebné VRAM
-včetně KV cache a rezervy). `hardware.vram_gb` v configu přepisuje detekci
-(auto | číslo) - to je ruční přepínač grafické karty.
-"""
+min_vram_gb describes each profile's capacity requirement, including cache and working margins. hardware.vram_gb can impose a smaller capacity budget but cannot invent memory beyond the detected card."""
 from __future__ import annotations
 
 import subprocess
@@ -16,7 +13,7 @@ _total_cache: dict = {"ts": 0.0, "value": None}
 
 
 def vram_total_gb() -> float | None:
-    """Celková VRAM první GPU v GB (nvidia-smi, 60 s cache); None = nedostupné."""
+    """Return the first GPU's memory capacity in GiB, cached for 60 seconds, or None."""
     now = time.time()
     if _total_cache["value"] is not None and now - _total_cache["ts"] < 60:
         return _total_cache["value"]
@@ -48,7 +45,7 @@ def normalize_vram_setting(value):
 
 
 def effective_vram_gb(cfg) -> float | None:
-    """VRAM podle configu: hardware.vram_gb (auto|číslo) s fallbackem na detekci."""
+    """Resolve the configured GPU budget, bounded by the detected card capacity."""
     setting = (cfg.data.get("hardware", {}) or {}).get("vram_gb", "auto")
     detected = vram_total_gb()
     try:
@@ -61,7 +58,7 @@ def effective_vram_gb(cfg) -> float | None:
 
 
 def profile_min_vram(profile: dict) -> float:
-    """Potřebná VRAM profilu; bez min_vram_gb považuj profil za neomezený (1e9)."""
+    """Return the profile requirement; unknown requirements use a prohibitive default."""
     try:
         return float(profile.get("min_vram_gb", 1e9))
     except (TypeError, ValueError):
@@ -69,7 +66,7 @@ def profile_min_vram(profile: dict) -> float:
 
 
 def fitting_profiles(cfg, model_key: str, vram_gb: float | None) -> dict[str, dict]:
-    """KV profily modelu, které se vejdou (bez min_vram_gb = legacy, povolené)."""
+    """Return profiles compatible with a known GPU capacity budget."""
     profiles = cfg.kv_cache_profiles(model_key)
     if vram_gb is None:
         return profiles
@@ -78,12 +75,9 @@ def fitting_profiles(cfg, model_key: str, vram_gb: float | None) -> dict[str, di
 
 
 def best_fit(cfg, vram_gb: float | None) -> tuple[str, str] | None:
-    """Nejlepší (model, kv profil) pro danou VRAM.
+    """Choose a model and context profile for the available capacity.
 
-    Pořadí: výchozí model má přednost; u něj největší kontext, který se vejde.
-    Když výchozí model nemá nic, zkusí se ostatní modely (největší kontext).
-    None = nic nevyhovuje (nebo VRAM neznámá).
-    """
+    Prefer the requested model, then its family, followed by other models. Within that priority, prefer the largest compatible context. Return None if no profile fits or capacity is unknown."""
     if vram_gb is None:
         return None
     default_key = cfg.model_key()
@@ -104,7 +98,7 @@ def best_fit(cfg, vram_gb: float | None) -> tuple[str, str] | None:
 
 
 def fits(cfg, model_key: str, profile_key: str, vram_gb: float | None) -> bool:
-    """Vejde se konkrétní kombinace? (bez údaje o VRAM nebo legacy profil = True)."""
+    """Check profile compatibility; unknown capacity or a legacy profile is allowed."""
     if vram_gb is None:
         return True
     profile = cfg.kv_cache_profiles(model_key).get(profile_key)
@@ -132,7 +126,7 @@ def lower_memory_profiles(cfg, model_key=None):
 
 
 def download_keys(cfg, vram_gb: float | None) -> list[str]:
-    """Modely ke stažení: aspoň jeden profil se vejde (bez VRAM dat = všechny)."""
+    """Select models with a compatible profile; unknown GPU capacity keeps all candidates."""
     keys = [key for key, model in cfg.data["models"].items()
             if not model.get("optional_download") or key == cfg.model_key()]
     if vram_gb is None:

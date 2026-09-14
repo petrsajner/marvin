@@ -1,52 +1,50 @@
-# Marvin 1.8.0 — dokončení a ověření
+# Marvin 1.8.0: completion and verification
 
-Datum: 13. 9. 2026. Windows, RTX 5090 32 GiB, 64 GiB RAM, Core Ultra 7 265K (8 P + 12 E, bez HT).
+13 September 2026. Windows, RTX 5090 32 GiB, 64 GiB RAM, Core Ultra 7 265K (8 P + 12 E, no HT). This is a historical release record, not the current package manifest.
 
-## Výsledek
+## Delivered behavior
 
-- Flash-Next Q3_K_XL je v běžném výběru modelů, včetně vision, nástrojů a agentní smyčky. Příprava automaticky ověří model, upstream runtime, CPU topologii a volnou RAM/VRAM. Q8 kontext se volí mezi 256k, 192k a 128k; menší okno model nedostává.
-- Je opraven závod při dokončení úlohy: rychle doručené upřesnění nezůstane bez běžícího pracovníka. STOP nadále pozastaví frontu.
-- Startup a pevná spodní část pravého sloupce zobrazují © Petr Sajner 2026. Footer se při rolování obsahu neposouvá; ověřeno v reálném webovém UI. Ověřena byla také skutečná úvodní HTML obrazovka launcheru. Nativní Tk okno nebylo obrazově kontrolováno.
-- České i anglické manuály popisují nynější UI, modely, ovládání úloh a offline instalaci. Aktuální PDF mají 20, respektive 26 stran; upravené stránky byly vyrenderované a vizuálně zkontrolované.
-- Full 1.8.0 byl skutečně nainstalován přes dosavadní aplikaci 1.6.2 v `%LOCALAPPDATA%/QwenHarness`. Instalace i následná příprava z offline zálohy skončily kódem 0. Při aktualizaci zůstalo všech 369 kontrolovaných souborů uživatelských dat beze změny. Poslední vybraný model Ornith zůstal zachován.
-- Instalovaný launcher načetl model, zpřístupnil UI a při ukončení zastavil oba servery a uvolnil GPU; proces skončil kódem 0. V instalovaném prostředí prošlo všech 50 servisních a runtime testů. Zdrojové Python soubory a instalované manuály byly porovnány s konečným balíčkem.
+- Flash-Next Q3_K_XL entered the normal model picker with vision, tools and the agent loop. Preparation checks the model, upstream runtime, CPU topology and free memory. Q8 context selection is bounded to 256k, 192k or 128k.
+- The completion race no longer strands rapidly arriving clarification messages. STOP still pauses the queue.
+- Startup and the fixed bottom of the right column show © Petr Sajner 2026. Real web UI scrolling and launcher startup HTML were visually checked; the native Tk window was not visually inspected.
+- Czech/English manuals describe the current UI, models, task control and offline setup. They had 20/26 pages respectively; changed pages were rendered and visually checked.
+- Full 1.8.0 upgraded the real 1.6.2 installation in `%LOCALAPPDATA%/QwenHarness`. Installation and offline preparation exited 0. All 369 checked user-data files were unchanged and the last selected Ornith model was retained.
+- The installed launcher loaded the model and UI, then stopped both servers and released GPU memory on exit (code 0). All 50 installed service/runtime tests passed; installed Python source and manuals matched the final package.
 
-## Distribuce
+## Historical distribution
 
-| Soubor v `dist/` | Bajty | SHA-256 |
+| File in `dist/` | Bytes | SHA-256 |
 |---|---:|---|
-| `Marvin-Setup-1.8.0-Minimal.exe` | 52 343 903 | `4029a02813664fe7259c8431b3adfbf684e63ac84fb3b6b573c799cb0524b469` |
-| `Marvin-Setup-1.8.0-Full.exe` | 727 119 209 | `b4670692706e65d0d85b154e029a4f820ec6a0f0ac93d059b58927fe1ece762f` |
-| `Marvin-1.8.0-Windows-x64.zip` | 778 611 911 | `134edb93476fa43cc826bb67a9cb0108f4bc59c58f9b945647c1ea878b5894b0` |
+| `Marvin-Setup-1.8.0-Minimal.exe` | 52,343,903 | `4029a02813664fe7259c8431b3adfbf684e63ac84fb3b6b573c799cb0524b469` |
+| `Marvin-Setup-1.8.0-Full.exe` | 727,119,209 | `b4670692706e65d0d85b154e029a4f820ec6a0f0ac93d059b58927fe1ece762f` |
+| `Marvin-1.8.0-Windows-x64.zip` | 778,611,911 | `134edb93476fa43cc826bb67a9cb0108f4bc59c58f9b945647c1ea878b5894b0` |
 
-ZIP má sedm položek: dva instalátory, dva PDF manuály, dva instalační návody a kontrolní součty. CRC i SHA všech položek prošly. Čisté dočasné prostředí obnovilo závislosti z offline balíčku a spustilo API/UI bez osobních dat. Full navíc prošel ověřením privátního Pythonu bez systémového Pythonu a s konfliktními proměnnými prostředí. Nejde o test na čisté Windows VM.
+The ZIP's seven entries were two installers, two PDFs, two install guides and checksums. All CRC/SHA checks passed. A clean temporary environment restored offline dependencies and served API/UI without personal data. Full also passed private-Python checks without system Python and with conflicting environment variables. This was not a clean Windows VM test.
 
-Kompletní `Marvin-Offline-Backup-1.8.0/` obsahuje 79 položek manifestu o celkové velikosti 223 518 387 092 bajtů (208,17 GiB), včetně všech sedmi variant modelů, potřebných projektorů, llama.cpp, balíčků Pythonu a posledního Full instalátoru. Celá záloha prošla kontrolou SHA všech 79 souborů. Po poslední změně pouze instalátoru byly znovu ověřeny velikosti všech položek a hashe všech 65 nemodelových souborů; váhy od úplné kontroly zůstaly nedotčené. Manifest SHA-256: `dfb74277d40f2def1984393a2129eefda9a22c20e78271ae222b1ca0f6d3c8bd`.
+`Marvin-Offline-Backup-1.8.0/` contained 79 manifest entries totaling 223,518,387,092 bytes (208.17 GiB): all seven model variants, projectors, llama.cpp, Python packages and the latest Full installer. All 79 hashes passed. After the final installer-only change, all sizes and 65 non-model hashes were rechecked; weights remained unchanged since full verification. Manifest SHA-256: `dfb74277d40f2def1984393a2129eefda9a22c20e78271ae222b1ca0f6d3c8bd`.
 
-## Ověření modelů a meze
+## Model qualification and limits
 
-- 366 základních kontrol a 50 servisních/runtime testů prošlo ve zdrojovém prostředí.
-- Runtime audit porovnal 22 dosavadních modelových profilů před a po upgradu, tedy 44 kombinací, s chatem, nástroji, vision tam, kde je podporovaná, STOP a dlouhým kontextem. Podrobnosti: [b10935](LLAMA-b10935-VALIDATION.md).
-- Flash-Next: praktický 128k test zpracoval 122 397 vstupních tokenů a správně nalezl tři údaje. První odpověď trvala 1 053,687 s, navazující 1,266 s díky cache. U krátkého běhu bylo naměřeno 27,29 generovaných tok/s.
-- Funkční 256k profil prošel chatem, nástroji, vision, STOP a vstupem 24 101 tokenů. Celé 256k okno nebylo naplněno. Samostatný dlouhý 192k běh ani fyzické 16/24GB karty ověřené nejsou. Odhady dostupnosti profilů nejsou měřením těchto karet.
-- Žádná z 95 zamčených verzí balíčků Pythonu se nezměnila. Upstream llama.cpp b10935 je pinovaný a původní b10549 zůstává jako rollback. Komunitní expert-cache fork nebyl použit.
+366 core checks and 50 service/runtime tests passed in the source environment. The runtime audit compared 22 existing model/profile combinations on each runtime (44 total) with chat, tools, supported vision, STOP and long context. See [b10935 qualification](LLAMA-b10935-VALIDATION.md).
 
-Podrobnosti a měření: [Flash-Next](../design/2026-09-13-qwen38-flash-next-integration.md). Posouzení Macu je zachováno jako odložený výzkum, bez implementace.
+Flash-Next's practical 128k test processed 122,397 input tokens and recovered three facts. First response: 1,053.687 seconds; cached follow-up: 1.266 seconds. A separate short run measured 27.29 generated tokens/s. The 256k profile passed chat, tools, vision, STOP and 24,101 input tokens, but its entire window was not filled. A separate long 192k run and physical 16/24 GB cards were not qualified.
 
-## Uspořádání pracovního adresáře
+All 95 Python package versions stayed locked. Upstream b10935 was pinned, b10549 retained for rollback, and no community expert-cache fork used. See [Flash-Next integration](../design/2026-09-13-qwen38-flash-next-integration.md). The Mac assessment remained deferred research.
 
-| Místo | Účel |
+## Workspace organization at this release
+
+| Location | Purpose |
 |---|---|
-| `harness/`, `frontend/`, `launcher/` | Současné zdroje aplikace |
-| `scripts/`, `installer/`, `tests/` | Používané sestavení, instalace a opakovatelné testy |
-| `docs/`, `output/pdf/` | Aktuální dokumentace, zachovaný výzkum a distribuované manuály |
-| `.venv/`, `frontend/node_modules/`, `ui_dist/` | Zachované vývojové závislosti a připravené UI |
-| `runtime/models/`, `runtime/llama/`, kandidát a rollback runtime | Zachované modely a inference prostředí |
-| `dist/` | Pouze dva aktuální instalátory a distribuční ZIP |
-| `Marvin-Offline-Backup-1.8.0/` | Ověřený úplný offline balíček |
-| `runtime/archive/` | Ověřený archiv testů a přehled úklidu |
-| `runtime/KE-SMAZANI/` | Jediné místo připravené k ručnímu odstranění vlastníkem |
+| `harness/`, `frontend/`, `launcher/` | Current application source |
+| `scripts/`, `installer/`, `tests/` | Build/setup tools and repeatable tests |
+| `docs/`, `output/pdf/` | Documentation, retained research and distributed manuals |
+| `.venv/`, `frontend/node_modules/`, `ui_dist/` | Active development dependencies and built UI |
+| `runtime/models/`, `runtime/llama/`, staged/rollback runtime | Weights and inference environments |
+| `dist/` | Current installers and distribution ZIP |
+| `Marvin-Offline-Backup-1.8.0/` | Verified complete offline set for this version |
+| `runtime/archive/` | Verification evidence and cleanup record |
+| `runtime/KE-SMAZANI/` | Files marked for the owner's manual removal |
 
-`runtime/archive/verification-1.8.0.zip` uchovává 570 souborů (82 017 664 bajtů). CRC i SHA každého souboru byly porovnány s originálem. SHA archivu: `f5b18420186b118ffc3a69b5d701b155adb5b2337cd6c8caeb375b4b9ef7c1ea`. Původní cesty `runtime/validation/...` uvedené ve výzkumu jsou nyní cestami uvnitř tohoto ZIPu. Archiv obsahuje také soukromou zálohu předchozí instalace; zůstává lokální a ignorovaný Gitem.
+`runtime/archive/verification-1.8.0.zip` preserved 570 files (82,017,664 bytes). Each original file was checked against archive CRC/SHA. Archive SHA-256: `f5b18420186b118ffc3a69b5d701b155adb5b2337cd6c8caeb375b4b9ef7c1ea`. Historical `runtime/validation/...` paths now refer to entries inside this ZIP. It includes a private installation backup and remains local/Git-ignored.
 
-Do `KE-SMAZANI` byly přesunuty pracovní kopie sestavení, staré instalátory, rozbalené testovací výstupy, prokazatelně testovací chaty, bytecode a nedokončená download cache. Přes 18 500 souborů je označeno pro ruční smazání; zatím fyzicky zůstávají na disku. Aktivní závislosti, kompletní GGUF váhy, uživatelská data skutečné instalace a aktuální distribuce nejsou součástí této složky. Automatická kontrola dříve zamítla mazání bez konkrétního odůvodnění; vlastník si výslovně převzal konečné odstranění.
+More than 18,500 files were moved to `KE-SMAZANI` for manual removal: build copies, old installers, unpacked test outputs, identified test chats, bytecode and incomplete download caches. Active dependencies, complete GGUFs, actual installed user data and current distribution were excluded. Automatic approval review had rejected deletion without a specific reason, and the owner took responsibility for final removal. The files were still physically present when this report was written.

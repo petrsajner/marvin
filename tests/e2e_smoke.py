@@ -1,8 +1,6 @@
-"""E2E smoke test - vyžaduje stažený model a GPU (spouští llama-server).
+"""End-to-end smoke test requiring downloaded weights and a GPU.
 
-Testuje: chat, tool calling (agent vytvoří soubor), vision (čtení obrázku).
-Spuštění:  .venv/Scripts/python tests/e2e_smoke.py [--model q4]
-"""
+Exercise chat, file creation through tools and image reading. Run with tests/e2e_smoke.py [--model q4]."""
 from __future__ import annotations
 
 import argparse
@@ -52,7 +50,7 @@ def run_agent_task(cfg, llm, task: str, images=None, mode: str = "agent", max_st
     final_text = ""
     steps = 0
     while steps < max_steps:
-        r = agent.step(approve=True)  # auto schvaluje vše (safety=auto)
+        r = agent.step(approve=True)  # Test fixtures use automatic action approval.
         steps += 1
         if r.status is Status.FINAL:
             final_text = r.text
@@ -72,31 +70,31 @@ def main() -> int:
 
     print("=== E2E SMOKE TEST ===")
     if not args.skip_server_start:
-        print(f"[server] start modelu {args.model} ...")
+        print(f"[server] starting model {args.model} ...")
         if servermgmt.start(cfg, args.model) != 0:
-            print("NELZE SPUSTIT SERVER")
+            print("CANNOT START SERVER")
             return 2
     elif not servermgmt.health(cfg):
-        print("Server neběží!")
+        print("The server is not running!")
         return 2
 
     llm = LLMClient(cfg)
 
-    # 1) základní chat + latency
+    # 1) Basic chat and latency.
     print("\n[1] Chat")
     t0 = time.time()
     session = Session(cfg, system_prompt=system_prompt("chat"))
     safety = SafetyPolicy("auto", max_steps=5)
     agent = Agent(cfg, llm, session, build_registry("chat"), safety, mode="chat")
-    agent.new_task("Odpověz jednou větou: jaký je hlavní rozdíl mezi RAM a diskem?")
+    agent.new_task("In one sentence, explain the main difference between RAM and disk storage.")
     r = agent.step(approve=True)
     dt = time.time() - t0
     ok = r.status is Status.FINAL and len(r.text) > 20
-    check(ok, f"chat odpověď ({dt:.1f}s)", f"status={r.status} text={r.text[:100]!r}")
+    check(ok, f"chat response ({dt:.1f}s)", f"status={r.status} text={r.text[:100]!r}")
     if r.text:
         print(f"      → {r.text[:150]}")
 
-    # 2) agent - vytvoření souboru (tool calling)
+    # 2) File creation through agent tool calling.
     print("\n[2] Agent + tool calling (write_file)")
     tmp = Path(tempfile.mkdtemp())
     old_ws = cfg.agent.get("workspace")
@@ -104,28 +102,28 @@ def main() -> int:
     try:
         text, session = run_agent_task(
             cfg, llm,
-            f"Vytvoř soubor 'e2e_test.txt' s přesně tímto obsahem (jeden řádek): AHOJ-QWEN-E2E "
-            f"a pak odpověz 'HOTOVO'.")
+            f"Create file 'e2e_test.txt' containing exactly this single line: HELLO-QWEN-E2E "
+            f"and then respond 'DONE'.")
         f = tmp / "e2e_test.txt"
-        check(f.exists() and "AHOJ-QWEN-E2E" in f.read_text(encoding="utf-8"),
-              "soubor vytvořen se správným obsahem",
-              f"(existuje={f.exists()}, text={text[:150]!r})")
+        check(f.exists() and "HELLO-QWEN-E2E" in f.read_text(encoding="utf-8"),
+              "File created with the expected content",
+              f"(exists={f.exists()}, text={text[:150]!r})")
         tool_calls_used = [m for m in session.messages if m.get("tool_calls")]
-        check(bool(tool_calls_used), "model skutečně volal nástroje")
+        check(bool(tool_calls_used), "The model actually called tools")
     finally:
         cfg.agent["workspace"] = old_ws
 
     # 3) vision
-    print("\n[3] Vision (čtení obrázku)")
+    print("\n[3] Vision: reading an image")
     img_path = tmp / "vision_test.png"
     make_test_image(img_path)
     text, _ = run_agent_task(
         cfg, llm,
-        "Jaké číslo je napsané na přiloženém obrázku? Odpověz jen číslem.",
+        "What number is written in the attached image? Reply with the number only.",
         images=[img_path], mode="chat")
-    check("42" in text, f"model přečetl '42' z obrázku", f"text={text[:200]!r}")
+    check("42" in text, f"model read '42' from the image", f"text={text[:200]!r}")
 
-    print(f"\n=== VÝSLEDEK: {PASS} ✓ / {FAIL} ✗ ===")
+    print(f"\n=== RESULT: {PASS} ✓ / {FAIL} ✗ ===")
     print(servermgmt.vram_str())
     return 1 if FAIL else 0
 

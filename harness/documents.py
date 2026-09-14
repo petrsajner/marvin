@@ -1,4 +1,4 @@
-"""Export strukturovaného textu do Markdown, DOCX a PDF."""
+"""Export structured text to Markdown, DOCX and PDF."""
 from __future__ import annotations
 
 import re
@@ -210,10 +210,10 @@ def _format_markdown_table(rows: list[list[str]]) -> str:
 def read_document_content(path: Path, max_chars: int = 40_000, sheet: str | None = None,
                           start: int = 1, count: int = 100, cell_range: str | None = None,
                           formulas: bool = False) -> str:
-    """Extrahuje čistý text a tabulky z dokumentů (.docx, .pdf, .xlsx, .csv)."""
+    """Extract text and tables from DOCX, PDF, XLSX and CSV documents."""
     p = Path(path).resolve()
     if not p.is_file():
-        raise FileNotFoundError(f"Dokument nebyl nalezen: {p}")
+        raise FileNotFoundError(f"Document not found: {p}")
 
     suffix = p.suffix.lower()
     start = max(1, int(start))
@@ -237,11 +237,11 @@ def read_document_content(path: Path, max_chars: int = 40_000, sheet: str | None
     elif suffix == ".pdf":
         import pypdf
         reader = pypdf.PdfReader(p)
-        parts = [f"=== PDF Document: {p.name} ({len(reader.pages)} stran) ==="]
+        parts = [f"=== PDF Document: {p.name} ({len(reader.pages)} pages) ==="]
         for idx, page in enumerate(reader.pages[start - 1:start - 1 + count], start):
             txt = page.extract_text() or ""
             if txt.strip():
-                parts.append(f"--- Strana {idx} ---\n{txt.strip()}")
+                parts.append(f"--- Page {idx} ---\n{txt.strip()}")
             else:
                 parts.append(f"--- Page {idx}: no text layer; use view_document_page for vision ---")
         if start - 1 + count < len(reader.pages):
@@ -251,7 +251,7 @@ def read_document_content(path: Path, max_chars: int = 40_000, sheet: str | None
     elif suffix in (".xlsx", ".xlsm"):
         import openpyxl
         wb = openpyxl.load_workbook(p, data_only=not formulas, read_only=True)
-        parts = [f"=== Excel sešit: {p.name} (listy: {', '.join(wb.sheetnames)}) ==="]
+        parts = [f"=== Excel workbook: {p.name} (listy: {', '.join(wb.sheetnames)}) ==="]
         if sheet and sheet not in wb.sheetnames:
             wb.close()
             raise ValueError(f"Unknown sheet: {sheet}")
@@ -272,7 +272,7 @@ def read_document_content(path: Path, max_chars: int = 40_000, sheet: str | None
                 if max_row < ws.max_row:
                     parts.append(f"[More rows: read_document sheet={s_name!r}, start={max_row + 1}, count={count}]")
             else:
-                parts.append(f"### List: `{s_name}` (prázdný)")
+                parts.append(f"### List: `{s_name}` (empty)")
         wb.close()
         parts.append("[Formulas are shown literally; cached values may be absent until Excel recalculates.]" if formulas
                      else "[Values are cached Excel values. Use formulas=true to inspect formulas.]")
@@ -301,13 +301,13 @@ def read_document_content(path: Path, max_chars: int = 40_000, sheet: str | None
     if max_chars > 0 and len(res) > max_chars:
         half = max_chars // 2
         omitted = len(res) - max_chars
-        res = res[:half] + f"\n\n... [dokument zkrácen: ~{omitted} znaků vynecháno] ...\n\n" + res[-half:]
+        res = res[:half] + f"\n\n... [document truncated: ~{omitted} characters omitted] ...\n\n" + res[-half:]
     return res
 
 
 def edit_spreadsheet_content(path: Path, action: str, sheet: str | None = None,
                              data: Any = None, title: str | None = None) -> str:
-    """Vytváří a edituje Excel tabulky (.xlsx)."""
+    """Create and edit Excel workbooks."""
     import openpyxl
     p = Path(path).resolve()
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -323,38 +323,38 @@ def edit_spreadsheet_content(path: Path, action: str, sheet: str | None = None,
                 if isinstance(row, (list, tuple)):
                     ws.append(list(row))
         wb.save(p)
-        return f"OK: Vytvořen nový Excel sešit `{p.name}` s listem `{ws.title}`."
+        return f"OK: Created a new Excel workbook `{p.name}` s listem `{ws.title}`."
 
     if not p.is_file():
-        raise FileNotFoundError(f"Excel soubor nebyl nalezen: {p}. Pro vytvoření nového zadejte action='create'.")
+        raise FileNotFoundError(f"Excel file not found: {p}. To create a new one, use action='create'.")
 
     wb = openpyxl.load_workbook(p)
     ws = wb[sheet] if sheet and sheet in wb.sheetnames else wb.active
 
     if action == "list_sheets":
-        return f"Listy v sešitu `{p.name}`: " + ", ".join(f"`{s}`" for s in wb.sheetnames)
+        return f"Sheets in workbook `{p.name}`: " + ", ".join(f"`{s}`" for s in wb.sheetnames)
 
     if action == "create_sheet":
         s_title = (title or sheet or "NovyList")[:31]
         new_ws = wb.create_sheet(title=s_title)
         wb.save(p)
-        return f"OK: Vytvořen nový list `{new_ws.title}` v sešitu `{p.name}`."
+        return f"OK: Created a new sheet `{new_ws.title}` in workbook `{p.name}`."
 
     if action == "append_rows":
         if not isinstance(data, list):
-            raise ValueError("Pro action='append_rows' musí být data seznam řádků (list of lists).")
+            raise ValueError("action='append_rows' requires a list of rows (a list of lists).")
         for row in data:
             if isinstance(row, (list, tuple)):
                 ws.append(list(row))
         wb.save(p)
-        return f"OK: Přidáno {len(data)} řádků do listu `{ws.title}`."
+        return f"OK: Appended {len(data)} rows to sheet `{ws.title}`."
 
     if action == "update_cells":
         if not isinstance(data, dict):
-            raise ValueError("Pro action='update_cells' musí být data slovník buněk např. {'A1': 100, 'B1': '=SUM(A1:A5)'}.")
+            raise ValueError("action='update_cells' requires a cell dictionary, for example {'A1': 100, 'B1': '=SUM(A1:A5)' }.")
         for cell_coord, val in data.items():
             ws[cell_coord] = val
         wb.save(p)
-        return f"OK: Aktualizováno {len(data)} buněk v listu `{ws.title}`."
+        return f"OK: Updated {len(data)} cells in sheet `{ws.title}`."
 
-    raise ValueError(f"Neznámá akce: {action}. Dostupné akce: create, list_sheets, create_sheet, append_rows, update_cells")
+    raise ValueError(f"Unknown action: {action}. Available actions: create, list_sheets, create_sheet, append_rows, update_cells")

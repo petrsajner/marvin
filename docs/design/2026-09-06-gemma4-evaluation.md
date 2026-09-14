@@ -1,270 +1,237 @@
-# Gemma 4 v Marvinovi: proveditelnost, paměť a doporučení
+# Gemma 4 in Marvin: feasibility, memory and recommendation
 
-Datum ověření: 6. 9. 2026. Jde o průzkum a návrh, nikoli implementaci nebo schválenou roadmapu. Gemma nebyla stažena ani spuštěna. Odhady paměti a rychlosti nejsou výsledkem lokálního benchmarku Gemmy.
+Research date: 6 September 2026. This is retained research, not implementation or an approved roadmap. Gemma was neither downloaded nor run; memory and speed estimates are not local Gemma benchmarks. Translated and consolidated into English on September 15 without revalidating upstream claims.
 
-**Rozhodnutí vlastníka, 6. 9. 2026: výzkum uložit, nyní neimplementovat.** Integrace, stahování modelů a experimentální benchmarky jsou odloženy. Níže uvedené profily a testovací postupy slouží pouze jako podklad pro případné budoucí pokračování na výslovný pokyn vlastníka; nejsou oprávněním k automatickému zahájení práce.
+**Owner decision: save the research; do not implement now.** Downloads, integration and experimental benchmarks remain deferred until an explicit request.
 
-**Doporučení: Qwen 3.8 27B Q5 ponechat jako výchozí model na 32 GB. Pro širší podporu hardwaru mají smysl dva kandidáti: Gemma 4 26B A4B pro 24–32 GB a Gemma 4 12B Unified pro 16 GB. Prioritou je ověřit jejich oficiální QAT Q4_0 varianty, u 12B také Q5. Gemmu 31B nyní nepřidávat jako další standardní profil.**
+**Recommendation:** keep Qwen 3.8 27B Q5 as the 32 GB default. Investigate Gemma 4 26B A4B for 24–32 GB and Gemma 4 12B Unified for 16 GB, starting with official QAT Q4_0 files and optionally 12B Q5. Do not add 31B as another standard profile without a demonstrated benefit.
 
-## 1. Skutečné prostředí
+## 1. Environment at the time of research
 
-Lokálně ověřeno:
+Locally checked: RTX 5090 with 32,607 MiB VRAM (2,064 MiB occupied), Core Ultra 7 265K, about 64 GiB RAM, Windows, llama-server b10549 / `b2e5e9b28` / Clang 20.1.8 with CUDA 13. One model and slot (`-np 1`), Flash Attention, GGUF and a separate vision projector; preserve sequential operation.
 
-- RTX 5090, 32 607 MiB celkové VRAM, při kontrole 2 064 MiB obsazeno.
-- Intel Core Ultra 7 265K, přibližně 64 GiB instalované systémové RAM.
-- Windows, llama-server build 10549, commit `b2e5e9b28`, Clang 20.1.8; přibalený CUDA 13 runtime.
-- Jeden model a jeden serverový slot (`-np 1`), Flash Attention, GGUF, samostatný vision projektor. Zachovat současnou sekvenční architekturu.
-- Výchozí Qwen Q5 má přes výběr KV profilu skutečný limit 196 608 tokenů. Samostatná hodnota `ctx_size: 98304` u modelu tento zvolený profil nepřebíjí.
+The selected Qwen Q5 KV profile provided 196,608 tokens. The model-level `ctx_size: 98304` did not override that profile.
 
-| Stažený model | Velikost samotného souboru | Kontext relevantního profilu |
-|---|---:|---:|
-| Qwen 3.8 27B Q5 | 18,414 GiB | 192k, Q8 KV |
-| Qwen 3.8 27B Q4 | 15,334 GiB | 128k F16 / 256k Q8 |
-| Qwen 3.8 27B IQ3_S | 11,214 GiB | profil pro menší GPU |
-| Ornith 1.5 35B-A3B Abliterated Q5 | 23,031 GiB | 128k Q8 |
-| Nemotron 3.5 Lightning Q4_K_XL | 23,754 GiB | několik profilů |
-| Nemotron 3.5 Lightning Q5_K_XL | 28,326 GiB | několik profilů |
+| Downloaded model | Weight file | Relevant context |
+|---|---:|---|
+| Qwen 3.8 27B Q5 | 18.414 GiB | 192k Q8 |
+| Qwen 3.8 27B Q4 | 15.334 GiB | 128k F16 / 256k Q8 |
+| Qwen 3.8 27B IQ3_S | 11.214 GiB | Small-GPU profiles |
+| Ornith 1.5 35B-A3B Abliterated Q5 | 23.031 GiB | 128k Q8 |
+| Nemotron 3.5 Lightning Q4_K_XL | 23.754 GiB | Multiple profiles |
+| Nemotron 3.5 Lightning Q5_K_XL | 28.326 GiB | Multiple profiles |
 
-Projektory Qwenu a Ornithu mají dalších 0,864 a 0,841 GiB. Konfigurace Nemotronu v YAML je odsazena pod `hardware`, ale oba modely jsou také v programových výchozích hodnotách `harness/config.py`; pouhé čtení YAML by proto dalo neúplný přehled. Existující milionový profil není doporučením tohoto průzkumu a odporuje současným produktovým invariantům.
+Qwen/Ornith projectors added 0.864/0.841 GiB. At that date, YAML placed Nemotron definitions under `hardware`, while Python defaults also defined them; reading YAML alone would miss the effective catalog. This placement was corrected during the later source cleanup. The old million-token profile conflicted with product invariants and was not recommended; it has since been removed.
 
-Zdroje v repozitáři: `config.yaml`, `harness/config.py`, `harness/servermgmt.py`, `harness/llm.py`, `harness/session.py`, `scripts/download_models.py`, `docs/ARCHITECTURE.md`. Pracovní strom již před průzkumem obsahoval rozpracované změny; analýza je neupravuje.
+Inspected sources included `config.yaml`, configuration/server/client/session modules, the downloader and architecture guide. Pre-existing worktree changes were left untouched by the research. See [current memory profiles](memory-profiles.md) for later corrections to the existing small-card presets.
 
-## 2. Varianty Gemmy
+## 2. Gemma variants
 
-| Varianta | Parametry | Architektura | Nativní kontext | Vstupy |
+| Variant | Parameters | Architecture | Native context | Inputs |
 |---|---|---|---:|---|
-| E2B | 2,3B efektivních / 5,1B s embeddingy | malý dense + PLE | 128k | text, obraz, audio |
-| E4B | 4,5B efektivních / 8B s embeddingy | malý dense + PLE | 128k | text, obraz, audio |
-| 12B Unified | 11,95B | decoder bez samostatných multimodálních encoderů | 256k | text, obraz, audio |
-| 26B A4B | 25,2B celkem / 3,8B aktivních | MoE | 256k | text, obraz |
-| 31B | 30,7B | dense | 256k | text, obraz |
+| E2B | 2.3B effective / 5.1B including embeddings | Small dense + PLE | 128k | Text, image, audio |
+| E4B | 4.5B effective / 8B including embeddings | Small dense + PLE | 128k | Text, image, audio |
+| 12B Unified | 11.95B | Decoder without separate large multimodal encoders | 256k | Text, image, audio |
+| 26B A4B | 25.2B total / 3.8B active | MoE | 256k | Text, image |
+| 31B | 30.7B | Dense | 256k | Text, image |
 
-Výstupem je text. Video se zpracovává jako sekvence snímků. Gemma 4 má nativní volání nástrojů, system roli a přepínání thinking. Modelová řada je vydána pod Apache 2.0. Tato licence nezmění licenční režim ostatních částí aplikace. [Google: model card](https://ai.google.dev/gemma/docs/core/model_card_4), [přehled modelů](https://ai.google.dev/gemma/docs/core).
+Output is text; video is processed as frames. The family supports native tools, a system role and thinking control, and is published under Apache 2.0. That does not change licenses of other application components. [Google model card](https://ai.google.dev/gemma/docs/core/model_card_4), [model overview](https://ai.google.dev/gemma/docs/core).
 
-Pro širší cílení na 16GB karty je zvlášť relevantní 12B, podrobně vyhodnocená níže. E4B/E2B mají smysl jako další úsporná možnost, pokud je pro ně konkrétní potřeba; není důvod rozšířit katalog automaticky o celou rodinu. Multimodální schopnost checkpointu sama o sobě nezaručuje odpovídající vstup v našem UI a runtime.
+12B is particularly relevant to 16 GB cards. E2B/E4B should be added only for a concrete workflow, not automatically with the entire family. Checkpoint capabilities do not prove that corresponding inputs work in Marvin's UI/runtime.
 
-## 3. Kvalita proti modelům, které skutečně máme
+## 3. Quality compared with existing models
 
-| Benchmark, vyšší je lepší | Qwen 3.8 27B | Ornith 1.5 35B-A3B | Gemma 4 31B | Gemma 4 26B A4B |
+| Benchmark, higher is better | Qwen 3.8 27B | Ornith 1.5 35B-A3B | Gemma 4 31B | Gemma 4 26B A4B |
 |---|---:|---:|---:|---:|
-| GPQA Diamond | 89,2 | 89,2 | 84,3 | 82,3 |
-| LiveCodeBench v6 | 90,3 | — | 80,0 | 77,1 |
-| SWE-bench Pro | 61,7 | 59,6 | 35,7* | — |
-| Terminal Bench 2.1, Terminus | 73,0 | 67,8 | 42,1* | — |
+| GPQA Diamond | 89.2 | 89.2 | 84.3 | 82.3 |
+| LiveCodeBench v6 | 90.3 | — | 80.0 | 77.1 |
+| SWE-bench Pro | 61.7 | 59.6 | 35.7* | — |
+| Terminal Bench 2.1, Terminus | 73.0 | 67.8 | 42.1* | — |
 
-Zdroje: [Qwen model card](https://huggingface.co/Qwen/Qwen3.8-27B), [Ornith model card](https://huggingface.co/ornith-ai/Ornith-1.5-35B-A3B), [Google benchmarky](https://deepmind.google/models/gemma/gemma-4/). Hvězdička: číslo Gemmy převzaté ze srovnání publikovaného autory Ornithu.
+[Qwen card](https://huggingface.co/Qwen/Qwen3.8-27B), [Ornith card](https://huggingface.co/ornith-ai/Ornith-1.5-35B-A3B), [Google benchmarks](https://deepmind.google/models/gemma/gemma-4/). Asterisks identify Gemma figures quoted by Ornith's authors.
 
-**Toto není jednotný nezávislý A/B test.** Liší se harnessy, nastavení, rozpočty i některé úpravy benchmarků; Qwen například uvádí vlastní přehodnocení opravené sady SWE-bench Pro. Tabulka podporuje směr rozhodnutí, nikoli přesný procentní náskok. Navíc náš Ornith je upravená Abliterated Q5 varianta: skóre původního checkpointu nelze automaticky přisoudit našemu souboru. Stejně tak plná přesnost v benchmarku není naše GGUF kvantizace.
+This is not a controlled independent A/B test. Harnesses, settings, budgets and benchmark revisions differ; Qwen reports a reevaluation of a corrected SWE-bench Pro set. Original Ornith scores cannot be assigned directly to the downloaded Abliterated Q5, nor full-precision scores to any GGUF quantization.
 
-Praktické závěry:
+- **Development:** published evidence does not justify replacing Qwen/Ornith. LiveCodeBench performance is not equivalent to reliable real-project repair.
+- **Research/Discussion:** 26B could be a faster general alternative; Czech quality, citation accuracy and long-document superiority remain unproven.
+- **Writing:** compare style and instruction retention on representative work. A general chat ranking does not establish a better fit for the owner.
+- **Computer/PDF/images:** vision is a concrete addition relative to Marvin's text-only Nemotron profiles, but already exists with Qwen/Ornith.
 
-- **Development:** zveřejněné důkazy nepodporují výměnu Qwenu nebo Ornithu za Gemmu. Vysoký LiveCodeBench není totéž jako spolehlivé opravy skutečného projektu.
-- **Research a Discussion:** 26B může být příjemně rychlá alternativa. Nadřazenost v češtině, přesnosti citací a dlouhých dokumentech zatím není prokázána.
-- **Writing:** má smysl porovnat styl a dodržování dlouhého zadání na našich ukázkách. Preference z obecného chatového žebříčku není zárukou lepšího psaní pro Petra.
-- **Computer, PDF, obrázky:** Gemma zachovává vision. Proti nynějšímu textovému profilu Nemotronu je to konkrétní funkční přínos; proti Qwenu/Ornithu nejde o novou schopnost.
+NVIDIA's own comparison lists Gemma 26B above Lightning on MMLU Pro (85.20 versus 81.94) and GPQA (79.61 versus 75.44), suggesting a candidate for a capable fast alternative. Different GPQA figures from Google illustrate methodology differences. [NVIDIA card](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16).
 
-Také NVIDIA ve vlastním srovnání uvádí pro Gemmu 26B proti Lightningu lepší MMLU Pro (85,20 vs. 81,94) a GPQA (79,61 vs. 75,44). Je to další indicie pro kvalitnější rychlou univerzální alternativu. Rozdíl proti Google skóre GPQA názorně ukazuje vliv metodiky. [NVIDIA model card](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16).
+## 4. What loading only necessary parts means
 
-## 4. Co znamená „načítat jen potřebné části“
+1. **MoE selects computation.** 26B selects eight of 128 experts per token plus a shared expert. Selection changes by token and layer. Fast GPU execution still needs access to all weights; VRAM is not simply 3.8B times the bit depth. [26B config](https://huggingface.co/google/gemma-4-26B-A4B-it/blob/main/config.json).
+2. **RAM offload selects placement.** Existing `--n-cpu-moe` support can free VRAM for cache by computing experts on CPU, at the cost of CPU work/transfers. Recommended 26B/32 GB profiles do not inherently need it.
+3. **PLE looks up token embeddings.** E2B/E4B have large row-addressed tables that can sensibly live outside VRAM. The inspected `src/models/gemma4.cpp` has a PLE path. 26B/31B have `hidden_size_per_layer_input=0` and do not use it.
+4. **Sliding-window attention reduces KV.** Most layers retain only recent tokens while a minority attends globally. This is the principal natural KV saving in the larger Gemma variants.
 
-Jde o několik různých mechanismů:
+The model does not itself load relevant repository/history fragments into VRAM. Marvin's indexes and retrieval tools choose documents. KV holds intermediate results for processed tokens. Native context includes instructions, tools, documents, images, reasoning and the answer, not a full-size document plus unlimited output.
 
-1. **MoE vybírá výpočty.** U 26B se pro každý token vybírá 8 ze 128 expertů a používá se také sdílený expert. Volba se mění podle tokenu a vrstvy. Pro rychlý běh na GPU je potřeba mít dostupné všechny váhy; nelze počítat VRAM jako 3,8B × počet bitů. [Konfigurace 26B](https://huggingface.co/google/gemma-4-26B-A4B-it/blob/main/config.json).
-2. **Offload do RAM vybírá umístění vah.** `--n-cpu-moe` už naše konfigurace umí využít. Výpočet části expertů na CPU může uvolnit VRAM pro cache, ale přidává práci CPU a přesuny dat. Není to bezplatná inteligentní paměť. Pro 26B na 32GB GPU není nutný v doporučených profilech.
-3. **PLE vybírá embeddingy tokenů.** U E2B/E4B jde o velké tabulky s vyhledáváním potřebných řádků; právě zde dává jejich držení mimo GPU architektonicky smysl. Náš build obsahuje odpovídající PLE cestu v `src/models/gemma4.cpp`. 26B ani 31B tento mechanismus nemají: jejich `hidden_size_per_layer_input` je nula.
-4. **Sliding-window attention omezuje KV.** Většina vrstev si drží pouze nedávné okolí, menšina vidí celý kontext. To je hlavní přirozená úspora KV u velkých Gemma modelů.
+## 5. KV calculation for the inspected runtime
 
-Model sám nenačítá relevantní části našeho repozitáře nebo dávných chatů do VRAM. Výběr dokumentů zajišťuje harness, jeho indexy a nástroje historie. KV obsahuje mezivýsledky právě zpracovaných tokenů. Nativních 256k zahrnuje vstup, systémové instrukce, nástroje i generovanou odpověď a thinking; neznamená 256k čistého dokumentu plus neomezený výstup.
+Exact source references: [Gemma implementation](https://github.com/ggml-org/llama.cpp/blob/b2e5e9b28/src/models/gemma4.cpp), [SWA allocation](https://github.com/ggml-org/llama.cpp/blob/b2e5e9b28/src/llama-kv-cache-iswa.cpp), [K/V allocation](https://github.com/ggml-org/llama.cpp/blob/b2e5e9b28/src/llama-kv-cache.cpp).
 
-## 5. Výpočet KV pro přesně náš runtime
+26B has five global layers with two KV heads × 512, and 25 local layers with eight heads × 256. 31B has ten global layers with four heads × 512, and 50 local layers with 16 heads × 256. Both use a 1,024-token local window. [26B config](https://huggingface.co/google/gemma-4-26B-A4B-it/blob/main/config.json), [31B config](https://huggingface.co/google/gemma-4-31B-it/blob/main/config.json).
 
-Ověřený upstream commit odpovídající místní binárce:
-
-- [Gemma model](https://github.com/ggml-org/llama.cpp/blob/b2e5e9b28/src/models/gemma4.cpp).
-- [SWA alokace](https://github.com/ggml-org/llama.cpp/blob/b2e5e9b28/src/llama-kv-cache-iswa.cpp).
-- [K/V alokace](https://github.com/ggml-org/llama.cpp/blob/b2e5e9b28/src/llama-kv-cache.cpp).
-
-26B má 5 globálních a 25 lokálních vrstev, globálně 2 KV hlavy × 512, lokálně 8 × 256. 31B má 10 globálních a 50 lokálních vrstev, globálně 4 × 512, lokálně 16 × 256. Obě mají lokální okno 1024. [26B config](https://huggingface.co/google/gemma-4-26B-A4B-it/blob/main/config.json), [31B config](https://huggingface.co/google/gemma-4-31B-it/blob/main/config.json).
-
-Při jednom slotu a výchozím microbatch 512 kód alokuje lokální cache pro 1536 buněk, zaokrouhleno na 256. Globální cache roste s kontextem. Výpočet:
+For one slot and microbatch 512, local cache has 1,536 cells, aligned to 256. Global cache grows with context:
 
 `KV bytes = 2 × (global_layers × global_kv_heads × global_head_dim × context + local_layers × local_kv_heads × local_head_dim × 1536) × bytes_per_element`
 
-F16 = 2 B/prvek; Q8_0 = 34/32 B; Q4_0 = 18/32 B včetně blokové režie. Násobek 2 znamená K a V. Přestože konfigurace má `attention_k_eq_v: true`, runtime po odlišné normalizaci a RoPE ukládá K a V samostatně. Proto rozpočet nesnižovat ještě jednou na polovinu.
+F16 uses 2 bytes/element, Q8_0 uses 34/32, and Q4_0 uses 18/32 including block overhead. The factor two is K and V. Despite `attention_k_eq_v: true`, this runtime stores them separately after different normalization/RoPE; do not halve the estimate again.
 
 | Model / KV | 64k | 128k | 192k | 256k |
 |---|---:|---:|---:|---:|
-| 26B F16 | 1,54 GiB | 2,79 GiB | 4,04 GiB | 5,29 GiB |
-| 26B Q8_0 | 0,82 GiB | 1,48 GiB | 2,15 GiB | 2,81 GiB |
-| 26B Q4_0 | 0,43 GiB | 0,79 GiB | 1,14 GiB | 1,49 GiB |
-| 31B F16 | 6,17 GiB | 11,17 GiB | 16,17 GiB | 21,17 GiB |
-| 31B Q8_0 | 3,28 GiB | 5,94 GiB | 8,59 GiB | 11,25 GiB |
-| 31B Q4_0 | 1,74 GiB | 3,14 GiB | 4,55 GiB | 5,95 GiB |
+| 26B F16 | 1.54 GiB | 2.79 GiB | 4.04 GiB | 5.29 GiB |
+| 26B Q8_0 | 0.82 GiB | 1.48 GiB | 2.15 GiB | 2.81 GiB |
+| 26B Q4_0 | 0.43 GiB | 0.79 GiB | 1.14 GiB | 1.49 GiB |
+| 31B F16 | 6.17 GiB | 11.17 GiB | 16.17 GiB | 21.17 GiB |
+| 31B Q8_0 | 3.28 GiB | 5.94 GiB | 8.59 GiB | 11.25 GiB |
+| 31B Q4_0 | 1.74 GiB | 3.14 GiB | 4.55 GiB | 5.95 GiB |
 
-**Jde o spočtené K/V tenzory, nikoli celkovou naměřenou VRAM.** Navíc jsou váhy, projektor, compute/CUDA buffery, případné další stavy a Windows. Jiný microbatch změní lokální část. `--swa-full` by tuto úsporu zrušil; v našem buildu je výchozí hodnota false a harness jej nepřidává.
+These are calculated K/V tensors, not measured total VRAM. Add weights, projector, compute/CUDA buffers, other state and Windows. Microbatch changes affect local allocation. `--swa-full` would remove this saving; it was false by default and not added by Marvin.
 
-Qwen 3.8 už používá hybridní architekturu: 16 plných attention vrstev a 48 DeltaNet vrstev. Z jeho konfigurace vychází globální Q8 KV při 256k na 8,50 GiB, plus recurrentní stav. Gemma 26B má přibližně 3,2× menší přírůstek globální cache na token; Gemma 31B naopak přibližně o 25 % větší. Výhoda proto platí hlavně pro 26B, nikoli automaticky pro celou rodinu. [Qwen konfigurace](https://huggingface.co/Qwen/Qwen3.8-27B/blob/main/config.json).
+Qwen 3.8 already has a hybrid architecture: 16 full-attention and 48 DeltaNet layers. Its global Q8 KV at 256k is approximately 8.50 GiB plus recurrent state. Gemma 26B's global per-token cache growth is about 3.2 times smaller; 31B's is about 25% larger. The benefit is model-specific. [Qwen config](https://huggingface.co/Qwen/Qwen3.8-27B/blob/main/config.json).
 
-## 6. Jakou kvantizaci bychom potřebovali
+## 6. Weight precision and 32 GB budgets
 
-Váhy a KV se kvantizují nezávisle. Q5 vah + Q8 KV je normální kombinace. GGUF Q4/Q5 nejsou totéž jako hardwarový NVFP4 režim a názvy neurčují přesnou velikost souboru: některé tenzory mají vyšší přesnost.
+Weight and KV quantization are independent. Q5 weights plus Q8 KV is ordinary. GGUF Q4/Q5 are not hardware NVFP4, and mixed tensor precision means the name does not specify exact file size.
 
-Velikosti byly ověřeny přes veřejné API seznamů souborů, bez stažení vah:
+Sizes were checked through public file-list APIs without downloading weights:
 
-| Gemma | Soubor vah | Projektor zvlášť |
+| Variant | Weights | Separate projector |
 |---|---:|---:|
-| 26B oficiální QAT Q4_0 | 13,448 GiB | 1,113 GiB |
-| 26B Unsloth UD Q5_K_M | 19,698 GiB | přibližně 1,113 GiB |
-| 26B Unsloth UD Q6_K | 21,581 GiB | přibližně 1,113 GiB |
-| 26B Q8_0 | 25,015 GiB | přibližně 1,113 GiB |
-| 31B oficiální QAT Q4_0 | 16,439 GiB | 1,118 GiB |
-| 31B Q5_K_M | 20,171 GiB | přibližně 1,118 GiB |
-| 31B Q6_K | 23,471 GiB | přibližně 1,118 GiB |
-| 31B Q8_0 | 30,394 GiB | přibližně 1,118 GiB |
+| 26B official QAT Q4_0 | 13.448 GiB | 1.113 GiB |
+| 26B Unsloth UD Q5_K_M | 19.698 GiB | ~1.113 GiB |
+| 26B Unsloth UD Q6_K | 21.581 GiB | ~1.113 GiB |
+| 26B Q8_0 | 25.015 GiB | ~1.113 GiB |
+| 31B official QAT Q4_0 | 16.439 GiB | 1.118 GiB |
+| 31B Q5_K_M | 20.171 GiB | ~1.118 GiB |
+| 31B Q6_K | 23.471 GiB | ~1.118 GiB |
+| 31B Q8_0 | 30.394 GiB | ~1.118 GiB |
 
-Zdroje: [Google 26B QAT](https://huggingface.co/google/gemma-4-26B-A4B-it-qat-q4_0-gguf/tree/main), [Google 31B QAT](https://huggingface.co/google/gemma-4-31B-it-qat-q4_0-gguf/tree/main), [Unsloth 26B](https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/tree/main), [Unsloth 31B](https://huggingface.co/unsloth/gemma-4-31B-it-GGUF/tree/main).
+[Google 26B QAT](https://huggingface.co/google/gemma-4-26B-A4B-it-qat-q4_0-gguf/tree/main), [Google 31B QAT](https://huggingface.co/google/gemma-4-31B-it-qat-q4_0-gguf/tree/main), [Unsloth 26B](https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/tree/main), [Unsloth 31B](https://huggingface.co/unsloth/gemma-4-31B-it-GGUF/tree/main).
 
-QAT znamená trénink zohledňující kvantizaci. Je rozumnější ji zahrnout do testu než předpokládat, že každá čtyřbitová verze bude nutně horší než libovolná Q5. Ani tvrzení výrobce o zachování kvality ale nenahrazuje test nástrojů. [Google QAT přehled](https://ai.google.dev/gemma/docs/core).
+QAT is quantization-aware training. Include it in evaluation rather than assuming every four-bit file is worse than every Q5 file. Vendor quality claims still require tool tests. [Google QAT overview](https://ai.google.dev/gemma/docs/core).
 
-Pro hrubý provozní rozpočet přičítám k vahám + projektoru + KV **4–6 GiB** na desktop, compute buffery a rezervu. Není to garantovaná spotřeba; při kontrole samotný desktop/procesy zabíraly asi 2 GiB.
+The following estimates add **4–6 GiB** for desktop, compute buffers and headroom to weights/projector/KV. This is not a guaranteed overhead; desktop/other processes occupied roughly 2 GiB during inspection.
 
-| Kandidát na této 5090 | Váhy + projektor + KV | Rozpočet včetně uvedené rezervy | Hodnocení |
+| Candidate | Weights + projector + KV | Including reserve | Assessment |
 |---|---:|---:|---|
-| 26B QAT Q4 + F16 KV, 256k | 19,85 GiB | 23,9–25,9 GiB | velmi zajímavý profil |
-| 26B QAT Q4 + Q8 KV, 256k | 17,37 GiB | 21,4–23,4 GiB | největší rezerva |
-| 26B Q5 + Q8 KV, 256k | 23,62 GiB | 27,6–29,6 GiB | vyvážený kandidát |
-| 26B Q6 + Q8 KV, 256k | 25,51 GiB | 29,5–31,5 GiB | proveditelný odhad, ověřit vision špičky |
-| 26B Q8 + Q8 KV, 128k | 27,61 GiB | 31,6–33,6 GiB | zbytečně těsné |
-| 31B QAT Q4 + Q8 KV, 128k | 23,49 GiB | 27,5–29,5 GiB | praktický 31B profil |
-| 31B QAT Q4 + Q8 KV, 256k | 28,80 GiB | 32,8–34,8 GiB | nedoporučit jako bezpečný profil |
-| 31B Q5 + Q8 KV, 64k | 24,57 GiB | 28,6–30,6 GiB | rozumné menší okno |
-| 31B Q5 + Q8 KV, 128k | 27,22 GiB | 31,2–33,2 GiB | hraniční |
+| 26B QAT Q4 / F16 / 256k | 19.85 GiB | 23.9–25.9 GiB | Promising |
+| 26B QAT Q4 / Q8 / 256k | 17.37 GiB | 21.4–23.4 GiB | Most headroom |
+| 26B Q5 / Q8 / 256k | 23.62 GiB | 27.6–29.6 GiB | Balanced candidate |
+| 26B Q6 / Q8 / 256k | 25.51 GiB | 29.5–31.5 GiB | Plausible; test vision peaks |
+| 26B Q8 / Q8 / 128k | 27.61 GiB | 31.6–33.6 GiB | Needlessly tight |
+| 31B QAT Q4 / Q8 / 128k | 23.49 GiB | 27.5–29.5 GiB | Practical 31B candidate |
+| 31B QAT Q4 / Q8 / 256k | 28.80 GiB | 32.8–34.8 GiB | Not a safe default |
+| 31B Q5 / Q8 / 64k | 24.57 GiB | 28.6–30.6 GiB | Smaller-window candidate |
+| 31B Q5 / Q8 / 128k | 27.22 GiB | 31.2–33.2 GiB | Borderline |
 
-Celková skutečně hlášená kapacita GPU je 31,84 GiB. **Pro Gemmu 26B tedy nemusíme jít na 3–4 bity jen kvůli 256k kontextu. Q5/Q8 vychází dobře; Q6/Q8 může také vyjít.** QAT Q4 má navíc výhodu malého souboru a možnosti ponechat F16 cache. Běžné BF16 váhy velkých variant se do této karty celé nevejdou.
+Actual reported GPU capacity was 31.84 GiB. 26B does not need 3–4-bit weights solely to reach 256k: Q5/Q8 looks feasible and Q6/Q8 may fit. QAT Q4 offers a smaller file and room for F16 cache. Large BF16 variants do not fully fit.
 
-U 31B lze matematicky dostat 256k s Q4 vahami a Q4 KV, ale to je samostatný kompromis kvality cache. Q4 KV u dlouhých přesných úloh bych bez ověření nezařazoval. Smíšené přesnosti K/V nebo externí kompresní forky nejsou pro první 26B integraci potřeba.
+31B can mathematically reach 256k with Q4 weights and Q4 KV, but cache precision is a separate compromise requiring long-context accuracy tests. Mixed K/V precisions and external cache-compression forks are unnecessary for the first 26B experiment.
 
-## 7. Rychlost: co víme a co pouze odhadujeme
+## 7. Speed evidence and estimates
 
-V místním starším `runtime/llama-server.log` jsou běhy z 22.–28. 8. 2026:
+Historical local logs from August 22–28 reported Qwen Q5 around 56–66 tokens/s in short runs, with another at 39.8; Qwen Q4 around 60–75; Ornith Q5 around 85–236; and one 400-token Nemotron Q4 run at 266.86. These aliases/logs are not a fresh controlled comparison of current weights, occupied context and settings. Zero-output runs are not throughput samples.
 
-- Qwen Q5: krátké běhy přibližně 56–66 tok/s, další běh 39,8 tok/s.
-- Qwen Q4: většinou zhruba 60–75 tok/s.
-- Ornith Q5: několik velmi různých běhů přibližně 85–236 tok/s.
-- Nemotron Q4: jediný krátký běh 400 výstupních tokenů při 266,86 tok/s.
+An external RTX 5090 experiment reported Gemma 26B Q4_K_M `tg128=219.9` and `pp512=8744` tokens/s. It used a modified runtime and short synthetic inputs, not Marvin on Windows. [Original experiment](https://github.com/tlskinner26/llama-cpp-blackwell-optimization).
 
-Jsou to historické údaje pod danými aliasy, ne nový jednotný benchmark současných vah: bez kontroly tehdejšího souboru, obsazeného kontextu a nastavení nelze přesně přenést jejich rychlost na dnešní profil. Nulový výstup není rychlostní vzorek.
+Planning estimates without speculative decoding, one stream, fully GPU-resident weights and a short occupied context:
 
-Autor experimentu na desktopové RTX 5090 publikuje pro Gemmu 26B Q4_K_M `tg128 = 219,9 tok/s` a `pp512 = 8744 tok/s`. Jde o krátký syntetický test v prostředí s úpravami runtime, nikoli naši Windows aplikaci. [Původní experiment a konfigurace](https://github.com/tlskinner26/llama-cpp-blackwell-optimization).
-
-**Plánovací odhad bez spekulativního dekódování**, jeden stream, celý model na GPU, krátký obsazený kontext:
-
-| Varianta | Orientační generování |
+| Variant | Estimated generation |
 |---|---:|
-| 26B QAT Q4 / obdobná Q4 | 130–220 tok/s |
-| 26B Q5/Q6 | 110–190 tok/s |
-| 31B Q4/Q5 | 40–70 tok/s |
+| 26B QAT Q4 / comparable Q4 | 130–220 tokens/s |
+| 26B Q5/Q6 | 110–190 tokens/s |
+| 31B Q4/Q5 | 40–70 tokens/s |
 
-Intervaly nejsou naměřeným výsledkem doporučených souborů. U 31B jde o hrubý odhad obdobné velikosti dense vah vůči místnímu Qwenu a běžné paměťové propustnosti, s velkou nejistotou. Při zaplnění 128k–256k rychlost klesá; přesné číslo bez měření neuvádím. MoE šetří FFN výpočty, ale dlouhou globální attention neodstraní.
+None is a local measurement of the recommended files. The 31B range is a rough dense-weight/bandwidth analogy with high uncertainty. Filled 128k–256k contexts will be slower; MoE does not eliminate global attention. Do not extrapolate `pp512` linearly to a book.
 
-Rozlišovat tři časy: zpracování nového vstupu (prefill), generování všech tokenů včetně thinking a dokončení celé úlohy s nástroji. Pouhé nastavení kapacity na 256k není test zaplněného 256k kontextu. Krátký `pp512` nelze lineárně extrapolovat na načtení celé knihy. Opakované agentní tahy navíc závisejí na opětovném využití prefixu cache.
+Measure prefill, generation including reasoning, and whole-task completion separately. Allocating 256k is not filling it. Repeated agent steps depend on cached-prefix reuse. As an illustration only, 3,000 output tokens take 50 seconds at 60 tokens/s or 19 seconds at 160, excluding prefill/tools and tokenizer/reasoning-length differences.
 
-Příklad pouze pro intuici: 3000 výstupních tokenů při 60 tok/s trvá 50 s; při 160 tok/s asi 19 s. To platí jen pro generování při stejném počtu tokenů, bez prefillu a nástrojů. Odlišný tokenizer a délka thinking mohou náskok zmenšit.
+Gemma also has MTP draft checkpoints, explaining some high online speeds. They are outside this baseline proposal and the single-model product architecture. [Google overview](https://ai.google.dev/gemma/docs/core).
 
-Gemma má také MTP draft checkpointy; tím se vysvětluje část internetových vysokých rychlostí. Základní návrh s nimi nepočítá: benchmark má odpovídat jednomu současnému modelu bez rozšíření produktové architektury. [Google přehled MTP](https://ai.google.dev/gemma/docs/core).
+## 8. Integration work if later authorized
 
-## 8. Konkrétní integrační práce
+The GGUF/CUDA/OpenAI-compatible path can retain FastAPI, UI and agent loop. Architecture code exists in the inspected commit, but the exact model/projector pair remains untested.
 
-Není potřeba přepisovat FastAPI, web UI ani agentní smyčku. Existující GGUF/CUDA/OpenAI-compatible cesta je vhodná. Podporu architektury lze doložit v používaném commitu; skutečné načtení konkrétního GGUF a multimodálního projektoru je dosud neověřené.
+1. Register definitions and distribution settings, retaining Qwen Q5 as default. Publish only measured profiles/hardware limits.
+2. Use a uniquely named projector. The then-current downloader checked file existence/size, not model family; another generic `mmproj-F16.gguf` could incorrectly reuse Qwen's file. Google's `gemma-4-26B-it-mmproj.gguf` avoids that collision.
+3. Set `supports_reasoning_effort: false`; Gemma's template uses `enable_thinking` (default false), not Qwen's `xhigh`. Expose genuine On/Off behavior.
+4. Override sampling in both modes: temperature 1.0, top_p 0.95, top_k 64, explicitly avoiding inherited Qwen non-thinking presence penalty 1.5. [Model settings](https://ai.google.dev/gemma/docs/core/model_card_4).
+5. Verify API reasoning/tool normalization. LLMClient accepts `reasoning_content` and `reasoning`, but its fallback understands `<think>`, whereas Gemma uses channel tokens. Prefer server parsing. [Prompt format](https://ai.google.dev/gemma/docs/core/prompt-formatting-gemma4), [function calling](https://ai.google.dev/gemma/docs/capabilities/text/function-calling-gemma4).
+6. Qualify thinking-history retention. The launcher adds `--reasoning-preserve`; Google distinguishes retention within a tool cycle from removal across completed user turns.
+7. Verify projector, image/text ordering and image-token policy. Global `--image-min-tokens 1024` is not automatically appropriate. Use small-text screenshots and PDF pages.
+8. Test STOP, switching, compression and subsequent long-context tool turns, including restoration of Qwen's own UI controls.
 
-1. Zaregistrovat model v `harness/config.py` i distribuční konfiguraci. Zachovat Qwen Q5 jako default. Přidat měřením podložené profily a hardwarové limity, ne jen odvozené minimum VRAM.
-2. Použít unikátně pojmenovaný Gemma projektor. Nynější downloader kontroluje existenci a velikost souboru, nikoli rodinu modelu. Stažení dalšího generického `mmproj-F16.gguf` by mohlo ponechat již existující Qwen projektor. Oficiální QAT repozitář má vhodné vlastní jméno `gemma-4-26B-it-mmproj.gguf`.
-3. Nastavit `supports_reasoning_effort: false`. Současný klient by jinak posílal Qwen `reasoning_effort=xhigh`; oficiální šablona Gemmy používá `enable_thinking` a výchozí hodnotu false. Zobrazit u Gemmy On/Off, nikoli předstírané úrovně hloubky.
-4. Výslovně přepsat sampling v obou režimech: temperature 1,0; top_p 0,95; top_k 64; nevzít omylem Qwen non-thinking presence penalty 1,5. Sampling se totiž s defaulty slučuje. [Google nastavení](https://ai.google.dev/gemma/docs/core/model_card_4).
-5. Ověřit normalizaci reasoning a tool calls na API hranici. Klient už čte `reasoning_content` i `reasoning`; fallback parser ale zná pouze `<think>`, zatímco Gemma má kanálové tokeny. Preferovat správné parsování serverem, ne nové ruční interpretování modelového textu. [Gemma formát](https://ai.google.dev/gemma/docs/core/prompt-formatting-gemma4), [function calling](https://ai.google.dev/gemma/docs/capabilities/text/function-calling-gemma4).
-6. Zohlednit rozdílné zacházení s historií thinking. Launcher nyní globálně přidává `--reasoning-preserve`; Google rozlišuje uchování uvnitř tool-call cyklu a odstranění mezi uzavřenými uživatelskými tahy. Vybrat modelově správné chování a ověřit navazující odpověď.
-7. Ověřit obrazový vstup: správný projektor, pořadí obraz/text a podporovaný token budget. Dosavadní globální `--image-min-tokens 1024` není automaticky správná modelová politika. Testovat screenshot s drobným textem a stránku PDF.
-8. Zkontrolovat stop, přepnutí modelu, kompresi historie a další nástrojový tah při dlouhém kontextu. UI má při návratu do Qwenu zobrazit jeho vlastní správné možnosti.
+## 9. Decision experiment
 
-## 9. Malý rozhodovací experiment
+Start with a technical 26B QAT Q4 smoke test at 32k: startup, Czech response, thinking on/off, one tool call, at least five chained tools, screenshot and STOP. Only then qualify 128k/256k and consider a second quantization.
 
-Nejprve technický smoke test 26B QAT Q4 při 32k: start, česká odpověď, thinking on/off, jediný tool call, řetězec alespoň pěti navazujících nástrojů, screenshot, STOP. Teprve potom měřit 128k a 256k a případně stahovat druhou kvantizaci.
+Run at least 15 representative tasks twice: five code repairs with outcome/tests, four constrained Czech text/document tasks, three image/PDF tasks, and three long-context tasks with multiple facts near the beginning/middle/end. Score actual outcomes, not merely valid JSON or a quick first token.
 
-Srovnat minimálně 15 reprezentativních úloh, každou dvakrát: pět oprav kódu ověřených výsledkem a testy, čtyři české textové/dokumentové úlohy s přesnými omezeními, tři obrazové/PDF úlohy a tři dlouhé kontexty s více informacemi na začátku, uprostřed i konci. Hodnotit správný výsledek, ne pouhý validní JSON nebo rychlý první token.
+Use identical inputs with occupied prefixes around 4k/32k/128k and near 256k, leaving answer space. Record exact model/projector hashes, runtime, sampling, KV, VRAM peak, prefill/decode rates, whole-task time and offload. Separate fresh prefill from cache reuse and respect each profile's limits.
 
-Rychlost měřit při stejných vstupech, s plně obsazenými prefixy např. 4k/32k/128k a téměř 256k s rezervou pro odpověď. Zaznamenat přesný hash modelu a projektoru, build, sampling, KV, vrchol VRAM, prompt tok/s, decode tok/s, čas celé úlohy a případný offload. Oddělit nové načtení vstupu od navázání přes prefix cache. Limity aktuálního profilu nepřekračovat jen kvůli srovnání.
+Proposed initial decision rule: offer Gemma as an alternative if it retains core features and repeatedly finishes relevant tasks about 1.5 times faster without materially lower success. This small set is a filter, not proof of general superiority. Change the default only after clear benefit on difficult tasks.
 
-Navržené rozhodovací pravidlo: nabídnout Gemmu jako rychlou alternativu, pokud zachová všechny základní funkce a v opakovaných relevantních úlohách přinese alespoň přibližně 1,5× kratší dobu dokončení bez významného poklesu úspěšnosti. Malá sada je pouze první filtr, nikoli statistický důkaz obecné převahy. Výchozí Qwen měnit až při jasném uživatelském přínosu v obtížných úlohách.
+## 10. Physical 24 GB and 16 GB targets
 
-## 10. Profily pro 24GB a 16GB grafické karty
+Capacity determines whether a model fits, not its speed. GPU model, bandwidth, power, desktop/laptop design, driver and RAM offload matter. The estimates below are candidates, not guarantees. Restricting a 5090's allocation is not a physical small-GPU qualification.
 
-Kapacita VRAM určuje především možnost model načíst. Rychlost nelze spolehlivě odvodit jen z označení „16 GB“ nebo „24 GB“: rozhoduje konkrétní GPU, propustnost, příkon, desktop/laptop, ovladač a případné využití RAM. Níže uvedené rozpočty jsou návrhy k ověření, nikoli naměřené záruky na jiných kartách. Snížit dostupnou paměť na 5090 není plnohodnotná náhrada testu slabšího GPU.
+### 24 GB: 26B QAT Q4
 
-### 24 GB: nejsilnější kandidát je 26B QAT Q4
+Weights plus projector need about 14.56 GiB. With Q8 KV, subtotal is 16.04 GiB at 128k and 17.37 at 256k.
 
-Oficiální 26B QAT váhy s projektorem zaberou přibližně 14,56 GiB. Při 128k Q8 je součet 16,04 GiB; při 256k 17,37 GiB. S konzervativní rezervou 4–6 GiB je to:
-
-| Profil pro 24 GB | Odhad rozpočtu včetně rezervy | Doporučení |
+| Candidate | Including 4–6 GiB reserve | Assessment |
 |---|---:|---|
-| 26B QAT Q4, Q8 KV, 128k | 20,0–22,0 GiB | hlavní kandidát, celý model na GPU |
-| 26B QAT Q4, Q8 KV, 256k | 21,4–23,4 GiB | rozšířený profil po ověření špiček |
-| 26B QAT Q4, F16 KV, 128k | 21,4–23,4 GiB | alternativa pro vyšší přesnost cache |
-| 26B UD Q5, Q8 KV, 64k | 25,6–27,6 GiB | nevhodné jako univerzální profil bez offloadu |
+| 26B QAT Q4 / Q8 / 128k | 20.0–22.0 GiB | Primary fully GPU-resident candidate |
+| 26B QAT Q4 / Q8 / 256k | 21.4–23.4 GiB | Extended profile after peak validation |
+| 26B QAT Q4 / F16 / 128k | 21.4–23.4 GiB | Higher-cache-precision alternative |
+| 26B UD Q5 / Q8 / 64k | 25.6–27.6 GiB | Unsuitable universal profile without offload |
 
-Poslední řádek se týká konkrétního velkého Unsloth UD Q5 souboru, ne všech existujících Q5 kvantizací. V případě zájmu o jiný GGUF je nutné přepočítat skutečnou velikost.
+The Q5 row refers to the specific large Unsloth UD file, not every Q5 quantization. Recalculate from actual file sizes for alternatives. Gemma might outperform the existing Qwen Q4/Q8/96k compact profile in speed/window size, while Qwen may still solve difficult development tasks better. Keep both as task-dependent choices with one loaded model.
 
-Proti současnému Qwen Q4 s 96k Q8 kompaktním profilem by tak Gemma mohla poskytnout vyšší rychlost a delší kontext. Není důvod odstranit Qwen: složitý vývoj může zvládat lépe i s menším oknem. Pro uživatele 24GB karty by šlo o smysluplnou volbu podle typu úlohy, stále vždy s jediným načteným modelem.
+31B QAT/Q8/32k already needs about 19.51 GiB before reserve, making it a tight 24 GB candidate without a compelling benefit. It is not a standard 16 GB proposal.
 
-31B QAT s Q8 KV při 32k má přibližně 19,51 GiB ještě před provozní rezervou. Pro 24GB cílení je tedy těsná a nepřináší přesvědčivou výhodu. Na 16 GB ji jako standard vůbec nenavrhuji.
+### 16 GB: prefer 12B to further squeezing 26B
 
-### 16 GB: preferovat 12B před dalším stlačováním 26B
+26B QAT/projector already needs 14.56 GiB, or about 14.88 with just 16k Q8 KV. Context reduction alone leaves too little for desktop, compute and vision. Lower weight precision, disabling vision or offload may be avoided by choosing 12B.
 
-26B QAT s projektorem potřebuje 14,56 GiB ještě před cache. I s malým 16k Q8 kontextem by součet dosáhl přibližně 14,88 GiB. Na desktop, compute a multimodální špičky zbývá příliš málo. Omezení kontextu samo problém nevyřeší; zbývá nižší kvantizace vah, odstranění vision nebo offload. Ani jedno není potřeba, pokud zvolíme 12B.
+12B files: official QAT Q4 6.497 GiB, Q5_K_M 7.836, Q6_K 9.114, Q8_0 11.800; the projector adds 0.163 GiB. Encoder-free architecture still has a GGUF projector artifact and does not mean ignoring mmproj. [Google QAT files](https://huggingface.co/google/gemma-4-12B-it-qat-q4_0-gguf/tree/main), [Unsloth files](https://huggingface.co/unsloth/gemma-4-12b-it-GGUF/tree/main), [Google introduction](https://blog.google/innovation-and-ai/technology/developers-tools/introducing-gemma-4-12B/).
 
-**Gemma 4 12B Unified je pro 16GB nabídku podstatně vhodnější kandidát:**
+12B has eight global layers (one KV head × 512) and 40 local layers (eight heads × 256), with window 1024. For one slot/microbatch 512:
 
-- Oficiální QAT Q4 váhy 6,497 GiB + projektor 0,163 GiB.
-- Běžná Q5_K_M 7,836 GiB; Q6_K 9,114 GiB; Q8_0 11,800 GiB, vždy projektor zvlášť.
-- Projektor stále existuje jako GGUF artefakt, přestože model nemá velký samostatný vision encoder. „Encoder-free“ tedy v naší integraci neznamená „ignorovat mmproj“.
-
-Zdroje: [Google 12B QAT soubory](https://huggingface.co/google/gemma-4-12B-it-qat-q4_0-gguf/tree/main), [Unsloth 12B soubory](https://huggingface.co/unsloth/gemma-4-12b-it-GGUF/tree/main), [Google uvedení 12B](https://blog.google/innovation-and-ai/technology/developers-tools/introducing-gemma-4-12B/).
-
-Z konfigurace 12B: 8 globálních vrstev, jedna globální KV hlava × 512; 40 lokálních vrstev, 8 hlav × 256, okno 1024. Stejný výpočet pro jeden slot a microbatch 512 dává:
-
-| KV 12B | 32k | 64k | 128k | 256k |
+| 12B KV | 32k | 64k | 128k | 256k |
 |---|---:|---:|---:|---:|
-| F16 | 0,97 GiB | 1,47 GiB | 2,47 GiB | 4,47 GiB |
-| Q8_0 | 0,51 GiB | 0,78 GiB | 1,31 GiB | 2,37 GiB |
+| F16 | 0.97 GiB | 1.47 GiB | 2.47 GiB | 4.47 GiB |
+| Q8_0 | 0.51 GiB | 0.78 GiB | 1.31 GiB | 2.37 GiB |
 
-Odvozeno z [konfigurace 12B](https://huggingface.co/google/gemma-4-12B-it/blob/main/config.json) a výše uvedené SWA implementace. Přibalený commit má v multimodálním kódu větve `GEMMA4UV` a `GEMMA4UA`; existence těchto větví není end-to-end ověřením konkrétního souboru. Dlouhý obrazový vstup může mít odlišné compute nároky než čistý text.
+Derived from [12B config](https://huggingface.co/google/gemma-4-12B-it/blob/main/config.json) and the SWA implementation above. `GEMMA4UV`/`GEMMA4UA` paths in the bundled commit are not end-to-end qualification of a particular file. Image-heavy input can have different compute demands.
 
-| Profil pro 16 GB | Odhad rozpočtu včetně 4–6 GiB rezervy | Doporučení |
+| 16 GB candidate | Including 4–6 GiB reserve | Assessment |
 |---|---:|---|
-| 12B QAT Q4, Q8 KV, 64k | 11,4–13,4 GiB | bezpečný počáteční kandidát |
-| 12B QAT Q4, Q8 KV, 128k | 12,0–14,0 GiB | doporučený cílový standard |
-| 12B QAT Q4, Q8 KV, 256k | 13,0–15,0 GiB | paměťově nadějné, až po testu rychlosti a vision |
-| 12B Q5, Q8 KV, 64k | 12,8–14,8 GiB | druhý kandidát pro kvalitu |
-| 12B Q5, Q8 KV, 128k | 13,3–15,3 GiB | možné, ověřit rezervu konkrétní karty |
-| 12B Q6, Q8 KV, 64k | 14,1–16,1 GiB | nezačínat tím jako obecným defaultem |
+| 12B QAT Q4 / Q8 / 64k | 11.4–13.4 GiB | Conservative starting candidate |
+| 12B QAT Q4 / Q8 / 128k | 12.0–14.0 GiB | Recommended target |
+| 12B QAT Q4 / Q8 / 256k | 13.0–15.0 GiB | Promising, pending speed/vision tests |
+| 12B Q5 / Q8 / 64k | 12.8–14.8 GiB | Second quality candidate |
+| 12B Q5 / Q8 / 128k | 13.3–15.3 GiB | Possible; test device headroom |
+| 12B Q6 / Q8 / 64k | 14.1–16.1 GiB | Avoid as a universal starting default |
 
-Proti našemu Qwen 27B IQ3_S (11,214 GiB vah, navíc 0,864 GiB projektor a větší cache) je to velký paměťový rozdíl. Neznamená to však automaticky vyšší inteligenci: větší Qwen i při IQ3 může některé obtížné úlohy zvládnout lépe. Právě Qwen IQ3 v 32k/48k profilu musí být referencí pro lokální A/B test, ne Qwen Q5, který není realistickým 16GB soupeřem.
+This is much smaller than Qwen IQ3_S (11.214 GiB weights plus 0.864 projector and larger cache), but does not prove higher intelligence. Use Qwen IQ3 at a supported compact context as the realistic 16 GB reference, not Qwen Q5.
 
-Google pro 12B publikuje GPQA 78,8 %, LiveCodeBench v6 72,0 % a Tau2 průměr přes tři domény 69,0 %. Pro 26B jsou odpovídající čísla 82,3 %, 77,1 % a 68,2 %; pro E4B 58,6 %, 52,0 % a 42,2 %. Na těchto konkrétních metrikách je 12B výrazně blíže 26B než E4B. Tau2 průměr není totožná metrika jako retail-only skóre z původní stránky velkých modelů. [Google 12B model card](https://huggingface.co/google/gemma-4-12B-it).
+Google reports 12B GPQA 78.8%, LiveCodeBench v6 72.0%, and Tau2 three-domain average 69.0%. Corresponding 26B figures are 82.3%, 77.1%, 68.2%; E4B 58.6%, 52.0%, 42.2%. On these metrics 12B is closer to 26B than E4B. The Tau2 average is not the retail-only metric on the original large-model page. [12B card](https://huggingface.co/google/gemma-4-12B-it).
 
-### Kde má smysl E4B a offload
+### E4B, offload and harness support
 
-E4B QAT má 4,801 GiB vah + 0,923 GiB projektor, před KV a provozními buffery. Je vhodná jako úsporný kandidát, pokud má na 16GB kartě běžet zároveň jiná GPU aplikace nebo je prioritou lehká diskuze. Pro náročný vývoj bych jí nedával přednost před 12B bez konkrétního měření. [Oficiální E4B soubory](https://huggingface.co/google/gemma-4-E4B-it-qat-q4_0-gguf/tree/main).
+E4B QAT has 4.801 GiB weights and a 0.923 GiB projector before KV/buffers. It may suit lightweight discussion or sharing a 16 GB GPU with another application; do not prioritize it over 12B for difficult development without evidence. [E4B files](https://huggingface.co/google/gemma-4-E4B-it-qat-q4_0-gguf/tree/main). PLE allows embedding tables outside VRAM, but savings/prefill cost need logs and tensor-placement checks; specialized offload is unnecessary as a first step for this small Q4 file.
 
-PLE u E4B dovoluje část embeddingových tabulek držet mimo GPU; přesnou úsporu a dopad na prefill ověřit logem a umístěním tenzorů. Na 16GB kartě s tímto Q4 souborem ale není nutné začínat specializovaným offloadem.
+26B offload on 16 GB is a possible later compromise if its task success substantially exceeds 12B. Label CPU/RAM use honestly and do not imply fully GPU-resident speed. Initial planning suggested at least 32 GB system RAM, preferably 64 GB, with separate CPU/PCIe measurements. Successful loading alone is insufficient.
 
-Offload 26B na 16 GB lze zkoumat jako volitelný kompromis, pokud se prokáže podstatně vyšší úspěšnost úloh než u 12B. Nabídka jej musí označovat jako využití CPU/RAM. Nepředstírat stejnou rychlost jako celý model na GPU. Pro takový profil počítat alespoň s 32 GB systémové RAM, komfortněji 64 GB, a samostatně změřit běžný procesor i PCIe. Pouhé úspěšné načtení nepostačuje.
+Retain core operations for smaller models while reducing context overhead: mode-specific tool schemas, bounded readable results with continuation, summaries and explicit plans. Existing indexes/history tools help. Measure bad arguments, lost requirements and repetition; never hide essential user constraints to shorten prompts.
 
-### Jak slabší model podpořit v harnessu
+Choose defaults using actual available VRAM and headroom. Prefer a smaller same-model context before another model, and make model identity changes visible. Download the selected recommended model rather than every individually compatible file.
 
-Zachovat všechny základní operace, ale přizpůsobit jejich kontext: méně současně nabízených schémat nástrojů podle pracovního režimu, menší výsledky čtení se snadným pokračováním, průběžné shrnutí a explicitní plán. Stávající index a vyhledávání historie tomu již pomáhají. Měřit chyby argumentů, ztrátu zadání a opakování smyček; kratší prompt nesmí skrýt podstatná omezení uživatele.
+There is no honest single speed number for all 16/24 GB cards. A fully resident 26B MoE can decode faster than a smaller 12B dense model. External modified-runtime measurements, including different-GPU examples, cannot be transferred to these files. Before publishing hardware claims, test a real 24 GB and a real 16 GB card and identify GPU, power limit and occupied context.
 
-Výchozí profil volit podle skutečně dostupné VRAM včetně rezervy, ne jen marketingové kapacity. Při nedostatku místa nejprve nabídnout menší kontext téhož modelu; přechod na jiný model má být viditelný. Instalátor má stáhnout vybraný doporučený model, ne automaticky všechny nové soubory jen proto, že jednotlivě vyhoví kapacitě.
-
-Pro rychlost na 24/16 GB není poctivé dát jedno číslo. U 26B lze očekávat výhodu nízkého počtu aktivních parametrů; 12B dense může mít na téže kartě pomalejší generování než plně rezidentní 26B MoE, přestože má menší soubor. Referenční 5060 Ti experiment z oddílu 7 používá upravený runtime a jiné váhy, proto jeho rychlost nepřenášet na náš profil. Před zveřejněním parametrů změřit alespoň jednu skutečnou 24GB a jednu skutečnou 16GB kartu, vždy uvést model GPU, příkon a obsazený kontext.
-
-**Výsledek průzkumu:** Gemma má pro podporu slabších GPU silnější produktový důvod než jako náhrada Qwenu na 5090. Doporučený experiment je 26B QAT pro 24 GB a 12B QAT/Q5 pro 16 GB; na 32 GB ponechat Qwen Q5 a případně nabídnout 26B jako rychlou alternativu. 31B, E2B a další kvantizace přidávat až při konkrétním prokázaném přínosu.
+The strongest product rationale for Gemma is broader small-GPU support. The deferred experiment remains 26B QAT for 24 GB and 12B QAT/Q5 for 16 GB, with Qwen Q5 retained at 32 GB and 26B considered as a fast alternative. Add 31B, E2B or more quantizations only after a concrete demonstrated benefit.

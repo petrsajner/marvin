@@ -1,4 +1,4 @@
-"""Dokumentové exportní, čtecí a tabulkové nástroje pro Marvin."""
+"""Document reading, export and spreadsheet tools."""
 from __future__ import annotations
 
 from typing import Any

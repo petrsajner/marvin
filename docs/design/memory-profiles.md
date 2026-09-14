@@ -58,3 +58,5 @@ These are capacity simulations on a 32 GiB card. They do not measure the perform
 A separate diverse-text qualification (`tests/check_flash_memory.py`) passed with Q3 weights, Q8 KV and a 128k context. The request contained 98,124 prompt tokens from 129 public repository files. It recovered markers at the beginning, middle and end. Prefill took 1,432 seconds (68.5 tokens/s); this remains a slow first read, not a solved throughput problem. The follow-up reused 98,148 cached tokens and returned in 1.38 seconds, with its first token after 0.92 seconds.
 
 During that run, available RAM stayed above 7.07 GiB and server resident memory peaked at 40.93 GiB. This is evidence for the tested 128k configuration, not a full-window qualification of 192k or 256k. Repeated long-context runs and physical small-card qualification remain useful follow-up work.
+
+The detailed `runtime/memory-audit/` reports are preserved inside `runtime/archive/verification-source-2026-09-15.zip`, together with the source-language verification. The archive includes a per-file hash manifest; unpacked test copies are marked for manual removal.

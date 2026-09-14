@@ -1,13 +1,6 @@
-"""Asynchronní orchestrace startu a přepínání lokálního modelu.
+"""Asynchronous local-model startup and switching.
 
-Principy (UI nikdy nezamykáme):
-- request() VŽDY uspěje - pouze přepíše požadovaný cíl; starší rozpracovaný
-  cíl se zahodí. Přepínač modelu i KV je trvale interaktivní.
-- Přepnutí uprostřed nahrávání okamžitě zabije loading (stop serveru,
-  VRAM se uvolní) a worker nasadí nový cíl.
-- Volba KV se aplikuje při startu serveru (kv_profile v requestu);
-  žádné "KV nejde přepnout" hlášky neexistují.
-"""
+Requests replace the pending target while keeping model and KV controls interactive. Switching during loading cancels the previous load, releases its memory and starts the new target. The requested KV profile is applied when the server starts."""
 from __future__ import annotations
 
 import copy
@@ -44,13 +37,9 @@ def _running_model_ok(cfg: Config, model_key: str) -> bool:
 
 
 class ModelSwitchController:
-    """Background smyčka pro start/přepnutí modelu; nejvýše jeden worker.
+    """One background worker handles model startup and switching.
 
-    Worker v každém kole: vezme nejnovější přání → (potřebu-li) zastaví
-    server → nastartuje cílový model (včetně čekající volby KV) → publikuje
-    stav. Přání, které přijde během práce, server zabije (ensure díky mrtvému
-    procesu rychle skončí) a smyčka pokračuje novým cílem.
-    """
+    Each iteration takes the latest request, stops the old server when necessary, starts the requested model and KV profile, and publishes its state. A newer request cancels obsolete work before the next target is loaded."""
 
     def __init__(self, cfg: Config, *,
                  ensure_fn: Callable[[Config, str], bool] = servermgmt.ensure,
@@ -65,7 +54,7 @@ class ModelSwitchController:
         self._thread: threading.Thread | None = None
         # (model_key, kv_profile, restart, on_success, incoming_config, on_failure)
         self._desired: tuple | None = None
-        self._gen = 0  # zvýší se při každém requestu/cancelu (zastarávání publikací)
+        self._gen = 0  # Incremented on every request/cancellation to invalidate stale publications.
         self._last_ready: tuple[Config, str] | None = None
         self._controlled_ensure = "cancelled" in inspect.signature(ensure_fn).parameters
         self._phase_ensure = "on_phase" in inspect.signature(ensure_fn).parameters
@@ -85,7 +74,7 @@ class ModelSwitchController:
                 on_success: Callable[[str], None] | None = None,
                 config: Config | None = None,
                 on_failure: Callable[[str | None], None] | None = None) -> bool:
-        """Přijme vždy; právě probíhající loading přeruší (uvolní VRAM)."""
+        """Accept the request and interrupt an obsolete load to release GPU memory."""
         with self._lock:
             interrupted = self._state.busy
             self._desired = (model_key, kv_profile, restart, on_success, config, on_failure)
@@ -97,8 +86,8 @@ class ModelSwitchController:
                     target=self._run, daemon=True, name="model-switch")
                 self._thread.start()
         if interrupted and not self._controlled_ensure:
-            # zabij bezici/loading server mimo lock - workeruv ensure rychle
-            # skončí chybou a smyčka si vezme nový cíl
+            # Stop the running/loading server outside the lock so ensure can return promptly
+            # The interrupted ensure call returns and the loop selects the latest target.
             try:
                 self._stop(self.cfg, quiet=True)
             except Exception:
@@ -106,7 +95,7 @@ class ModelSwitchController:
         return True
 
     def cancel(self) -> None:
-        """Stop tlačítko: zahodit přání, zastavit server, stav na idle."""
+        """Discard the pending target, stop the server and return to idle."""
         with self._lock:
             self._desired = None
             self._gen += 1
@@ -120,7 +109,7 @@ class ModelSwitchController:
         self._publish(gen, ModelSwitchSnapshot())
 
     def reset(self) -> None:
-        """Zahodit čekající přání bez zásahu do serveru."""
+        """Discard a pending request without changing the running server."""
         with self._lock:
             self._desired = None
 
@@ -172,7 +161,7 @@ class ModelSwitchController:
                     self._last_ready = (Config(copy.deepcopy(self.cfg.data), self.cfg.root), target)
                     if on_success is not None:
                         on_success(target)
-                    # model už běží (start tlačítko na běžícím modelu) - netřeba restart
+                    # Reuse an already running matching model without restarting it.
                     self._publish(gen, ModelSwitchSnapshot("ready", target))
                     continue
                 self._publish(gen, ModelSwitchSnapshot("starting", target, phase="releasing"))
@@ -232,7 +221,7 @@ class ModelSwitchController:
                             f"{type(exc).__name__}: {exc}{restore_error}; UI state: {callback_exc}"))
 
     def _publish(self, gen: int, state: ModelSwitchSnapshot) -> None:
-        """Publikuj stav jen pokud ho nikdo nepřepsal novějším přáním."""
+        """Publish only if no newer request has superseded this generation."""
         with self._lock:
             if self._gen == gen:
                 self._state = replace(state, started_at=state.started_at or self._state.started_at,

@@ -1,4 +1,4 @@
-"""Nástroje pro práci se soubory: list_dir, read_file, write_file, search_files."""
+"""File tools: list_dir, read_file, write_file and search_files."""
 from __future__ import annotations
 
 import os
@@ -86,7 +86,7 @@ class ReadFileTool(Tool):
 
 
 def validate_syntax_pre_write(path: Path | str, content: str) -> str | None:
-    """Ověří základní syntaktickou validitu před zápisem na disk."""
+    """Check basic syntax before writing a file."""
     p = Path(path) if isinstance(path, str) else path
     suffix = p.suffix.lower()
     if suffix in (".py", ".pyi"):

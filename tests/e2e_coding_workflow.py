@@ -44,10 +44,10 @@ def main() -> int:
         agent = Agent(cfg, LLMClient(cfg), session, build_registry("agent"),
                       SafetyPolicy("auto", max_steps=20), mode="agent")
         prompt = (
-            "V target.py změň přesně VALUE = \"before\" na VALUE = \"after\". "
-            "Povinně použij nástroj apply_patch, nepoužívej write_file ani run_command. "
-            "Potom povinně spusť start_project_check a poll_command opakuj, dokud test neskončí. "
-            "Nakonec stručně potvrď výsledek."
+            "In target.py, replace exactly VALUE = \"before\" with VALUE = \"after\". "
+            "Use apply_patch; do not use write_file or run_command. "
+            "Then call start_project_check and poll_command until the check finishes. "
+            "Finally, briefly confirm the result."
         )
         agent.new_task(prompt)
         final = None
@@ -63,22 +63,22 @@ def main() -> int:
         target = (workspace / "target.py").read_text(encoding="utf-8")
         required = {"apply_patch", "start_project_check", "poll_command"}
         if final is None or final.status is not Status.FINAL or not required.issubset(calls):
-            raise RuntimeError(f"Agent workflow nedokončen: status={getattr(final, 'status', None)}, calls={calls}")
+            raise RuntimeError(f"Agent workflow did not complete: status={getattr(final, 'status', None)}, calls={calls}")
         if 'VALUE = "after"' not in target:
-            raise RuntimeError(f"Patch se neaplikoval: {target!r}")
+            raise RuntimeError(f"Patch was not applied: {target!r}")
         tool_results = "\n".join(str(message.get("content", "")) for message in session.messages
                                  if message.get("role") == "tool")
         if "CODING-WORKFLOW-TEST-OK" not in tool_results:
-            raise RuntimeError("Agent nedopolloval úspěšný výsledek testu")
+            raise RuntimeError("The agent did not poll the successful test result")
         summary = agent.ctx.changes.summary()
         if not any(item["changed"] for item in summary["files"]):
-            raise RuntimeError("Task journal neeviduje změnu")
+            raise RuntimeError("The task journal did not record the change")
         undo = agent.ctx.changes.undo()
         restored = (workspace / "target.py").read_text(encoding="utf-8")
         if undo["errors"] or 'VALUE = "before"' not in restored:
-            raise RuntimeError(f"Rollback selhal: {undo}, content={restored!r}")
+            raise RuntimeError(f"Rollback failed: {undo}, content={restored!r}")
         print(f"[OK] tools={calls}")
-        print("[OK] patch, background test a rollback prošly")
+        print("[OK] Patch, background check and rollback passed")
         return 0
     finally:
         servermgmt.stop(base_cfg, quiet=True)

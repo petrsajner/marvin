@@ -1,4 +1,4 @@
-"""Nainstaluje zavislosti, jen kdyz se zmenil obsah requirements.txt."""
+"""Install dependencies only when the requirements content changes."""
 from __future__ import annotations
 
 import argparse
@@ -14,9 +14,9 @@ from harness.dependencies import dependencies_current, sync_dependencies
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true",
-                        help="Pouze overi marker, nic neinstaluje")
+                        help="Check the marker without installing anything")
     parser.add_argument("--force", action="store_true",
-                        help="Vynuti pip install i pri platnem markeru")
+                        help="Force pip install even when the marker is current")
     args = parser.parse_args()
 
     requirements = ROOT / "requirements.txt"

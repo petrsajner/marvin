@@ -1,4 +1,5 @@
-# Paměť pracovního režimu: Počítač
+# Work-mode memory: Computer
 
-<!-- Fakta, pravidla a preference platné pro ovládání počítače napříč projekty.
-     Pro zápis použij save_memory se scope="mode". Piš stručně, jeden fakt na řádek. -->
+<!-- Facts, rules and preferences for computer across projects.
+     Use save_memory with scope="mode". Keep one concise fact per line.
+     Edits become visible to the model when the next task starts. -->

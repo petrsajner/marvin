@@ -1,9 +1,6 @@
-"""Benchmark: rychlost generování na běžícím llama-serveru.
+"""Measure generation speed on a local llama-server.
 
-Použití:
-    python scripts/bench.py              # aktuální model
-    python scripts/bench.py --model q5   # přepne na q5 a změří
-"""
+Run without arguments to use the current model, or pass --model q5 to switch before measuring."""
 from __future__ import annotations
 
 import argparse
@@ -19,8 +16,8 @@ from harness.llm import LLMClient  # noqa: E402
 from harness import servermgmt  # noqa: E402
 
 PROMPTS = [
-    ("krátká odpověď", "Reply with exactly: OK"),
-    ("generování", "Write numbers from 1 to 300, one per line."),
+    ("short response", "Reply with exactly: OK"),
+    ("generation", "Write numbers from 1 to 300, one per line."),
     ("prompt eval", "Summarize the following: " + ("Lorem ipsum dolor sit amet, consectetur adipiscing elit. " * 60)
      + "\nOne sentence summary:"),
 ]
@@ -55,13 +52,13 @@ def bench(llm: LLMClient, thinking: bool) -> None:
                         first = time.time()
                     text += d.content
         except Exception as e:
-            print(f"  [{label}] CHYBA: {e}")
+            print(f"  [{label}] ERROR: {e}")
             continue
         t_end = time.time()
         if first is None:
-            print(f"  [{label}] žádná odpověď (model odmítl?)")
+            print(f"  [{label}] no response (model refusal?)")
             continue
-        # skutečné tokeny z usage (fallback: odhad ~4 znaky/token)
+        # Use reported token usage, falling back to an estimate of four characters per token.
         if usage and getattr(usage, "completion_tokens", None):
             n_tok = usage.completion_tokens
             tok_src = "usage"
@@ -76,8 +73,8 @@ def bench(llm: LLMClient, thinking: bool) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--model", help="přepnout na zadaný model před benchmarket")
-    ap.add_argument("--no-thinking", action="store_true", help="vypnout thinking režim")
+    ap.add_argument("--model", help="switch to the requested model before benchmarking")
+    ap.add_argument("--no-thinking", action="store_true", help="disable thinking mode")
     args = ap.parse_args()
     cfg = load_config()
 
@@ -85,7 +82,7 @@ def main() -> int:
         if servermgmt.start(cfg, args.model) != 0:
             return 1
     elif not servermgmt.health(cfg):
-        print("[CHYBA] Server neběží. Start: python scripts/server.py start")
+        print("[ERROR] Server is not running. Start: python scripts/server.py start")
         return 1
 
     print(f"\n=== BENCHMARK  model={servermgmt.running_model(cfg)}  "

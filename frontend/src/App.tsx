@@ -1,3 +1,4 @@
+import { translate } from "./i18n";
 import React, { useEffect, useState, useRef, useCallback, memo } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -60,16 +61,16 @@ import { ActivityFeedback } from "./components/ActivityFeedback";
 
 type Dialog = { type: string; file?: FileItem; section?: string; data?: any };
 const COPYRIGHT = "© Petr Sajner 2026";
-const phases: Record<string, [string, string]> = {
-  preparing: ["Preparing request", "Připravuji dotaz"],
-  reading_context: ["Reading context", "Načítám kontext"],
-  generating: ["Generating", "Generuji"],
-  loading_model: ["Loading model", "Načítám model"],
-  thinking: ["Thinking", "Přemýšlím"],
-  answering: ["Writing answer", "Píšu odpověď"],
-  preparing_tool: ["Preparing action", "Připravuji akci"],
-  executing: ["Running action", "Provádím akci"],
-  idle: ["Ready", "Připraven"],
+const phases: Record<string, string> = {
+  preparing: "Preparing request",
+  reading_context: "Reading context",
+  generating: "Generating",
+  loading_model: "Loading model",
+  thinking: "Thinking",
+  answering: "Writing answer",
+  preparing_tool: "Preparing action",
+  executing: "Running action",
+  idle: "Ready",
 };
 
 export function App() {
@@ -122,7 +123,7 @@ export function App() {
   useEffect(() => {
     if (app?.preferences?.send_mode) setDelivery(app.preferences.send_mode);
   }, [app?.preferences?.send_mode]);
-  const tr = useCallback((en: string, cz: string) => (cs ? cz : en), [cs]);
+  const tr = useCallback((en: string) => translate(en, cs ? "cs" : "en"), [cs]);
   const error = useCallback(
     (e: unknown) => setToast(e instanceof Error ? e.message : String(e)),
     [],
@@ -193,7 +194,7 @@ export function App() {
   useEffect(() => {
     if (!app) return;
     document.title = "Marvin v" + app.version;
-    document.documentElement.lang = cs ? "cs" : "en";
+    document.documentElement.lang = translate("en", cs ? "cs" : "en");
     document.documentElement.dataset.theme = app.preferences.theme || "dark";
     document.documentElement.dataset.density =
       app.preferences.density || "comfortable";
@@ -413,7 +414,7 @@ export function App() {
       await refresh();
       await reloadChat();
       if (result.status === "steering")
-        setToast(tr("Clarification received", "Upřesnění přijato"));
+        setToast(tr("Clarification received"));
     } catch (e) {
       error(e);
     } finally {
@@ -519,7 +520,7 @@ export function App() {
       <header className="topbar">
         <button
           className="icon mobile-nav"
-          aria-label={tr("Projects and chats", "Projekty a chaty")}
+          aria-label={tr("Projects and chats")}
           onClick={() => setNav(!nav)}
         >
           <PanelLeft />
@@ -547,19 +548,19 @@ export function App() {
           </span>
           <span className="muted">
             {runtime.switch?.status === "starting"
-              ? tr("Loading", "Načítám")
-              : runtime.switch?.status === "stopping" ? tr("Stopping", "Zastavuji")
-              : runtime.switch?.status === "failed" ? tr("Start failed", "Start selhal")
+              ? tr("Loading")
+              : runtime.switch?.status === "stopping" ? tr("Stopping")
+              : runtime.switch?.status === "failed" ? tr("Start failed")
               : runtime.status === "running"
-                ? tr("Ready", "Připraven")
-                : tr("Stopped", "Zastaven")}
+                ? tr("Ready")
+                : tr("Stopped")}
           </span>
           <ChevronDown />
         </button>
         <button
           className="icon"
-          title={tr("Settings", "Nastavení")}
-          aria-label={tr("Settings", "Nastavení")}
+          title={tr("Settings")}
+          aria-label={tr("Settings")}
           onClick={() => setDialog({ type: "settings", section: "model" })}
         >
           <Settings2 />
@@ -573,25 +574,25 @@ export function App() {
         <aside className={"sidebar " + (nav ? "open" : "")}>
           <button className="positive" onClick={() => newChat().catch(error)}>
             <Plus />
-            {tr("New chat", "Nový chat")}
+            {tr("New chat")}
           </button>
           <label className="search">
             <Search />
             <input
-              aria-label={tr("Search chats", "Hledat v chatech")}
+              aria-label={tr("Search chats")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={tr("Search chats", "Hledat v chatech")}
+              placeholder={tr("Search chats")}
             />
           </label>
-          <label className="section-label">{tr("PROJECT", "PROJEKT")}</label>
+          <label className="section-label">{tr("PROJECT")}</label>
           <div className="row">
             <select
-              aria-label={tr("Project", "Projekt")}
+              aria-label={tr("Project")}
               value={project?.id || ""}
               onChange={(e) => selectProject(e.target.value).catch(error)}
             >
-              <option value="">{tr("No project", "Bez projektu")}</option>
+              <option value="">{tr("No project")}</option>
               {app.projects.map((p: any) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -600,7 +601,7 @@ export function App() {
             </select>
             <button
               className="icon"
-              aria-label={tr("Project actions", "Operace projektu")}
+              aria-label={tr("Project actions")}
               onClick={() => setDialog({ type: "project" })}
             >
               <Ellipsis />
@@ -608,12 +609,12 @@ export function App() {
           </div>
           <label className="section-label">
             {searchResults
-              ? tr("SEARCH RESULTS", "VÝSLEDKY HLEDÁNÍ")
-              : tr("CONVERSATIONS", "KONVERZACE")}
+              ? tr("SEARCH RESULTS")
+              : tr("CONVERSATIONS")}
           </label>
           <nav
             className="chat-list"
-            aria-label={tr("Conversations", "Konverzace")}
+            aria-label={tr("Conversations")}
           >
             {listedChats.slice(0, chatLimit).map((s: any) => (
               <button
@@ -626,19 +627,19 @@ export function App() {
               >
                 <MessageSquare />
                 <span>
-                  {s.title || tr("New conversation", "Nová konverzace")}
+                  {s.title || tr("New conversation")}
                   {app.active?.session_id === s.id && (
-                    <small className="green">{tr("Working", "Pracuji")}</small>
+                    <small className="green">{tr("Working")}</small>
                   )}
                   {searchResults && <small>{s.snippet}</small>}
                 </span>
               </button>
             ))}
             {listedChats.length > chatLimit && <button className="older-chats" onClick={() => setChatLimit((n) => n + 20)}>
-              <ChevronDown />{tr("Show older", "Zobrazit starší")} ({listedChats.length - chatLimit})
+              <ChevronDown />{tr("Show older")} ({listedChats.length - chatLimit})
             </button>}
             {chatLimit > 20 && <button className="older-chats" onClick={() => setChatLimit(20)}>
-              {tr("Show recent only", "Jen nejnovější")}
+              {tr("Show recent only")}
             </button>}
           </nav>
           <button
@@ -646,14 +647,14 @@ export function App() {
             onClick={() => setDialog({ type: "library" })}
           >
             <FolderOpen />
-            {tr("Project documents", "Podklady projektu")}
+            {tr("Project documents")}
           </button>
           <button
             className="nav-button"
             onClick={() => setDialog({ type: "decisions" })}
           >
             <BookmarkCheck />
-            {tr("Project decisions", "Přijatá rozhodnutí")}
+            {tr("Project decisions")}
           </button>
           <div className="sidebar-bottom">
             <button
@@ -661,27 +662,27 @@ export function App() {
               onClick={() => setDialog({ type: "settings", section: "memory" })}
             >
               <Brain />
-              {tr("Memory and skills", "Paměť a skilly")}
+              {tr("Memory and skills")}
             </button>
             <button
               className="nav-button"
               onClick={() => setDialog({ type: "settings", section: "data" })}
             >
               <HardDrive />
-              {tr("Data and backups", "Data a zálohy")}
+              {tr("Data and backups")}
             </button>
           </div>
         </aside>
-        <ResizeHandle side="left" label={tr("Navigation width", "Šířka navigace")} value={leftWidth}
+        <ResizeHandle side="left" label={tr("Navigation width")} value={leftWidth}
           onChange={setLeftWidth} onReset={() => setLeftWidth(undefined)} />
         </div>
         <main className="main">
           <div className="chat-heading">
             <input
               key={chat?.id || sid}
-              aria-label={tr("Chat title", "Název chatu")}
+              aria-label={tr("Chat title")}
               defaultValue={chat?.meta.title || ""}
-              placeholder={tr("New conversation", "Nová konverzace")}
+              placeholder={tr("New conversation")}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   act("rename", { title: e.currentTarget.value }).catch(error);
@@ -690,7 +691,7 @@ export function App() {
               }}
             />
             <select
-              aria-label={tr("Work mode", "Pracovní režim")}
+              aria-label={tr("Work mode")}
               value={mode}
               onChange={(e) =>
                 act("mode", { mode: e.target.value }).catch(error)
@@ -699,21 +700,21 @@ export function App() {
               {app.modes.map((m: any, i: number) => (
                 <option key={m.id} value={m.id}>
                   {cs
-                    ? ["Diskuze", "Výzkum", "Psaní", "Vývoj", "Počítač"][i]
+                    ? ["Discussion","Research","Writing","Development","Computer"].map((label) => translate(label, "cs"))[i]
                     : m.label}
                 </option>
               ))}
             </select>
             <button
               className="icon"
-              aria-label={tr("Toggle details", "Zobrazit detail")}
+              aria-label={tr("Toggle details")}
               onClick={() => setPanel(!panel)}
             >
               <PanelRight />
             </button>
             <button
               className="icon"
-              aria-label={tr("Chat actions", "Operace chatu")}
+              aria-label={tr("Chat actions")}
               onClick={() => setDialog({ type: "chat" })}
             >
               <Ellipsis />
@@ -754,7 +755,7 @@ export function App() {
                       );
                     }}
                   >
-                    {tr("Earlier messages", "Starší zprávy")}
+                    {tr("Earlier messages")}
                   </button>
                 )}
                 {chat?.messages.filter(visibleMessage).map((m) => (
@@ -771,10 +772,7 @@ export function App() {
                   <div className="empty-chat">
                     <Bot size={34} />
                     <h2>
-                      {tr(
-                        "What shall we work on?",
-                        "Na čem spolu budeme pracovat?",
-                      )}
+                      {tr("What shall we work on?")}
                     </h2>
                   </div>
                 )}
@@ -786,7 +784,7 @@ export function App() {
                     </div>
                     {live.reasoning && (
                       <details open={false}>
-                        <summary>{tr("Thinking", "Přemýšlení")}</summary>
+                        <summary>{tr("Thinking")}</summary>
                         <Markdown remarkPlugins={[remarkGfm]}>
                           {live.reasoning}
                         </Markdown>
@@ -809,7 +807,7 @@ export function App() {
                     }
                   >
                     <Play />
-                    {tr("Resume queued messages", "Spustit zprávy ve frontě")}
+                    {tr("Resume queued messages")}
                   </button>
                 )}
                 {queued.map((job) => (
@@ -818,16 +816,13 @@ export function App() {
                       <ListChecks />
                       <strong>
                         {job.status === "steering"
-                          ? tr("Clarification received", "Upřesnění přijato")
-                          : tr("After current task", "Po aktuální úloze")}
+                          ? tr("Clarification received")
+                          : tr("After current task")}
                       </strong>
                       <span className="spacer" />
                       <button
                         className="icon"
-                        aria-label={tr(
-                          "Edit queued message",
-                          "Upravit zprávu ve frontě",
-                        )}
+                        aria-label={tr("Edit queued message")}
                         onClick={() =>
                           setDialog({ type: "queue-edit", data: job })
                         }
@@ -836,10 +831,7 @@ export function App() {
                       </button>
                       <button
                         className="icon"
-                        aria-label={tr(
-                          "Cancel queued message",
-                          "Zrušit zprávu ve frontě",
-                        )}
+                        aria-label={tr("Cancel queued message")}
                         onClick={() =>
                           api("/api/queue/" + job.id, "PATCH", { cancel: true })
                             .then(refresh)
@@ -863,7 +855,7 @@ export function App() {
                     setNewMessages(false);
                   }}
                 >
-                  {tr("New messages", "Nové zprávy")}
+                  {tr("New messages")}
                   <ChevronDown />
                 </button>
               )}
@@ -873,11 +865,8 @@ export function App() {
                     <div>
                       <strong>
                         {interrupted.status === "waiting_confirmation"
-                          ? tr("Waiting for confirmation", "Čekám na potvrzení")
-                          : tr(
-                              "Task can be continued",
-                              "Úloha může pokračovat",
-                            )}
+                          ? tr("Waiting for confirmation")
+                          : tr("Task can be continued")}
                       </strong>
                       {interrupted.payload.error && (
                         <p>{interrupted.payload.error}</p>
@@ -896,8 +885,8 @@ export function App() {
                     >
                       <Play />
                       {interrupted.status === "waiting_confirmation"
-                        ? tr("Allow", "Povolit")
-                        : tr("Continue", "Pokračovat")}
+                        ? tr("Allow")
+                        : tr("Continue")}
                     </button>
                     {interrupted.status === "waiting_confirmation" && (
                       <button
@@ -906,7 +895,7 @@ export function App() {
                           act("resume", { approve: false }).catch(error)
                         }
                       >
-                        {tr("Deny", "Zamítnout")}
+                        {tr("Deny")}
                       </button>
                     )}
                   </div>
@@ -916,15 +905,15 @@ export function App() {
                     <LoaderCircle className="spin" />
                     <span>
                       {live?.phase === "preparing" && /^\/(compress|handoff)/.test(app.active?.text || "")
-                        ? tr("Summarizing conversation", "Shrnuji konverzaci")
-                        : tr(...(phases[live?.phase] || phases.preparing))}
+                        ? tr("Summarizing conversation")
+                        : tr(phases[live?.phase] || phases.preparing)}
                       {live?.tool && " · " + live.tool}
                       {live?.phase === "reading_context" && live.prompt_progress && (
                         " · " + Math.max(0, Math.min(100, Math.round(
                           100 * (Number(live.prompt_progress.processed || 0) - Number(live.prompt_progress.cache || 0)) /
                           Math.max(1, Number(live.prompt_progress.total || 0) - Number(live.prompt_progress.cache || 0)),
                         ))) + "% · " + formatTokens(Number(live.prompt_progress.cache || 0)) +
-                        tr(" tok reused", " tok z cache")
+                        tr(" tok reused")
                       )}
                       {live?.tool_chars > 0 &&
                         " · " + Math.round(live.tool_chars / 1024) + " KB"}
@@ -949,7 +938,7 @@ export function App() {
                         setPanel(true);
                       }}
                     >
-                      {tr("Progress", "Průběh")}
+                      {tr("Progress")}
                       <ChevronRight />
                     </button>
                   </div>
@@ -957,10 +946,7 @@ export function App() {
                 {app.active && !active && (
                   <div className="activity muted">
                     <span>
-                      {tr(
-                        "Another chat is working; this message will be queued.",
-                        "Pracuje jiný chat; tato zpráva se zařadí do fronty.",
-                      )}
+                      {tr("Another chat is working; this message will be queued.")}
                     </span>
                   </div>
                 )}
@@ -996,14 +982,14 @@ export function App() {
                     {uploading > 0 && (
                       <span className="uploading">
                         <LoaderCircle className="spin" />
-                        {tr("Adding attachments", "Přidávám přílohy")} (
+                        {tr("Adding attachments")} (
                         {uploading})
                       </span>
                     )}
                   </div>
                   <textarea
                     ref={textRef}
-                    aria-label={tr("Message", "Zpráva")}
+                    aria-label={tr("Message")}
                     value={text}
                     onChange={(e) => setText(e.target.value)}
                     onKeyDown={(e) => {
@@ -1018,8 +1004,8 @@ export function App() {
                     }}
                     placeholder={
                       active
-                        ? tr("Add a clarification…", "Doplňte upřesnění…")
-                        : tr("Type a message…", "Napište zprávu…")
+                        ? tr("Add a clarification…")
+                        : tr("Type a message…")
                     }
                   />
                   {text.startsWith("/") && !text.includes("\n") && (
@@ -1035,7 +1021,7 @@ export function App() {
                             }}
                           >
                             <code>{key}</code>
-                            <span>{value}</span>
+                            <span>{tr(value)}</span>
                           </button>
                         ))}
                     </div>
@@ -1059,7 +1045,7 @@ export function App() {
                       }}
                     />
                     <select
-                      aria-label={tr("Thinking", "Myšlení")}
+                      aria-label={tr("Thinking")}
                       value={app.preferences.thinking}
                       onChange={(e) =>
                         settings({ thinking: e.target.value }).catch(error)
@@ -1067,30 +1053,30 @@ export function App() {
                     >
                       {["xhigh", "medium", "low", "off"].map((e) => (
                         <option key={e} value={e}>
-                          {tr("Thinking", "Myšlení")}: {e}
+                          {tr("Thinking")}: {e}
                         </option>
                       ))}
                     </select>
                     <span className="spacer" />
                     {active && (
                       <select
-                        aria-label={tr("Message delivery", "Zpracování zprávy")}
+                        aria-label={tr("Message delivery")}
                         value={delivery}
                         onChange={(e) => setDelivery(e.target.value)}
                       >
                         <option value="steer">
-                          {tr("Clarify now", "Upřesnit nyní")}
+                          {tr("Clarify now")}
                         </option>
                         <option value="queue">
-                          {tr("After completion", "Po dokončení")}
+                          {tr("After completion")}
                         </option>
                       </select>
                     )}
                     {active && (
                       <button
                         className="icon danger stop"
-                        aria-label={tr("Stop task", "Zastavit úlohu")}
-                        title={tr("Stop task", "Zastavit úlohu")}
+                        aria-label={tr("Stop task")}
+                        title={tr("Stop task")}
                         onClick={() => act("stop").catch(error)}
                       >
                         <Square />
@@ -1099,8 +1085,8 @@ export function App() {
                     <button
                       className="icon positive send"
                       disabled={sending || uploading > 0}
-                      aria-label={tr("Send", "Odeslat")}
-                      title={tr("Send", "Odeslat")}
+                      aria-label={tr("Send")}
+                      title={tr("Send")}
                       onClick={submit}
                     >
                       {sending ? (
@@ -1114,8 +1100,8 @@ export function App() {
                 <div className="composer-footer">
                   <span>
                     {connected
-                      ? tr("Saved locally", "Uloženo lokálně")
-                      : tr("Reconnecting…", "Obnovuji spojení…")}
+                      ? tr("Saved locally")
+                      : tr("Reconnecting…")}
                   </span>
                   <button
                     onClick={() => {
@@ -1123,7 +1109,7 @@ export function App() {
                       setPanel(true);
                     }}
                   >
-                    {tr("Context", "Kontext")}: ~{formatTokens(contextUsed)} /{" "}
+                    {tr("Context")}: ~{formatTokens(contextUsed)} /{" "}
                     {formatTokens(detail?.context?.limit || 0)}
                     <ChevronRight />
                   </button>
@@ -1132,20 +1118,20 @@ export function App() {
             </div>
             {panel && (
               <aside className="detail">
-                <ResizeHandle side="right" label={tr("Detail width", "Šířka detailu")} value={rightWidth}
+                <ResizeHandle side="right" label={tr("Detail width")} value={rightWidth}
                   onChange={setRightWidth} onReset={() => setRightWidth(undefined)} />
                 <nav className="detail-tabs">
                   {[
-                    ["results", "Results", "Výsledky"],
-                    ["progress", "Progress", "Průběh"],
-                    ["context", "Context", "Kontext"],
-                  ].map(([id, en, cz]) => (
+                    ["results", "Results"],
+                    ["progress", "Progress"],
+                    ["context", "Context"],
+                  ].map(([id, en]) => (
                     <button
                       key={id}
                       className={tab === id ? "selected" : ""}
                       onClick={() => setTab(id)}
                     >
-                      {tr(en, cz)}
+                      {tr(en)}
                     </button>
                   ))}
                 </nav>
@@ -1153,13 +1139,10 @@ export function App() {
                   {tab === "results" ? (
                     <>
                       <section>
-                        <h3>{tr("This conversation", "V této konverzaci")}</h3>
+                        <h3>{tr("This conversation")}</h3>
                         {!detail?.results?.length && (
                           <p className="muted">
-                            {tr(
-                              "Created files will appear here.",
-                              "Zde se objeví vytvořené soubory.",
-                            )}
+                            {tr("Created files will appear here.")}
                           </p>
                         )}
                         {detail?.results?.map((f: FileItem) => (
@@ -1169,13 +1152,13 @@ export function App() {
                               <strong>{f.name}</strong>
                               <small>
                                 {f.kind === "changed"
-                                  ? tr("Changed file", "Upravený soubor")
-                                  : tr("Result", "Výsledek")}
+                                  ? tr("Changed file")
+                                  : tr("Result")}
                               </small>
                             </button>
                             <button
                               className="icon"
-                              aria-label={tr("Open folder", "Otevřít složku")}
+                              aria-label={tr("Open folder")}
                               onClick={() =>
                                 api("/api/files/" + f.id + "/open", "POST", {
                                   folder: true,
@@ -1189,16 +1172,16 @@ export function App() {
                       </section>
                       {detail?.research && (
                         <section>
-                          <h3>{tr("Research", "Výzkum")}</h3>
+                          <h3>{tr("Research")}</h3>
                           <p>
                             {detail.research.sources.length}{" "}
-                            {tr("loaded sources", "načtených zdrojů")}
+                            {tr("loaded sources")}
                           </p>
                           <button
                             onClick={() => setDialog({ type: "sources" })}
                           >
                             <Globe />
-                            {tr("All sources", "Všechny zdroje")}
+                            {tr("All sources")}
                           </button>
                           <div className="row">
                             <button
@@ -1225,13 +1208,13 @@ export function App() {
                               }
                             >
                               <Download />
-                              {tr("Sources", "Zdroje")}
+                              {tr("Sources")}
                             </button>
                           </div>
                         </section>
                       )}
                       <section>
-                        <h3>{tr("Validation", "Ověření")}</h3>
+                        <h3>{tr("Validation")}</h3>
                         {detail?.plan?.validations?.length ? (
                           detail.plan.validations.map((v: any, i: number) => (
                             <div className="check-row" key={i}>
@@ -1248,10 +1231,7 @@ export function App() {
                           ))
                         ) : (
                           <p className="muted">
-                            {tr(
-                              "No completed checks recorded.",
-                              "Zatím nejsou zaznamenané dokončené kontroly.",
-                            )}
+                            {tr("No completed checks recorded.")}
                           </p>
                         )}
                       </section>
@@ -1261,14 +1241,14 @@ export function App() {
                           onClick={() => setDialog({ type: "export" })}
                         >
                           <Download />
-                          {tr("Export conversation", "Exportovat konverzaci")}
+                          {tr("Export conversation")}
                         </button>
                         <button
                           className="wide"
                           onClick={() => setDialog({ type: "checkpoints" })}
                         >
                           <History />
-                          {tr("Restore points", "Body obnovy")}
+                          {tr("Restore points")}
                         </button>
                       </section>
                     </>
@@ -1277,7 +1257,7 @@ export function App() {
                       <section>
                         <h3>
                           {detail?.plan?.goal ||
-                            tr("Current task", "Aktuální úloha")}
+                            tr("Current task")}
                         </h3>
                         {detail?.plan?.steps?.map((s: any) => (
                           <div className="check-row" key={s.id}>
@@ -1296,13 +1276,13 @@ export function App() {
                         ))}
                       </section>
                       <section>
-                        <h3>{tr("Activity history", "Historie průběhu")}</h3>
+                        <h3>{tr("Activity history")}</h3>
                         {detail?.notices?.map((n: any) => (
                           <p key={n.seq}>{n.text}</p>
                         ))}
                       </section>
                       <section>
-                        <h3>{tr("Processes", "Procesy")}</h3>
+                        <h3>{tr("Processes")}</h3>
                         {detail?.processes?.map((p: any) => (
                           <div className="process" key={p.process_id}>
                             <strong>{p.command}</strong>
@@ -1318,7 +1298,7 @@ export function App() {
                               }
                             >
                               <FileText />
-                              {tr("Output", "Výstup")}
+                              {tr("Output")}
                             </button>
                             {p.status === "running" && (
                               <button
@@ -1330,7 +1310,7 @@ export function App() {
                                 }
                               >
                                 <Square />
-                                {tr("Stop", "Zastavit")}
+                                {tr("Stop")}
                               </button>
                             )}
                           </div>
@@ -1341,19 +1321,19 @@ export function App() {
                         <p>
                           {detail?.browser?.running
                             ? detail.browser.url
-                            : tr("Closed", "Zavřený")}
+                            : tr("Closed")}
                         </p>
                         {detail?.browser?.running && (
                           <button
                             onClick={() => act("close_browser").catch(error)}
                           >
                             <X />
-                            {tr("Close browser", "Zavřít browser")}
+                            {tr("Close browser")}
                           </button>
                         )}
                       </section>
                       <section>
-                        <h3>{tr("Files changed", "Změny souborů")}</h3>
+                        <h3>{tr("Files changed")}</h3>
                         {detail?.changes?.files
                           ?.filter((f: any) => f.changed)
                           .map((f: any) => (
@@ -1364,14 +1344,14 @@ export function App() {
                           onClick={() => act("revert").catch(error)}
                         >
                           <History />
-                          {tr("Revert task changes", "Vrátit změny úlohy")}
+                          {tr("Revert task changes")}
                         </button>
                       </section>
                     </>
                   ) : (
                     <>
                       <section>
-                        <h3>{tr("Context usage", "Využití kontextu")}</h3>
+                        <h3>{tr("Context usage")}</h3>
                         <div className="meter">
                           <div
                             style={{
@@ -1389,24 +1369,21 @@ export function App() {
                           {formatTokens(detail?.context?.limit || 0)}
                         </p>
                         <p className="muted">
-                          {tr(
-                            "Estimate; measured usage below is from the last completed request.",
-                            "Odhad; naměřené hodnoty níže patří poslednímu dokončenému dotazu.",
-                          )}
+                          {tr("Estimate; measured usage below is from the last completed request.")}
                         </p>
                         {detail?.context?.usage?.prompt_tokens !==
                           undefined && (
                           <p>
-                            {tr("Measured input", "Naměřený vstup")}:{" "}
+                            {tr("Measured input")}:{" "}
                             {detail.context.usage.prompt_tokens}
                             <br />
-                            {tr("Generated", "Vygenerováno")}:{" "}
+                            {tr("Generated")}:{" "}
                             {detail.context.usage.completion_tokens}
                           </p>
                         )}
                       </section>
                       <section>
-                        <h3>{tr("Active memories", "Aktivní paměti")}</h3>
+                        <h3>{tr("Active memories")}</h3>
                         {detail?.context?.snapshot && (
                           <button
                             onClick={() =>
@@ -1417,10 +1394,7 @@ export function App() {
                             }
                           >
                             <History />
-                            {tr(
-                              "Context used by this run",
-                              "Kontext použitý tímto během",
-                            )}
+                            {tr("Context used by this run")}
                           </button>
                         )}
                         {["global", "mode", "project"].map((scope, i) => (
@@ -1432,7 +1406,7 @@ export function App() {
                             )}
                             <span>
                               {cs
-                                ? ["Globální", "Režimová", "Projektová"][i]
+                                ? ["Global", "Mode", "Project"].map((label) => translate(label, "cs"))[i]
                                 : ["Global", "Work mode", "Project"][i]}
                             </span>
                           </div>
@@ -1443,11 +1417,11 @@ export function App() {
                           }
                         >
                           <Brain />
-                          {tr("Open memories", "Otevřít paměti")}
+                          {tr("Open memories")}
                         </button>
                       </section>
                       <section>
-                        <h3>{tr("Pinned files", "Připnuté soubory")}</h3>
+                        <h3>{tr("Pinned files")}</h3>
                         {detail?.context?.pinned_files?.map((p: string) => (
                           <div className="file-row" key={p}>
                             <Pin />
@@ -1457,7 +1431,7 @@ export function App() {
                               onClick={() =>
                                 act("unpin", { path: p }).catch(error)
                               }
-                              aria-label={tr("Unpin", "Odepnout")}
+                              aria-label={tr("Unpin")}
                             >
                               <X />
                             </button>
@@ -1471,14 +1445,14 @@ export function App() {
                           }
                         >
                           <Plus />
-                          {tr("Pin file", "Připnout soubor")}
+                          {tr("Pin file")}
                         </button>
                         <button onClick={() => act("clear_pins").catch(error)}>
-                          {tr("Unpin all", "Odepnout vše")}
+                          {tr("Unpin all")}
                         </button>
                       </section>
                       <section>
-                        <h3>{tr("Loaded skills", "Načtené skilly")}</h3>
+                        <h3>{tr("Loaded skills")}</h3>
                         {detail?.context?.active_skills?.map((s: string) => (
                           <p key={s}>{s}</p>
                         ))}
@@ -1487,14 +1461,14 @@ export function App() {
                           onClick={() => act("compress").catch(error)}
                         >
                           <Archive />
-                          {tr("Compress", "Komprimovat")}
+                          {tr("Compress")}
                         </button>
                         <button
                           className="wide"
                           onClick={() => act("handoff").catch(error)}
                         >
                           <MessageSquare />
-                          {tr("Hand off to new chat", "Předat novému chatu")}
+                          {tr("Hand off to new chat")}
                         </button>
                       </section>
                     </>
@@ -1513,7 +1487,7 @@ export function App() {
           <span>{toast}</span>
           <button
             className="icon"
-            aria-label={tr("Dismiss", "Zavřít")}
+            aria-label={tr("Dismiss")}
             onClick={() => setToast("")}
           >
             <X />

@@ -1,54 +1,26 @@
-# Průzkum a vyhodnocení: Integrace NInfer do Marvin (Future Roadmap)
+# NInfer evaluation and deferred roadmap
 
-**Datum:** 6. 9. 2026
+Research date: 6 September 2026. Target: Qwen 3.8 27B Q5_K_M on an NVIDIA RTX 5090 with 32 GB VRAM. Implementation is deferred.
 
-**Cílový model uživatele:** Qwen 3.8 27B ve variantě **Q5** (Q5_K_M) na **NVIDIA GeForce RTX 5090 (32 GB)**.
+This historical research note records the assessment made on that date. Third-party capability and performance claims below were not revalidated during the September 15 source-language cleanup; they are not local benchmark results.
 
-**Stav:** Zaznamenáno do plánu budoucího vývoje; realizace odložena.
+## Proposed value
 
----
+The assessment described `Neroued/ninfer` as a specialized C++/CUDA inference engine targeting Blackwell `sm_120a`, particularly the RTX 5090. Reported community throughput of 200–500+ tokens/s was attributed to native NVFP4 tensor-core acceleration, MTP speculative decoding, fused CUDA kernels, CUDA Graphs with fixed allocations, and quantized KV caches (INT8 or specialized 4-bit formats).
 
-## 1. Co je NInfer a jaké nabízí možnosti
+An OpenAI-compatible `/v1/chat/completions` server could theoretically connect to Marvin's LLMClient. API compatibility alone would not establish behavioral compatibility.
 
-**NInfer** (`Neroued/ninfer`) je vysoce specializovaný, od základu napsaný C++/CUDA inferenční engine optimalizovaný primárně pro architekturu NVIDIA Blackwell (`sm_120a`), konkrétně **RTX 5090**.
+## Reasons not to adopt it at the time
 
-### Klíčové silné stránky:
-* **Extrémní propustnost (tok/s)**: V komunitních měřeních dosahuje 200 až 500+ tokenů za sekundu díky:
-  * Nativní akceleraci **NVFP4** (4bitový floating point) na tenzorových jádrech Blackwellu.
-  * Spekulativnímu dekódování **MTP** (Multi-Token Prediction).
-  * Fúzovaným CUDA kernelům a CUDA Graphs s fixní alokací paměti.
-  * Kvantizované KV cache (INT8 nebo proprietární 4bitové formáty).
-* **Kompatibilní API**: Poskytuje lokální HTTP server kompatibilní s OpenAI API (`/v1/chat/completions`), což by teoreticky umožnilo napojení stávajícího `LLMClient` v Marvinovi bez změn aplikační logiky.
+- **Model format:** Marvin's downloaded models are GGUF, including Qwen Q5/Q4/IQ3 and Ornith. The evaluated NInfer path required separate `.ninfer` packages such as `neroued/Qwen3.8-27B-nvfp4-NInfer`; the existing weights could not be reused directly. This is a file-format constraint, not a statement about the repository's license.
+- **Precision:** the user prioritized Q5 reasoning quality. The investigated acceleration paths used NVFP4 or groupwise INT4 and offered no equivalent Q5 profile. Anecdotal reports of structured-output/tool-call inaccuracies did not establish a controlled quality comparison with Q5_K_M.
+- **Windows:** the assessed upstream targeted 64-bit Linux. Community Windows forks such as `natpate/ninfer-windows` were experimental.
+- **Vision:** support was considered immature relative to Marvin's existing screenshot, clipboard-image and PDF workflows using a separate projector.
 
----
+## Conditions for reassessment
 
-## 2. Proč NInfer v současnosti nemůžeme použít pro stávající modely
+1. A suitable precision format, such as FP8 or a validated 5–6-bit option, that preserves the required reasoning and structured-output behavior.
+2. A stable Windows binary distribution without relying on an experimental fork.
+3. Demonstrated vision and tool-calling parity on Marvin's actual workflows.
 
-### A. Nekompatibilita formátu modelů (GGUF vs. .ninfer)
-* **Marvin používá GGUF**: Všechny modely v aplikaci (`runtime/models`, `config.yaml`) jsou standardní GGUF soubory (`Qwen3.8-27B-UD-Q5_K_M.gguf`, `Q4_K_M`, `IQ3_S`, `Ornith...gguf`).
-* **NInfer nepodporuje GGUF**: NInfer je uzavřený specializovaný runtime a načítá výhradně vlastní proprietární jedno-souborové balíčky ve formátu **`.ninfer`** (např. z HuggingFace repozitářů `neroued/Qwen3.8-27B-nvfp4-NInfer`).
-* **Závěr**: Žádný z našich stažených modelů nelze v NInfer spustit. Bylo by nutné stáhnout zcela nový balíček `.ninfer`.
-
-### B. Absence kvantizace Q5 v NInfer
-* **Cíl uživatele je Q5**: Požadavek cílí na vysokou přesnost a stabilitu uvažování modelu **Qwen 3.8 27B Q5**.
-* **NInfer je postaven na 4bitech**: NInfer dosahuje své extrémní rychlosti právě využitím hardwarových 4bitových formátů:
-  * **NVFP4** (FP4).
-  * **groupwise-int** (INT4).
-* **Kvalita pro agentní práci**: NInfer **nemá Q5 variantu**. Komunitní zkušenosti navíc ukazují, že ačkoliv je NVFP4 extrémně rychlé, u 4bitové kvantizace se občas objevují nepřesnosti ve strukturovaných výstupech a přísném volání nástrojů (tool calling) oproti vyšší přesnosti Q5_K_M v `llama.cpp`.
-
-### C. Podpora Windows a multimédií
-* **Platforma**: Upstream repozitář `Neroued/ninfer` je určen výhradně pro 64bitový Linux. Pro Windows 11 existují komunitní forky (např. `natpate/ninfer-windows`), které jsou však experimentální.
-* **Vision projektor (mmproj)**: Marvin aktivně využívá multimediální schopnosti Qwen (analýza PDF, snímky obrazovky, Ctrl+V obrázky ze schránky přes `mmproj-F16.gguf`). V NInferu je podpora vision v raném stádiu.
-
----
-
-## 3. Závěr a podmínky pro budoucí zařazení
-
-Pro nasazení NInferu zatím nemáme potřebný model ani stabilní oficiální Windows runtime a NInfer nenabízí požadovanou kvantizaci Q5.
-
-### Podmínky pro budoucí přehodnocení (Watchlist):
-1. **Dostupnost vyšších přesností v NInfer**: Pokud autoři přidají podporu pro FP8 nebo 5–6bitové formáty zachovávající plnou uvažovací a syntaktickou přesnost Qwen 3.8 27B.
-2. **Stabilní Windows runtime**: Oficiální binární distribuce NInfer pro Windows bez nutnosti kompilace experimentálních forků.
-3. **Plná parita s vision a tool-calling**: Spolehlivá práce s multimodálními vstupy (obrázky ze schránky a PDF) a bezchybné generování argumentů nástrojů.
-
-Do té doby zůstává primárním a vysoce stabilním inferenčním backendem pro Marvin **llama.cpp / llama-server** s CUDA akcelerací a kvantizací Q5_K_M s Q8_0 KV cache na RTX 5090.
+llama.cpp / llama-server with CUDA remains the adopted backend. For the original target, Qwen Q5_K_M with Q8_0 KV remains the reference. This note does not authorize downloads, integration or automatic monitoring.

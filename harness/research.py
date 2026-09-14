@@ -1,4 +1,4 @@
-"""Persistentní research ledger a vícefázová syntéza bez filtrování zdrojů."""
+"""Persistent research ledger and staged synthesis without filtering out sources."""
 from __future__ import annotations
 
 import json
@@ -133,7 +133,7 @@ class ResearchLedger:
 
 class GenerationStopped(RuntimeError):
     def __init__(self, text: str = ""):
-        super().__init__("Generování zastaveno uživatelem")
+        super().__init__("Generation stopped by the user")
         self.text = text
 
 
@@ -159,7 +159,7 @@ def _ask(llm, prompt: str, should_stop: Callable[[], bool] | None = None,
     if result.stopped:
         raise GenerationStopped(text)
     if not text:
-        raise RuntimeError("Model vrátil prázdnou odpověď")
+        raise RuntimeError("The model returned an empty response")
     return text
 
 
@@ -201,7 +201,7 @@ negative, uncertain, or minority information.
     try:
         raw = _ask(llm, prompt, should_stop=should_stop)
     except RuntimeError as exc:
-        if "prázdnou odpověď" not in str(exc):
+        if "empty response" not in str(exc):
             raise
         return _fallback_plan(question)
     try:
@@ -258,11 +258,11 @@ def synthesize_research(llm, run: dict,
         evidence.append(f"{header}\n" + "\n".join(notes))
 
     candidate_lines = [
-        f"- {item.get('title') or '(bez názvu)'} — {item.get('url')}"
+        f"- {item.get('title') or "(untitled)"} — {item.get('url')}"
         for item in run.get("candidates", [])
     ]
     if not evidence:
-        raise RuntimeError("Pro syntézu nebyl načten žádný zdroj")
+        raise RuntimeError("No sources were loaded for synthesis")
 
     combined = "\n\n".join(evidence)
     if len(combined) > 60_000:
@@ -278,43 +278,43 @@ def synthesize_research(llm, run: dict,
         combined = "\n\n".join(partials)
 
     source_ids = [source["id"] for source in run.get("sources", [])]
-    final_prompt = f"""Původní otázka uživatele:
+    final_prompt = f"""Original user question:
 {question}
 
-Zpracované podklady:
+Processed evidence:
 {combined}
 
-Všechny nalezené kandidátní zdroje (včetně nenačtených):
-{chr(10).join(candidate_lines) or '- žádné další'}
+All candidate sources found (including sources not fetched):
+{chr(10).join(candidate_lines) or "- none"}
 
-Vytvoř přehlednou závěrečnou syntézu v jazyce otázky. Přizpůsob délku a členění otázce;
-následující témata jsou vodítko, nemusí mít každé samostatný dlouhý oddíl:
-1. Přímá odpověď
-2. Nejdůležitější zjištění
-3. Podrobná syntéza podle témat
-4. Rozpory a alternativní pohledy
-5. Co není jisté nebo nebylo nalezeno
-6. Praktický závěr
-7. Použité zdroje
-8. Další nalezené, ale nenačtené zdroje
+Create a clear final synthesis in the language of the question. Adapt its length and structure to the question;
+the following topics are guidance, not a requirement for a long section each:
+1. Direct answer
+2. Key findings
+3. Detailed synthesis by topic
+4. Contradictions and alternative views
+5. Uncertainty and missing evidence
+6. Practical conclusion
+7. Sources used
+8. Other sources found but not fetched
 
-Pravidla:
-- Relevantní informace nesmí být tiše vynechány.
-- Nehodnoť ani nefiltruj zdroje podle důvěryhodnosti nebo původu.
-- Odděl tvrzení zdrojů od vlastní inference.
-- U každého tvrzení používej odkazy [{'], ['.join(source_ids)}] podle zdroje.
-- U důležitých tvrzení uveď také konkrétní pasáž nebo stránku podkladu, je-li dostupná.
-- V závěrečném seznamu uveď každý zpracovaný source ID a URL.
+Rules:
+- Do not silently omit relevant information.
+- Do not assess or filter sources by credibility or origin.
+- Separate source claims from your own inferences.
+- Reference each claim using [{'], ['.join(source_ids)}] for its source.
+- For key claims, also identify a specific passage or page when available.
+- Include every processed source ID and URL in the final source list.
 """
     synthesis = _ask(llm, final_prompt, should_stop=should_stop,
                      on_text=on_text, on_reasoning=on_reasoning)
     missing = [source_id for source_id in source_ids if f"[{source_id}]" not in synthesis]
     if missing:
         synthesis = _ask(llm, (
-            f"Původní otázka: {question}\n\nPředchozí syntéza:\n{synthesis}\n\n"
-            f"Chybějící zdroje v coverage kontrole: {', '.join(missing)}\n\n"
-            "Oprav syntézu tak, aby zachovala předchozí obsah a výslovně zahrnula každý "
-            "chybějící source ID v textu nebo seznamu zdrojů. Nic nefiltruj podle důvěryhodnosti."
+            f"Original question: {question}\n\nPrevious synthesis:\n{synthesis}\n\n"
+            f"Missing sources in the coverage check: {', '.join(missing)}\n\n"
+            "Revise the synthesis while preserving its existing content and explicitly including every "
+            "missing source ID in the text or source list. Do not filter sources by trustworthiness."
         ), should_stop=should_stop, on_text=on_text, on_reasoning=on_reasoning)
     run["synthesis_progress"] = {"phase": "complete", "completed_parts": len(cache)}
     run["citation_coverage"] = {source_id: f"[{source_id}]" in synthesis for source_id in source_ids}

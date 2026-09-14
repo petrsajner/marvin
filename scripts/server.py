@@ -1,10 +1,6 @@
-"""CLI wrapper pro správu llama-serveru (logika v harness/servermgmt.py).
+"""CLI wrapper around harness.servermgmt.
 
-Použití:
-    python scripts/server.py start [--model MODEL] [--ctx N]
-    python scripts/server.py stop | restart | status
-    python scripts/server.py switch q5
-"""
+Commands: start [--model MODEL] [--ctx N], stop, restart, status, and switch MODEL."""
 from __future__ import annotations
 
 import argparse
@@ -22,7 +18,7 @@ from harness import servermgmt  # noqa: E402
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("cmd", choices=["start", "stop", "restart", "switch", "status"])
-    ap.add_argument("model_pos", nargs="?", help="model key pro start/switch/restart")
+    ap.add_argument("model_pos", nargs="?", help="model key for start/switch/restart")
     ap.add_argument("--model", dest="model_opt", help="model key (alternativa k pozici)")
     ap.add_argument("--ctx", type=int, help="override ctx size")
     args = ap.parse_args()

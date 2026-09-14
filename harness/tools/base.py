@@ -1,4 +1,4 @@
-"""Základní infrastruktura nástrojů (tools) pro agenta."""
+"""Agent tool infrastructure."""
 from __future__ import annotations
 
 import traceback
@@ -11,14 +11,14 @@ from harness.safety import Risk
 
 @dataclass
 class AgentContext:
-    """Sdílený kontext předávaný nástrojům při vykonávání."""
+    """Shared context passed to tools during execution."""
 
     cfg: Any                       # harness.config.Config
     session: Any                   # harness.session.Session
     workspace: Path = field(default_factory=Path.cwd)
     project_workspace: Path | None = None
     work_mode: str = "development"
-    pending_images: list[Path] = field(default_factory=list)  # obrázky k přiložení do další zprávy
+    pending_images: list[Path] = field(default_factory=list)  # Images to attach to the next message.
     changes: Any = None            # harness.changes.ChangeJournal
     processes: Any = None          # harness.processes.ProcessManager
     repo_index: Any = None         # harness.repo_index.RepoIndex
@@ -29,7 +29,7 @@ class AgentContext:
     abort_flag: Any = None         # threading.Event shared with the active agent run
 
     def resolve(self, path: str) -> Path:
-        """Relativní cesty řeší od workspace, absolutní ponechá."""
+        """Resolve relative paths against the workspace and preserve absolute paths."""
         p = Path(path)
         return p if p.is_absolute() else (self.workspace / p)
 
@@ -37,7 +37,7 @@ class AgentContext:
 class Tool:
     name: str = ""
     description: str = ""
-    parameters: dict = {}          # JSON schema vlastností
+    parameters: dict = {}          # JSON Schema properties.
     risk: Risk = Risk.SAFE
     required: list[str] = []
     parallel_safe: bool = False
@@ -88,7 +88,7 @@ class ToolRegistry:
 
     # ------------------------------------------------------------------
     def execute(self, name: str, arguments: dict, ctx: AgentContext) -> str:
-        """Vykoná nástroj; výjimky zachytí a vrátí jako text (model na ně reaguje)."""
+        """Execute a tool and return exceptions as text the model can respond to."""
         tool = self.get(name)
         if tool is None:
             return ToolOutcome(f"ERROR: Unknown tool '{name}'. Available: {', '.join(self.names())}", status="error", tool=name)
@@ -106,10 +106,9 @@ class ToolRegistry:
 
 def truncate(text: str, limit: int = 20000, label: str = "output",
              head_ratio: float = 0.35) -> str:
-    """Inteligentní ořez výstupu: uchová začátek i konec (head+tail).
+    """Truncate output while retaining both its beginning and end.
 
-    Zabrání ztrátě chybových hlášek, test výsledků a stack trace na konci logu.
-    """
+    This preserves errors, test results and stack traces commonly found at the end of logs."""
     if len(text) <= limit:
         return text
     head_len = int(limit * head_ratio)

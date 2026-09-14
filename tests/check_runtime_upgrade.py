@@ -153,7 +153,7 @@ class Probes:
             timer.cancel()
 
     def chat(self):
-        r = self.call([{"role": "user", "content": "Kolik je 37 + 58? Odpověz pouze číslem."}])
+        r = self.call([{"role": "user", "content": "What is 37 + 58? Reply with the number only."}])
         require(re.search(r"\b95\b", r.content), repr(r.content))
         return self.last
 

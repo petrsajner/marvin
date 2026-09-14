@@ -1,4 +1,4 @@
-"""Systémové prompty pro jednotlivé režimy (anglicky - lepší výkon modelu)."""
+"""English system prompts for the supported work modes."""
 from __future__ import annotations
 
 BASE = """You are Qwen3.8-27B running as a local harness agent on the user's Windows 11 machine (Git Bash, PowerShell and cmd available; RTX 5090 workstation).
@@ -107,12 +107,9 @@ def system_prompt(mode: str, work_mode: str | None = None) -> str:
 
 
 def build_system_prompt(mode: str, cfg, workspace, work_mode: str | None = None) -> str:
-    """Kompletní system prompt: základ režimu + workspace + trvalá paměť + skills katalog.
+    """Build the system prompt from the mode, workspace, memory and skill catalog.
 
-    Volá se při startu úlohy a po kompresi kontextu (paměť se vždy občerství).
-    Katalog skills (jen metadata) je vidět vždy - model pak přirozeně načte
-    obsah přes read_skill, když úloha spadá do oblasti nějakého skillu.
-    """
+    Called at task start and after compression to refresh memory. Skill metadata remains visible so the model can load relevant instructions with read_skill."""
     from harness.memory import MemoryStore
     from harness.skills import SkillLibrary
     base = system_prompt(mode, work_mode)

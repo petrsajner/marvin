@@ -1,14 +1,14 @@
 ; ============================================================
 ;  Marvin - installer (Inno Setup 6)
-;  Build:  installer\build_installer.bat  →  dist\Marvin-Setup-<verze>.exe
+;  Build:  installer\build_installer.bat  →  dist\Marvin-Setup-<version>.exe
 ;
 ;  Language: the wizard offers English (default) and Czech; the
 ;  selected language is written to {app}\runtime\ui-language.txt
 ;  and the app starts in it (English when nothing is selected).
 ; ============================================================
 
-; Verzi lze předefinovat z příkazové řádky: ISCC /DMyAppVersion=x.y.z
-; (používá installer\release.bat s verzí z installer\version.txt)
+; Override the version from the command line: ISCC /DMyAppVersion=x.y.z
+; (installer\release.bat uses installer\version.txt)
 #ifndef MyAppVersion
 #define MyAppVersion "1.8.2"
 #endif
@@ -26,7 +26,7 @@ AppPublisher={#MyAppPublisher}
 AppCopyright=© Petr Sajner 2026
 DefaultDirName={localappdata}\QwenHarness
 DefaultGroupName={#MyAppName}
-; bez admin prav - instalace do uzivatelskeho profilu
+; Install in the user profile without administrator privileges
 PrivilegesRequired=lowest
 OutputDir=..\dist
 #ifdef FullBuild
@@ -46,10 +46,10 @@ WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
 CloseApplications=yes
-; vzdy zobraz vyber jazyka (anglictina je prvni = vychozi)
+; Always show language selection; English is the default first entry
 ShowLanguageDialog=yes
 
-; po prejmenovani produktu odstranit stare exe z predchozi instalace
+; Remove the old executable after the product rename
 [InstallDelete]
 Type: files; Name: "{app}\QwenHarness.exe"
 ; Replace only packaged application code. User data, models and user-skills stay.
@@ -67,29 +67,23 @@ Name: "en"; MessagesFile: "compiler:Default.isl"
 Name: "cze"; MessagesFile: "compiler:Languages\Czech.isl"
 
 [CustomMessages]
+#include "locales\cs-custom.isl"
 en.PrepareDesktop=Preparing desktop components...
-cze.PrepareDesktop=Příprava součástí aplikace...
 en.DesktopSetupFailed=Desktop components could not be prepared. Connect to the internet and run Setup again, or use the Full installer for offline setup.
-cze.DesktopSetupFailed=Součásti aplikace se nepodařilo připravit. Připojte se k internetu a spusťte instalátor znovu, nebo použijte Full instalátor pro instalaci bez internetu.
 en.SetupEnvMenu=Set up environment and models
-cze.SetupEnvMenu=Instalace prostředí a modelů
 en.BackupSetupMenu=Set up from offline backup
-cze.BackupSetupMenu=Instalace z offline zálohy
 #ifdef FullBuild
 en.RunSetupDesc=Download selected models (Python, packages and llama.cpp are included)
-cze.RunSetupDesc=Stahnout vybrane modely (Python, balicky a llama.cpp jsou pribalene)
 #else
 en.RunSetupDesc=Set up the environment and download models (requires separately installed 64-bit Python 3.12)
-cze.RunSetupDesc=Nainstalovat prostředí a modely (vyžaduje samostatně nainstalovaný 64bitový Python 3.12)
 #endif
 
 [Messages]
+#include "locales\cs-messages.isl"
 #ifdef FullBuild
 en.WelcomeLabel2=Marvin Full includes a private Python 3.12 runtime, Python packages, llama.cpp/CUDA libraries and the offline WebView2 installer.%n%nWebView2 is prepared automatically. No system Python or PATH changes are required. NVIDIA drivers remain your responsibility. Models are downloaded separately.%n%nContinue?
-cze.WelcomeLabel2=Marvin Full obsahuje vlastni Python 3.12, Python balicky, llama.cpp/CUDA knihovny a offline instalator WebView2.%n%nWebView2 se pripravi automaticky. Nepotrebuje systemovy Python a nemeni PATH. Ovladac NVIDIA instaluje uzivatel. Modely se stahuji samostatne.%n%nPokracovat?
 #else
 en.WelcomeLabel2=This wizard will install [name/ver], a local AI application.%n%nREQUIRED: Install 64-bit Python 3.12 separately and enable "Add Python to PATH" before continuing. Python is not bundled. WebView2 is prepared automatically; internet is required when it is missing.%n%nAfter installation, the environment and selected models will be prepared from an offline backup or downloaded. Download size depends on your model selection.%n%nContinue?
-cze.WelcomeLabel2=Tento pruvodce nainstaluje [name/ver] - lokalni AI aplikaci.%n%nVYZADOVANO: Pred pokracovanim samostatne nainstalujte 64bitovy Python 3.12 a zapnete "Add Python to PATH". Python neni soucasti instalatoru. WebView2 se pripravi automaticky; pokud chybi, je potreba internet.%n%nPo instalaci se prostredi a vybrane modely pripravi z offline zalohy nebo stahnou. Objem zavisi na vyberu modelu.%n%nPOKRACOVAT?
 #endif
 
 [Tasks]
@@ -107,13 +101,13 @@ Source: "..\build\full-payload-{#MyAppVersion}\packages\*"; DestDir: "{app}\runt
 Source: "..\build\full-payload-{#MyAppVersion}\llama\*"; DestDir: "{app}\runtime\llama"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\build\full-payload-{#MyAppVersion}\manifest.json"; DestDir: "{app}\runtime"; DestName: "full-manifest.json"; Flags: ignoreversion
 #endif
-; hlavní aplikace (PyInstaller: exe + _internal)
+; Main application (PyInstaller: executable and _internal)
 Source: "..\dist\Marvin\Marvin.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\Marvin\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs createallsubdirs
 #ifdef FullBuild
 Source: "..\build\full-payload-{#MyAppVersion}\crt\*.dll"; DestDir: "{app}\_internal"; Flags: ignoreversion
 #endif
-; podpůrné zdroje (harness jádro, skripty, config)
+; Supporting source (harness core, scripts and configuration)
 Source: "..\qwen_app.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\webapp.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\tui.py"; DestDir: "{app}"; Flags: ignoreversion
@@ -130,13 +124,14 @@ Source: "..\output\pdf\Marvin-Manual-EN.pdf"; DestDir: "{app}\docs"; Flags: igno
 Source: "..\output\pdf\Marvin-Manual-CS.pdf"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "..\app_icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\harness\*.py"; DestDir: "{app}\harness"; Flags: ignoreversion recursesubdirs
+Source: "..\harness\locales\*.json"; DestDir: "{app}\harness\locales"; Flags: ignoreversion
 Source: "..\harness\tools\*.py"; DestDir: "{app}\harness\tools"; Flags: ignoreversion
 Source: "..\launcher\*.py"; DestDir: "{app}\launcher"; Flags: ignoreversion
 Source: "..\scripts\*.py"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "..\tests\*.py"; DestDir: "{app}\tests"; Flags: ignoreversion
 Source: "..\memory\*.md"; DestDir: "{app}\memory"; Flags: ignoreversion onlyifdoesntexist recursesubdirs createallsubdirs
 Source: "..\skills\*.md"; DestDir: "{app}\skills"; Flags: ignoreversion recursesubdirs createallsubdirs
-; setup skript (venv + modely) - spouští se po instalaci
+; Setup script (environment and models), run after installation
 Source: "run_setup.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "run_setup_from_backup.bat"; DestDir: "{app}"; Flags: ignoreversion
 
@@ -152,16 +147,16 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDi
 #ifdef FullBuild
 Filename: "{app}\runtime\python\python.exe"; Parameters: "-I ""{app}\scripts\bootstrap_full.py"""; WorkingDir: "{app}"; StatusMsg: "Preparing private Python environment..."; Flags: runhidden waituntilterminated
 #endif
-; HLAVNI KROK: vytvori venv, stahne zavislosti, llama.cpp i modely (~59 GiB)
-; s prubehem v konzoli - hned po dokonceni instalatoru (default zaskrtnuto)
+; Prepare the environment, dependencies, llama.cpp and selected models
+; Show console progress after installation; selected by default
 Filename: "{app}\run_setup.bat"; Description: "{cm:RunSetupDesc}"; Flags: postinstall skipifsilent shellexec runasoriginaluser; WorkingDir: "{app}"
 
 [Code]
 var
   ModelPage: TWizardPage;
   ModelList: TNewCheckListBox;
-  // naplni se v FillModelTable (Pascal Script neumi typovane konstanty);
-  // zrcadli config.yaml (min_vram_gb = nejnizsi profil modelu)
+  // Populated in FillModelTable because Pascal Script does not support typed constants;
+  // mirrors config.yaml (min_vram_gb is the smallest model profile)
   ModelKeys: array[0..6] of String;
   ModelNames: array[0..6] of String;
   ModelMinVram: array[0..6] of Double;
@@ -226,7 +221,7 @@ begin
   HasAnyModel := False;
   for I := 0 to 6 do
     if FileExists(ModelsDir + '\' + ModelFiles[I]) then HasAnyModel := True;
-  // TNewCheckListBox neumi mazat polozky - pri refreshi ho vytvorime znovu
+  // Recreate TNewCheckListBox on refresh because individual items cannot be removed
   if ModelList <> nil then
     ModelList.Free;
   ModelList := TNewCheckListBox.Create(ModelPage.Surface);
@@ -236,8 +231,8 @@ begin
   for I := 0 to 6 do
   begin
     Fits := (Vram <= 0) or (ModelMinVram[I] <= Vram);
-    // cista instalace: zaskrtni vse, co se vejde; upgrade: zaskrtni jen jiz
-    // stazene - nove modely se automaticky nestahuji, uzivatel je docita sam
+    // Fresh installs select all compatible models; upgrades select only models
+    // already downloaded. The user selects any additional models explicitly.
     if HasAnyModel then
       Checked := Fits and FileExists(ModelsDir + '\' + ModelFiles[I])
     else
@@ -259,9 +254,9 @@ begin
     Subtitle := 'GPU VRAM could not be detected - all models are offered. Uncheck what you do not want to download.';
   ModelPage := CreateCustomPage(wpSelectDir, 'Models to download',
     'Choose which models to download on first launch. ' + Subtitle);
-  // {app} jeste neni inicializovane (ExpandConstant by hodil internal error)
-  // - prvotni stav = chovani ciste instalace; skutecnou detekci existujicich
-  // modelu provede NextButtonClick(wpSelectDir) s finalni cestou
+  // {app} is not initialized yet; ExpandConstant would raise an internal error
+  // Use fresh-install behavior initially. NextButtonClick(wpSelectDir)
+  // detects existing models using the final installation path.
   RefreshModelChecks('');
 end;
 
@@ -272,7 +267,7 @@ var
 begin
   Result := True;
   if CurPageID = wpSelectDir then
-    RefreshModelChecks(WizardDirValue);  // instalacni adresar je finalni az tady
+    RefreshModelChecks(WizardDirValue);  // the installation directory is final at this point
   if CurPageID = ModelPage.ID then
   begin
     AnyChecked := False;
@@ -311,7 +306,7 @@ var
 begin
   if CurStep = ssInstall then
   begin
-    // rebrand: odstranit zastupce ze stareho nazvu produktu
+    // Remove shortcuts using the former product name
     OldGroup := ExpandConstant('{autoprograms}') + '\Qwen3.8-27B Harness';
     if DirExists(OldGroup) then
       DelTree(OldGroup, True, True, True);
@@ -320,7 +315,7 @@ begin
   if CurStep = ssPostInstall then
   begin
     CreateDir(ExpandConstant('{app}\runtime'));
-    // uloz vybrany jazyk instalatoru -> aplikace se podle nej nastavi
+    // Save the installer language for the application to use
     SaveStringToFile(ExpandConstant('{app}\runtime\ui-language.txt'), ActiveLanguage, False);
     BackupDir := FindOfflineBackup;
     if BackupDir <> '' then
@@ -336,7 +331,7 @@ begin
       RaiseException(CustomMessage('DesktopSetupFailed'));
     if DesktopResult <> 0 then
       RaiseException(CustomMessage('DesktopSetupFailed'));
-    // uloz vyber modelu z wizardu (comma list; run_setup.bat ho preda downloadu)
+    // Save the comma-separated model selection for run_setup.bat to pass to the downloader
     Selection := '';
     if Assigned(ModelList) then
       for I := 0 to ModelList.Items.Count - 1 do

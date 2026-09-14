@@ -1,4 +1,4 @@
-"""Lehký automatický přehled workspace pro system prompt a repo_overview tool."""
+"""Lightweight workspace overview for the system prompt and repo_overview tool."""
 from __future__ import annotations
 
 import ast

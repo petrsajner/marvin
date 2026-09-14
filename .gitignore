@@ -1,10 +1,10 @@
-# Běhový prostředí - modely, binárky, velké soubory (NE v gitu)
+# Runtime environments, weights and binaries stay outside Git.
 runtime/
 venv/
 .venv/
 env/
 
-# Session historie a logy
+# Conversation history and logs
 sessions/
 logs/
 *.log
@@ -30,7 +30,7 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# build artefakty PyInstalleru
+# PyInstaller build artifacts
 build/
 
 # agent plans

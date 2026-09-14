@@ -1,14 +1,9 @@
-r"""Marvin — spustitelný launcher (kompilováno PyInstallerem na Marvin.exe).
+"""Marvin desktop launcher, packaged as Marvin.exe by PyInstaller.
 
-Životní cyklus:
-  START → preflight (venv/modely; chybí-li → nabídne instalaci v konzoli)
-        → start llama-server (pokud neběží)
-        → start Web UI (bez autoprotein prohlížeče) + nativní okno (WebView2)
-  KONEC → zavření okna: stop Web UI + llama-server, VRAM uvolněna.
+Startup prepares desktop components and checks the environment, then opens the web workspace while the model starts in the background. Closing the window stops its services and releases GPU memory.
 
-Build:  installer\build_exe.bat  →  dist\Marvin\Marvin.exe
-Test:   Marvin.exe --smoke  (životní cyklus bez okna)
-"""
+Build: installer/build_exe.bat
+Lifecycle diagnostic: Marvin.exe --smoke"""
 from __future__ import annotations
 
 import atexit
@@ -45,7 +40,7 @@ set_language(detect_language(ROOT) or "en")
 VENV_PY = ROOT / ".venv" / "Scripts" / "python.exe"
 VENV_PYW = ROOT / ".venv" / "Scripts" / "pythonw.exe"
 
-# log pro windowed exe (bez konzole)
+# logging for the windowed executable without a console
 if sys.stdout is None or sys.stderr is None:
     _logdir = ROOT / "runtime"
     _logdir.mkdir(parents=True, exist_ok=True)
@@ -60,7 +55,7 @@ def _log(msg: str) -> None:
 
 
 def _alert(msg: str, question: bool = False) -> bool:
-    """MessageBox; question=True vrací True při Ano."""
+    """Show a message box; confirmation questions return True for Yes."""
     try:
         import ctypes
         flags = 0x24 if question else 0x10  # YESNO+QUESTION | ICON_ERROR
@@ -126,7 +121,7 @@ def _existing_web_port(preferred: int) -> int | None:
 
 
 def _cfg_ports() -> tuple[int, int]:
-    """Porty (server, web) z config.yaml - jednoduchý parse s fallbackem."""
+    """Read inference and web ports from config.yaml with fallback defaults."""
     srv, web = 8080, 7860
     try:
         text = (ROOT / "config.yaml").read_text(encoding="utf-8")
@@ -152,7 +147,7 @@ def _check_model_files() -> tuple[bool, str]:
 
 
 def _port_pid(port: int) -> int | None:
-    """PID procesu, který poslouchá na portu (netstat, bez psutil)."""
+    """Find the process listening on a port using netstat without psutil."""
     try:
         out = subprocess.run(["netstat", "-ano", "-p", "tcp"], capture_output=True,
                              text=True, creationflags=0x08000000).stdout
@@ -169,13 +164,13 @@ def _port_pid(port: int) -> int | None:
 def _kill_tree(pid: int) -> None:
     try:
         subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
-                       capture_output=True, creationflags=0x08000000)  # bez konzole
+                       capture_output=True, creationflags=0x08000000)  # hide the console
     except Exception:
         pass
 
 
 def _run_setup_console() -> bool:
-    """Instalace prostředí+modelů ve viditelné konzoli (venv, llama.cpp, 37 GB modelů)."""
+    """Run environment and model setup in a visible console."""
     bat = ROOT / "run_setup.bat"
     if not bat.exists():
         _alert(t("Missing {name} — run the installation manually as described in README.",
@@ -186,8 +181,9 @@ def _run_setup_console() -> bool:
 
 
 def _focus_window() -> None:
-    """Přines okno do popředí - robustně (Windows zakazují ukrást fokus,
-    proto TOPMOST-toggle trik; 3 pokusy, WebView2 okno se inicializuje pomalu)."""
+    """Bring the window to the foreground using a brief topmost toggle.
+
+    Retry because WebView2 initialization can delay creation of the native window."""
     import ctypes
     import time as _t
     _t.sleep(2.0)
@@ -211,7 +207,7 @@ def _focus_window() -> None:
             if found:
                 for h in found:
                     u.ShowWindow(h, 9)  # SW_RESTORE
-                    # TOPMOST → NOTOPMOST donutí okno vizuálně nahoru i bez focus práv
+                    # Toggle topmost to raise the window even when Windows restricts focus changes.
                     u.SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE)
                     u.SetWindowPos(h, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE)
                     u.SetForegroundWindow(h)
@@ -226,10 +222,9 @@ _splash_done: "threading.Event | None" = None
 
 
 def _show_splash() -> None:
-    """Malé okno 'startuji…' okamžitě po spuštění (zavře se s hlavním oknem).
+    """Show a small startup splash immediately.
 
-    Tk splash = native, bez konzole; když tkinter chybí, tiše přeskoč.
-    """
+    Use native Tk without a console; skip it gracefully when Tk is unavailable."""
     global _splash_done
     try:
         import tkinter as tk
@@ -273,8 +268,7 @@ def _close_splash() -> None:
 
 
 def _write_loading_page(web_port: int):
-    """Interní 'načítám' stránka - okno se otevře okamžitě; stránka sama
-    přeskočí na UI ve chvíli, kdy webapp naslouchá (fetch probe)."""
+    """Create the initial loading page, which redirects when the workspace server is ready."""
     d = ROOT / "runtime"
     d.mkdir(parents=True, exist_ok=True)
     p = d / ".loading.html"
@@ -347,7 +341,7 @@ def main() -> int:
             _alert("Bundled Python environment could not be prepared. See runtime/launcher.log.")
             return 1
 
-    # ---- 1) preflight: venv + llama.cpp + modely (rychlé kontroly souborů) ----
+    # 1) Check environment, inference runtime and model files.
     problems = []
     if not VENV_PY.exists():
         problems.append(t("Python environment (.venv)"))
@@ -377,8 +371,8 @@ def main() -> int:
         else:
             return 1
 
-    # ---- 2) Web UI NEJDŘÍV (model se nahodí na pozadí přes autostart) ---------
-    # UI-first: okno se otevře hned, status ukazuje ⏳ načítám model → 🟢
+    # 2) Open the web workspace first; load the model in the background.
+    # The window opens immediately and displays model startup progress.
     webapp_proc = None
     existing_port = _existing_web_port(web_port)
     webui_running = existing_port is not None
@@ -396,8 +390,8 @@ def main() -> int:
             [str(VENV_PYW), "webapp.py"], cwd=str(ROOT), env=env,
             creationflags=0x08000000)
         if not smoke:
-            # okno otevřeme HNED s loading stránkou (sama přeskočí na UI,
-            # až bude server ready) - uživatel nekouká 10 s na splash
+            # Open the loading page immediately; it redirects when the UI is ready.
+            # This avoids leaving the user on the splash during backend initialization.
             loading = _write_loading_page(web_port)
             url = loading.as_uri()
             _log(f"Window opened immediately (loading page) → {base_web}")
@@ -422,7 +416,7 @@ def main() -> int:
     if not (webapp_proc is not None and not smoke):
         _log(f"Web UI ready: {url}")
 
-    # ---- 3) cleanup (zavření okna = stop všeho + uvolnění VRAM) ---------------
+    # 3) Closing the window stops its services and releases GPU memory.
     cleaned = {"done": False}
 
     def cleanup() -> None:
@@ -447,7 +441,7 @@ def main() -> int:
             _log(f"SMOKE: workspace check failed: {exc}")
             cleanup()
             return 1
-        # počkej na model (autostart na pozadí), pak cleanup - test celého cyklu
+        # Wait for model startup, then clean up to test the entire lifecycle.
         _log("SMOKE: waiting for the model (autostart) ...")
         for _ in range(90):
             if _http_ok(f"{base_srv}/health"):
@@ -458,7 +452,7 @@ def main() -> int:
         cleanup()
         return 0 if ok else 1
 
-    # ---- 4) nativní okno --------------------------------------------------------
+    # 4) Native desktop window.
     _close_splash()
     try:
         import webview

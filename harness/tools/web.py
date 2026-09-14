@@ -1,9 +1,6 @@
-"""Nástroje pro přístup k internetu - web_search (Bing, fallback DDG) a web_fetch.
+"""Web search with Bing/DDG fallbacks and web-page fetching.
 
-Oba nástroje jsou read-only (pouze GET), bez API klíčů. Slouží modelu k
-dohledávání aktuálních informací, dokumentace apod. Limity (timeout, délka
-výstupu, počet výsledků) se dají nastavit v config.yaml sekce `web:`.
-"""
+Requests are read-only GET operations without API keys. Timeouts, output limits and result counts are configured in the web section of config.yaml."""
 from __future__ import annotations
 
 import html as _htmlmod
@@ -43,7 +40,7 @@ def _web_cfg(ctx: AgentContext) -> dict:
 
 
 def _strip_tags(html: str) -> str:
-    """Odstraň tagy a srovnej mezery/bílé znaky."""
+    """Strip markup and normalize whitespace."""
     text = re.sub(r"<(script|style|noscript)[^>]*>.*?</\1>", " ", html, flags=re.S | re.I)
     text = re.sub(r"<br\s*/?>|</(p|div|li|tr|h[1-6])>", "\n", text, flags=re.I)
     text = re.sub(r"<[^>]+>", " ", text)
@@ -53,7 +50,7 @@ def _strip_tags(html: str) -> str:
 
 
 def _ddg_unwrap(href: str) -> str:
-    """DDG html vrací odkazy přes redirect //duckduckgo.com/l/?uddg=<urlenc>."""
+    """Decode DuckDuckGo redirect links containing the uddg parameter."""
     if "uddg=" in href:
         qs = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
         if "uddg" in qs:
@@ -64,7 +61,7 @@ def _ddg_unwrap(href: str) -> str:
 
 
 def _bing_unwrap(url: str) -> str:
-    """Bing zabalí odkazy do bing.com/ck/a?...&u=a1<base64url> - rozbal je."""
+    """Decode Bing redirect links containing a base64url destination."""
     if "bing.com/ck/" not in url:
         return url
     try:
@@ -72,7 +69,7 @@ def _bing_unwrap(url: str) -> str:
         u = (qs.get("u") or [""])[0]
         if u.startswith("a1"):
             u = u[2:]
-        u += "=" * (-len(u) % 4)  # doplň padding
+        u += "=" * (-len(u) % 4)  # Restore base64 padding.
         import base64
         dec = base64.urlsafe_b64decode(u.encode()).decode("utf-8", "replace")
         return dec if dec.startswith("http") else url
@@ -84,7 +81,7 @@ _ddgs_state = {"tried": False, "ok": False}
 
 
 def _ensure_ddgs() -> bool:
-    """Je k dispozici knihovna ddgs? Když ne, jednou zkus tichou doinstalaci."""
+    """Check for ddgs and attempt a silent installation once if it is missing."""
     if _ddgs_state["tried"]:
         return _ddgs_state["ok"]
     _ddgs_state["tried"] = True
@@ -134,7 +131,7 @@ class WebSearchTool(Tool):
         "max_results": {"type": "integer", "description": "Number of results (default from config, max 8)"},
     }
     required = ["query"]
-    risk = Risk.SAFE  # read-only GET vyhledávání
+    risk = Risk.SAFE  # Read-only GET search.
 
     def run(self, ctx: AgentContext, query: str = "", max_results: int = 0) -> str:
         if not (query or "").strip():
@@ -159,12 +156,12 @@ class WebSearchTool(Tool):
         except Exception as e:
             return f"ERROR: web search failed: {type(e).__name__}: {e}"
         if not items:
-            return "(žádné výsledky - zkus jiný dotaz)"
+            return "(no results; try another query)"
         if getattr(ctx, "research", None):
             ctx.research.record_query(query.strip(), items[:want])
         out = []
         for i, (title, url, snip) in enumerate(items[:want]):
-            out.append(f"{i + 1}. {title or '(bez titulku)'}\n   {url}\n   {snip[:300]}")
+            out.append(f"{i + 1}. {title or '(untitled)'}\n   {url}\n   {snip[:300]}")
         return "\n\n".join(out)
 
     @staticmethod
@@ -255,7 +252,7 @@ class WebFetchTool(Tool):
             except Exception as exc:
                 return f"ERROR: document extraction failed: {type(exc).__name__}: {exc}"
             if extracted is None:
-                text = f"(binary/unsupported content-type: {ctype or 'neznámý'})"
+                text = f"(binary/unsupported content-type: {ctype or "unknown"})"
                 title = r.url
             else:
                 text, title = extracted

@@ -1,17 +1,8 @@
-"""Marvin — desktopová Windows aplikace.
+"""Marvin Windows desktop entry point.
 
-Životní cyklus:
-  START   → zkontroluje prostředí, nastartuje llama-server (pokud neběží),
-            nastartuje Web UI a otevře nativní okno (WebView2).
-  KONEC   → zavření okna zastaví Web UI i llama-server a uvolní VRAM.
+Startup checks the environment, starts local services and opens a WebView2 window. Closing the window stops the services and releases GPU memory.
 
-Spuštění:
-    .venv/Scripts/pythonw qwen_app.py          # bez konzole (doporučeno pro zástupce)
-    .venv/Scripts/python qwen_app.py           # s konzolou (diagnostika)
-    .venv/Scripts/python qwen_app.py --smoke   # test životního cyklu bez okna
-
-Fallback: bez pywebview otevře systémový prohlížeč; ukončení = zavření konzole.
-"""
+Run with pythonw for a console-free shortcut, python for diagnostics, or --smoke for a windowless lifecycle check. Without pywebview, the system browser is the compatibility fallback."""
 from __future__ import annotations
 
 import atexit
@@ -29,7 +20,7 @@ from harness.i18n import detect_language, set_language, t
 # UI language: user choice > installer file > English (must be set before webapp import)
 set_language(detect_language(ROOT) or "en")
 
-# pythonw nemá stdout/stderr → přesměruj do log souboru, ať není tichá smrt
+# Redirect pythonw output to a log so failures remain diagnosable.
 if sys.stdout is None or sys.stderr is None:
     _logdir = ROOT / "runtime"
     _logdir.mkdir(parents=True, exist_ok=True)
@@ -40,7 +31,7 @@ if sys.stdout is None or sys.stderr is None:
 
 
 def _alert(msg: str) -> None:
-    """MessageBox bez externích závislostí (ctypes)."""
+    """Show a native message box using ctypes without external dependencies."""
     print(f"[APP] {msg}", file=sys.stderr)
     try:
         import ctypes
@@ -61,7 +52,7 @@ def preflight(cfg) -> list[str]:
 
 
 def _focus_window() -> None:
-    """Přines okno aplikace do popředí (WebView2 občas otevře okno v pozadí)."""
+    """Bring the application window forward when WebView2 opens it in the background."""
     import ctypes
     import time as _t
     _t.sleep(0.8)
@@ -100,7 +91,7 @@ def main() -> int:
                  ".venv\\Scripts\\python scripts\\setup_env.py", items="\n  • ".join(problems)))
         return 1
 
-    # ---- 2) llama-server (start pokud neběží) ----------------------------
+    # 2) Start llama-server if needed.
     we_started_server = not servermgmt.health(cfg)
     if we_started_server:
         print("[APP] Starting llama-server ...")
@@ -127,7 +118,7 @@ def main() -> int:
             time.sleep(0.5)
     url = f"http://{host}:{port}"
 
-    # ---- 4) cleanup (vždy: zavření okna = stop serveru + uvolnění VRAM) ---
+    # 4) Always stop services and release GPU memory when the window closes.
     cleaned = {"done": False}
 
     def cleanup() -> None:
@@ -150,7 +141,7 @@ def main() -> int:
 
     atexit.register(cleanup)
 
-    # ---- 5) okno / smoke test ---------------------------------------------
+    # ---- 5) window / smoke test -------------------------------------------
     if smoke:
         print(f"[APP] SMOKE: everything running at {url} - exiting after 3 s (cleanup test).")
         time.sleep(3)
@@ -166,7 +157,7 @@ def main() -> int:
             background_color="#0b0e14",
         )
         print(f"[APP] Window opened: {url}")
-        webview.start(_focus_window)  # blokuje do zavření okna
+        webview.start(_focus_window)  # Block until the window closes.
     except ImportError:
         import webbrowser
         print(f"[APP] pywebview missing - opening system browser: {url}")

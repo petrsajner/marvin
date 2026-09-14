@@ -1,4 +1,4 @@
-"""Lokální fulltextové vyhledávání v projektu pomocí SQLite FTS5 a BM25."""
+"""Local project search using SQLite FTS5 and BM25."""
 from __future__ import annotations
 
 import os
@@ -11,7 +11,7 @@ from typing import Any
 from harness.safety import Risk
 from harness.tools.base import AgentContext, Tool, truncate
 
-# Přípony textových souborů, které indexujeme
+# Text-file extensions eligible for indexing.
 TEXT_EXTENSIONS = {
     ".py", ".pyi", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs",
     ".html", ".css", ".scss", ".json", ".yaml", ".yml", ".toml", ".ini",
@@ -27,17 +27,17 @@ IGNORED_DIRS = {
 
 
 def _collect_files(root: Path, max_files: int = 2000) -> list[Path]:
-    """Vyhledá indexovatelné textové soubory v kořenu projektu."""
+    """Find indexable text files under the project root."""
     files: list[Path] = []
     try:
         for dirpath, dirnames, filenames in os.walk(root):
-            # Odfiltrovat ignorované adresáře v místě
+            # Prune ignored directories in place.
             dirnames[:] = [d for d in dirnames if d not in IGNORED_DIRS and not d.startswith(".")]
             for f in filenames:
                 p = Path(dirpath) / f
                 if p.suffix.lower() in TEXT_EXTENSIONS:
                     try:
-                        # Ignorovat obří soubory (> 1.5 MB)
+                        # Skip files larger than 1.5 MB.
                         if p.stat().st_size <= 1_500_000:
                             files.append(p)
                             if len(files) >= max_files:
@@ -50,7 +50,7 @@ def _collect_files(root: Path, max_files: int = 2000) -> list[Path]:
 
 
 def _sanitize_fts_query(raw_query: str) -> str:
-    """Očistí uživatelský dotaz pro SQLite FTS5 operátor MATCH."""
+    """Sanitize a query for SQLite FTS5 MATCH."""
     words = re.findall(r"\w+", raw_query, re.UNICODE)
     if not words:
         return ""

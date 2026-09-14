@@ -82,7 +82,7 @@ class ApplicationService:
             self.fit_hardware()
         from harness.i18n import detect_language
         if not legacy.get("language") and not self.preferences_path.exists():
-            self.preferences["language"] = detect_language(cfg.root)
+            self.preferences["language"] = detect_language(cfg.root) or "en"
         for job in self.store.jobs(("running", "steering")):
             payload = job["payload"]
             if job["status"] == "running":

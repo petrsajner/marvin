@@ -1,4 +1,4 @@
-# Globální paměť
+# Global memory
 
-<!-- Fakta a preference platné napříč všemi pracovními režimy a projekty.
-     Pro zápis použij save_memory se scope="global". Piš stručně, jeden fakt na řádek. -->
+<!-- Facts and preferences shared across work modes and projects.
+     Use save_memory with scope="global". Keep one concise fact per line. -->

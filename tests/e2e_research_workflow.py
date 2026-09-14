@@ -1,4 +1,4 @@
-"""GPU E2E: dva protichůdné webové zdroje -> ledger -> povinná syntéza."""
+"""GPU integration test: conflicting web sources, research ledger and final synthesis."""
 from __future__ import annotations
 
 import shutil
@@ -21,8 +21,8 @@ from harness.session import Session
 
 
 PAGES = {
-    "/a": "<html><title>Výklad A</title><body>Zdroj A tvrdí, že událost byla plánovaná.</body></html>",
-    "/b": "<html><title>Výklad B</title><body>Zdroj B tvrdí opak: událost byla spontánní.</body></html>",
+    "/a": "<html><title>Account A</title><body>Source A says the event was planned.</body></html>",
+    "/b": "<html><title>Account B</title><body>Source B says the opposite: the event was spontaneous.</body></html>",
 }
 
 
@@ -64,14 +64,14 @@ def main() -> int:
             workspace=str(workspace), work_mode="research")
         registry = build_registry("chat", "research")
         if any(name in registry.names() for name in ("apply_patch", "git_commit", "run_command")):
-            raise RuntimeError("Research registry obsahuje coding nástroje")
+            raise RuntimeError("The research registry contains development tools")
         agent = Agent(
             cfg, LLMClient(cfg), session, registry,
             SafetyPolicy("auto", max_steps=12), mode="chat", work_mode="research")
         prompt = (
-            "Proveď výzkum otázky, zda byla událost plánovaná nebo spontánní. "
-            f"Povinně načti přes web_fetch oba zdroje: http://127.0.0.1:{port}/a a "
-            f"http://127.0.0.1:{port}/b. Zachovej oba protichůdné výklady a potom odpověz česky."
+            "Research whether the event was planned or spontaneous. "
+            f"Fetch both sources with web_fetch: http://127.0.0.1:{port}/a and "
+            f"http://127.0.0.1:{port}/b. Preserve both contradictory interpretations and then answer in English."
         )
         agent.new_task(prompt)
         final = None
@@ -86,17 +86,17 @@ def main() -> int:
         calls = [call["function"]["name"] for message in session.messages
                  for call in message.get("tool_calls", [])]
         if final is None or final.status is not Status.FINAL:
-            raise RuntimeError(f"Research workflow nedokončen: {getattr(final, 'text', None)}")
+            raise RuntimeError(f"Research workflow did not complete: {getattr(final, 'text', None)}")
         if len(run.get("sources", [])) != 2 or calls.count("web_fetch") < 2:
-            raise RuntimeError(f"Nejsou zachovány oba zdroje: calls={calls}, run={run}")
+            raise RuntimeError(f"Both sources were not retained: calls={calls}, run={run}")
         if "[S1]" not in final.text or "[S2]" not in final.text:
-            raise RuntimeError(f"Coverage syntézy neobsahuje oba zdroje: {final.text}")
-        if "plánovan" not in final.text.lower() or "spontán" not in final.text.lower():
-            raise RuntimeError(f"Syntéza zamlčela jeden výklad: {final.text}")
+            raise RuntimeError(f"Synthesis coverage does not include both sources: {final.text}")
+        if "plann" not in final.text.lower() or "spontan" not in final.text.lower():
+            raise RuntimeError(f"Synthesis omitted one interpretation: {final.text}")
         if any("credibility" in source or "trust" in source for source in run["sources"]):
-            raise RuntimeError("Ledger obsahuje nepovolené hodnocení zdrojů")
+            raise RuntimeError("The ledger contains prohibited source filtering")
         print(f"[OK] tools={calls}, sources={[source['id'] for source in run['sources']]}")
-        print("[OK] protichůdné zdroje, ledger a coverage syntéza prošly")
+        print("[OK] Conflicting sources, ledger and synthesis coverage passed")
         return 0
     finally:
         httpd.shutdown()

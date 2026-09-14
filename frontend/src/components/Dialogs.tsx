@@ -1,3 +1,4 @@
+import { translate } from "../i18n";
 import React, { useEffect, useState, useRef, useCallback, memo } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -167,29 +168,29 @@ export function DialogView(props: any) {
   }, [dialog.file, page, error]);
   const title =
     dialog.type === "settings"
-      ? tr("Settings", "Nastavení")
+      ? tr("Settings")
       : dialog.type === "preview"
         ? dialog.file.name
         : (
             {
-              project: tr("Project", "Projekt"),
-              chat: tr("Conversation", "Konverzace"),
-              "delete-chat": tr("Delete conversation", "Smazat konverzaci"),
-              library: tr("Project documents", "Podklady projektu"),
-              sources: tr("Sources", "Zdroje"),
-              checkpoints: tr("Restore points", "Body obnovy"),
-              export: tr("Export", "Export"),
-              decisions: tr("Project decisions", "Přijatá rozhodnutí"),
-              "queue-edit": tr("Queued message", "Zpráva ve frontě"),
+              project: tr("Project"),
+              chat: tr("Conversation"),
+              "delete-chat": tr("Delete conversation"),
+              library: tr("Project documents"),
+              sources: tr("Sources"),
+              checkpoints: tr("Restore points"),
+              export: tr("Export"),
+              decisions: tr("Project decisions"),
+              "queue-edit": tr("Queued message"),
             } as any
           )[dialog.type] || dialog.type;
   const settingsSections = [
-    ["model", "Model and device", "Model a zařízení"],
-    ["behavior", "Behavior", "Chování"],
-    ["memory", "Memory and skills", "Paměť a skilly"],
-    ["data", "Data and backups", "Data a zálohy"],
-    ["appearance", "Appearance and language", "Vzhled a jazyk"],
-    ["help", "Help and manuals", "Nápověda a manuály"],
+    ["model", "Model and device"],
+    ["behavior", "Behavior"],
+    ["memory", "Memory and skills"],
+    ["data", "Data and backups"],
+    ["appearance", "Appearance and language"],
+    ["help", "Help and manuals"],
   ];
   const finishSelect = async (result: any) => {
     if (result?.session_id) setSid(result.session_id);
@@ -241,7 +242,7 @@ export function DialogView(props: any) {
           <button
             className="icon"
             onClick={close}
-            aria-label={tr("Close", "Zavřít")}
+            aria-label={tr("Close")}
           >
             <X />
           </button>
@@ -254,13 +255,13 @@ export function DialogView(props: any) {
         >
           {dialog.type === "settings" && (
             <nav>
-              {settingsSections.map(([id, en, cz]) => (
+              {settingsSections.map(([id, en]) => (
                 <button
                   key={id}
                   className={section === id ? "selected" : ""}
                   onClick={() => setDialog({ ...dialog, section: id })}
                 >
-                  {tr(en, cz)}
+                  {tr(en)}
                 </button>
               ))}
             </nav>
@@ -269,7 +270,7 @@ export function DialogView(props: any) {
             {dialog.type === "settings" && section === "model" && (
               <>
                 <label>
-                  {tr("Model", "Model")}
+                  {tr("Model")}
                   <select
                     value={app.preferences.model}
                     onChange={(e) =>
@@ -280,14 +281,14 @@ export function DialogView(props: any) {
                       <option key={m.id} value={m.id}>
                         {m.name}
                         {!m.installed
-                          ? " · " + tr("not installed", "nenainstalován")
+                          ? " · " + tr("not installed")
                           : ""}
                       </option>
                     ))}
                   </select>
                 </label>
                 <label>
-                  {tr("KV cache profile", "Profil KV cache")}
+                  {tr("KV cache profile")}
                   <select
                     value={
                       app.models.find(
@@ -315,14 +316,14 @@ export function DialogView(props: any) {
                   </select>
                 </label>
                 <p>
-                  {tr("Vision", "Obrazové vstupy")}:{" "}
+                  {tr("Vision")}:{" "}
                   {app.models.find((m: any) => m.id === app.preferences.model)
                     ?.vision
-                    ? tr("available", "dostupné")
-                    : tr("text-only model", "pouze textový model")}
+                    ? tr("available")
+                    : tr("text-only model")}
                 </p>
                 <label>
-                  {tr("GPU memory budget", "Limit paměti GPU")}
+                  {tr("GPU memory budget")}
                   <select
                     value={app.preferences.vram_gb || "auto"}
                     onChange={(e) =>
@@ -339,30 +340,21 @@ export function DialogView(props: any) {
                     {["auto", 16, 24, 32, 48, 64, 96].map((value) => (
                       <option key={value} value={value} disabled={value !== "auto" && app.memory?.vram_detected_gb && Number(value) > Math.ceil(app.memory.vram_detected_gb)}>
                         {value === "auto"
-                          ? tr("Automatic detection", "Automatická detekce")
+                          ? tr("Automatic detection")
                           : value + " GB"}
                       </option>
                     ))}
                   </select>
                 </label>
-                <p>{tr(
-                  "Changing the budget restarts the model automatically when no task is running. A compatible context or smaller model is selected when needed.",
-                  "Změna limitu automaticky restartuje model, pokud neběží úloha. Podle potřeby se vybere vhodný kontext nebo menší model.",
-                )}</p>
-                {app.models.find((m: any) => m.id === app.preferences.model)?.uses_system_ram && <p>{tr(
-                  "Flash-Next also uses system RAM. A smaller GPU budget needs more free RAM; GPU capacity alone does not determine compatibility.",
-                  "Flash-Next používá i systémovou RAM. Menší limit GPU vyžaduje více volné RAM; samotná velikost grafické paměti nestačí.",
-                )}</p>}
+                <p>{tr("Changing the budget restarts the model automatically when no task is running. A compatible context or smaller model is selected when needed.")}</p>
+                {app.models.find((m: any) => m.id === app.preferences.model)?.uses_system_ram && <p>{tr("Flash-Next also uses system RAM. A smaller GPU budget needs more free RAM; GPU capacity alone does not determine compatibility.")}</p>}
                 <p>
                   VRAM: {runtime.vram || "—"} · Python {runtime.python || "—"}
-                  {app.memory && <> · {tr("Free RAM", "Volná RAM")}: {app.memory.ram_available_gb} / {app.memory.ram_total_gb} GiB</>}
+                  {app.memory && <> · {tr("Free RAM")}: {app.memory.ram_available_gb} / {app.memory.ram_total_gb} GiB</>}
                 </p>
                 {app.active && (
                   <p className="amber">
-                    {tr(
-                      "New settings apply to the next request.",
-                      "Nové nastavení platí pro následující dotaz.",
-                    )}
+                    {tr("New settings apply to the next request.")}
                   </p>
                 )}
                 <div className="row">
@@ -384,7 +376,7 @@ export function DialogView(props: any) {
                       ) : (
                         <RotateCw />
                       )}
-                      {command}
+                      {tr(command === "start" ? "Start" : command === "stop" ? "Stop" : "Restart")}
                     </button>
                   ))}
                 </div>
@@ -394,7 +386,7 @@ export function DialogView(props: any) {
             {dialog.type === "settings" && section === "behavior" && (
               <>
                 <label>
-                  {tr("Autonomy", "Samostatnost")}
+                  {tr("Autonomy")}
                   <select
                     value={app.preferences.autonomy}
                     onChange={(e) =>
@@ -407,7 +399,7 @@ export function DialogView(props: any) {
                   </select>
                 </label>
                 <label>
-                  {tr("Default message delivery", "Výchozí zpracování zprávy")}
+                  {tr("Default message delivery")}
                   <select
                     value={app.preferences.send_mode}
                     onChange={(e) =>
@@ -415,40 +407,37 @@ export function DialogView(props: any) {
                     }
                   >
                     <option value="steer">
-                      {tr("Clarify now", "Upřesnit nyní")}
+                      {tr("Clarify now")}
                     </option>
                     <option value="queue">
-                      {tr("After completion", "Po dokončení")}
+                      {tr("After completion")}
                     </option>
                   </select>
                 </label>
                 <p>
-                  {tr(
-                    "Drafts and received messages are saved automatically.",
-                    "Drafty a přijaté zprávy se ukládají automaticky.",
-                  )}
+                  {tr("Drafts and received messages are saved automatically.")}
                 </p>
               </>
             )}
             {dialog.type === "settings" && section === "appearance" && (
               <>
                 <label>
-                  {tr("Theme", "Vzhled")}
+                  {tr("Theme")}
                   <select
                     value={app.preferences.theme}
                     onChange={(e) =>
                       call(() => settings({ theme: e.target.value }))
                     }
                   >
-                    <option value="dark">{tr("Dark", "Tmavý")}</option>
-                    <option value="light">{tr("Light", "Světlý")}</option>
+                    <option value="dark">{tr("Dark")}</option>
+                    <option value="light">{tr("Light")}</option>
                     <option value="system">
-                      {tr("System", "Podle systému")}
+                      {tr("System")}
                     </option>
                   </select>
                 </label>
                 <label>
-                  {tr("Language", "Jazyk")}
+                  {tr("Language")}
                   <select
                     value={app.preferences.language}
                     onChange={(e) =>
@@ -456,11 +445,11 @@ export function DialogView(props: any) {
                     }
                   >
                     <option value="en">English</option>
-                    <option value="cs">Čeština</option>
+                    <option value="cs">{translate("Czech", "cs")}</option>
                   </select>
                 </label>
                 <label>
-                  {tr("Spacing", "Rozestupy")}
+                  {tr("Spacing")}
                   <select
                     value={app.preferences.density}
                     onChange={(e) =>
@@ -468,10 +457,10 @@ export function DialogView(props: any) {
                     }
                   >
                     <option value="comfortable">
-                      {tr("Comfortable", "Pohodlné")}
+                      {tr("Comfortable")}
                     </option>
                     <option value="compact">
-                      {tr("Compact", "Kompaktní")}
+                      {tr("Compact")}
                     </option>
                   </select>
                 </label>
@@ -491,14 +480,14 @@ export function DialogView(props: any) {
                       disabled={!detail?.memory?.[s]?.path}
                     >
                       {cs
-                        ? ["Globální", "Režimová", "Projektová"][i]
+                        ? ["Global", "Mode", "Project"].map((label) => translate(label, "cs"))[i]
                         : ["Global", "Work mode", "Project"][i]}
                     </button>
                   ))}
                 </div>
                 <textarea
                   className="memory-editor"
-                  aria-label={tr("Memory text", "Text paměti")}
+                  aria-label={tr("Memory text")}
                   value={content}
                   onChange={(e) => {
                     memoryDirty.current = true;
@@ -510,9 +499,9 @@ export function DialogView(props: any) {
                   onClick={() => call(() => act("memory", { scope, content }))}
                 >
                   <Save />
-                  {tr("Save memory", "Uložit paměť")}
+                  {tr("Save memory")}
                 </button>
-                <h3>{tr("Skills", "Skilly")}</h3>
+                <h3>{tr("Skills")}</h3>
                 <div className="row">
                   <button
                     onClick={() =>
@@ -520,7 +509,7 @@ export function DialogView(props: any) {
                     }
                   >
                     <FolderOpen />
-                    {tr("User skills", "Uživatelské skilly")}
+                    {tr("User skills")}
                   </button>
                   <button
                     disabled={!project}
@@ -529,7 +518,7 @@ export function DialogView(props: any) {
                     }
                   >
                     <FolderOpen />
-                    {tr("Project skills", "Projektové skilly")}
+                    {tr("Project skills")}
                   </button>
                 </div>
                 <div className="skill-list">
@@ -559,13 +548,13 @@ export function DialogView(props: any) {
                           call(() => act("skill", { argument: s.name }))
                         }
                       >
-                        {tr("Use skill", "Použít skill")}
+                        {tr("Use skill")}
                       </button>
                     </div>
                   ))}
                 </div>
                 <label>
-                  {tr("New skill topic", "Téma nového skillu")}
+                  {tr("New skill topic")}
                   <input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
@@ -577,14 +566,14 @@ export function DialogView(props: any) {
                   }
                 >
                   <Plus />
-                  {tr("Design a skill", "Navrhnout skill")}
+                  {tr("Design a skill")}
                 </button>
               </>
             )}
             {dialog.type === "settings" && section === "data" && (
               <>
                 <h3>
-                  {tr("Projects and conversations", "Projekty a konverzace")}
+                  {tr("Projects and conversations")}
                 </h3>
                 <div className="row">
                   <button
@@ -601,11 +590,11 @@ export function DialogView(props: any) {
                     }
                   >
                     <Download />
-                    {tr("Export project", "Exportovat projekt")}
+                    {tr("Export project")}
                   </button>
                   <label className="file-picker">
                     <Upload />
-                    {tr("Import project", "Importovat projekt")}
+                    {tr("Import project")}
                     <input
                       type="file"
                       accept=".zip"
@@ -631,7 +620,7 @@ export function DialogView(props: any) {
                   </label>
                   <label className="file-picker">
                     <Upload />
-                    {tr("Import chat JSONL", "Importovat chat JSONL")}
+                    {tr("Import chat JSONL")}
                     <input
                       type="file"
                       accept=".jsonl"
@@ -659,17 +648,14 @@ export function DialogView(props: any) {
                   </label>
                 </div>
                 <h3>
-                  {tr("Model and runtime backup", "Záloha modelů a prostředí")}
+                  {tr("Model and runtime backup")}
                 </h3>
                 <p>
-                  {tr(
-                    "Internet first, local backup when a download fails.",
-                    "Nejprve internet, lokální záloha při selhání stažení.",
-                  )}
+                  {tr("Internet first, local backup when a download fails.")}
                 </p>
                 <p className="path">
                   {backup.path ||
-                    tr("No fallback selected", "Záloha není vybraná")}
+                    tr("No fallback selected")}
                 </p>
                 <div className="row">
                   {["create", "select", "verify", "clear"].map((op, i) => (
@@ -693,7 +679,7 @@ export function DialogView(props: any) {
                     >
                       {[<Plus />, <FolderOpen />, <CheckCheck />, <X />][i]}
                       {cs
-                        ? ["Vytvořit", "Vybrat", "Ověřit", "Zapomenout"][i]
+                        ? ["Create","Select","Verify","Clear"].map((label) => translate(label, "cs"))[i]
                         : ["Create", "Select", "Verify", "Clear"][i]}
                     </button>
                   ))}
@@ -707,7 +693,7 @@ export function DialogView(props: any) {
                   }
                 >
                   <RotateCw />
-                  {tr("Refresh operations", "Obnovit stav operací")}
+                  {tr("Refresh operations")}
                 </button>
               </>
             )}
@@ -722,13 +708,13 @@ export function DialogView(props: any) {
                   </a>
                   <a className="button" href="/api/manual/cs" target="_blank">
                     <BookOpen />
-                    Český PDF
+                    {tr("Czech PDF")}
                   </a>
                 </div>
-                <h3>{tr("Commands", "Příkazy")}</h3>
+                <h3>{tr("Commands")}</h3>
                 {Object.entries(app.commands).map(([key, value]) => (
                   <p key={key}>
-                    <code>{key}</code> · {String(value)}
+                    <code>{key}</code> · {tr(String(value))}
                   </p>
                 ))}
               </>
@@ -736,7 +722,7 @@ export function DialogView(props: any) {
             {dialog.type === "project" && (
               <>
                 <label>
-                  {tr("New project name", "Název nového projektu")}
+                  {tr("New project name")}
                   <input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
@@ -757,7 +743,7 @@ export function DialogView(props: any) {
                   }
                 >
                   <Plus />
-                  {tr("Create project", "Vytvořit projekt")}
+                  {tr("Create project")}
                 </button>
                 <button
                   onClick={() =>
@@ -771,7 +757,7 @@ export function DialogView(props: any) {
                   }
                 >
                   <FolderOpen />
-                  {tr("Attach existing folder", "Připojit existující složku")}
+                  {tr("Attach existing folder")}
                 </button>
                 {project && (
                   <div className="danger-zone">
@@ -783,10 +769,7 @@ export function DialogView(props: any) {
                       }
                     >
                       <Trash2 />
-                      {tr(
-                        "Delete project and folder",
-                        "Smazat projekt i složku",
-                      )}
+                      {tr("Delete project and folder")}
                     </button>
                   </div>
                 )}
@@ -795,10 +778,7 @@ export function DialogView(props: any) {
             {dialog.type === "delete-project" && (
               <>
                 <p>
-                  {tr(
-                    "Delete this project, its files and conversations?",
-                    "Smazat tento projekt, jeho soubory i konverzace?",
-                  )}
+                  {tr("Delete this project, its files and conversations?")}
                 </p>
                 <p className="path">{dialog.data.path}</p>
                 <button
@@ -812,14 +792,14 @@ export function DialogView(props: any) {
                   }
                 >
                   <Trash2 />
-                  {tr("Delete", "Smazat")}
+                  {tr("Delete")}
                 </button>
               </>
             )}
             {dialog.type === "chat" && (
               <>
                 <label>
-                  {tr("Move to project", "Přesunout do projektu")}
+                  {tr("Move to project")}
                   <select
                     value={project?.id || ""}
                     onChange={(e) =>
@@ -831,7 +811,7 @@ export function DialogView(props: any) {
                       })
                     }
                   >
-                    <option value="">{tr("No project", "Bez projektu")}</option>
+                    <option value="">{tr("No project")}</option>
                     {app.projects.map((p: any) => (
                       <option key={p.id} value={p.id}>
                         {p.name}
@@ -842,7 +822,7 @@ export function DialogView(props: any) {
                 <div className="row">
                   <button onClick={() => call(() => act("undo"))}>
                     <History />
-                    {tr("Undo last turn", "Vrátit poslední kolo")}
+                    {tr("Undo last turn")}
                   </button>
                   <button
                     onClick={() =>
@@ -850,18 +830,18 @@ export function DialogView(props: any) {
                     }
                   >
                     <GitBranch />
-                    {tr("Branch", "Větev")}
+                    {tr("Branch")}
                   </button>
                   <button onClick={() => setDialog({ type: "export" })}>
                     <Download />
-                    {tr("Export", "Export")}
+                    {tr("Export")}
                   </button>
                   <button
                     className="danger"
                     onClick={() => setDialog({ type: "delete-chat" })}
                   >
                     <Trash2 />
-                    {tr("Delete chat", "Smazat chat")}
+                    {tr("Delete chat")}
                   </button>
                 </div>
               </>
@@ -869,10 +849,7 @@ export function DialogView(props: any) {
             {dialog.type === "delete-chat" && (
               <>
                 <p>
-                  {tr(
-                    "Delete this conversation and its attachments?",
-                    "Smazat tuto konverzaci a její přílohy?",
-                  )}
+                  {tr("Delete this conversation and its attachments?")}
                 </p>
                 <button
                   className="danger"
@@ -886,7 +863,7 @@ export function DialogView(props: any) {
                     })
                   }
                 >
-                  {tr("Delete", "Smazat")}
+                  {tr("Delete")}
                 </button>
               </>
             )}
@@ -903,7 +880,7 @@ export function DialogView(props: any) {
                       }
                     >
                       <Play />
-                      {tr("Run", "Spustit")}
+                      {tr("Run")}
                     </button>
                   )}
                   <button
@@ -916,7 +893,7 @@ export function DialogView(props: any) {
                     }
                   >
                     <ExternalLink />
-                    {tr("Open file", "Otevřít soubor")}
+                    {tr("Open file")}
                   </button>
                   <button
                     onClick={() =>
@@ -926,7 +903,7 @@ export function DialogView(props: any) {
                     }
                   >
                     <FolderOpen />
-                    {tr("Open folder", "Otevřít složku")}
+                    {tr("Open folder")}
                   </button>
                   <a
                     className="button"
@@ -934,7 +911,7 @@ export function DialogView(props: any) {
                     download
                   >
                     <Download />
-                    {tr("Download", "Stáhnout")}
+                    {tr("Download")}
                   </a>
                 </div>
                 {/\.html?$/i.test(dialog.file.name) ? (
@@ -969,13 +946,13 @@ export function DialogView(props: any) {
                         disabled={page <= 1}
                         onClick={() => setPage((p) => Math.max(1, p - 50))}
                       >
-                        {tr("Previous range", "Předchozí část")}
+                        {tr("Previous range")}
                       </button>
                       <span>
                         {page}–{page + 49}
                       </span>
                       <button onClick={() => setPage((p) => p + 50)}>
-                        {tr("Next range", "Další část")}
+                        {tr("Next range")}
                       </button>
                     </div>
                   </>
@@ -985,7 +962,7 @@ export function DialogView(props: any) {
             {dialog.type === "export" && (
               <>
                 <label>
-                  {tr("Format", "Formát")}
+                  {tr("Format")}
                   <select
                     value={format}
                     onChange={(e) => setFormat(e.target.value)}
@@ -1008,7 +985,7 @@ export function DialogView(props: any) {
                   }
                 >
                   <Download />
-                  {tr("Export", "Exportovat")}
+                  {tr("Export")}
                 </button>
               </>
             )}
@@ -1025,7 +1002,7 @@ export function DialogView(props: any) {
                       </button>
                       <button
                         className="icon"
-                        title={tr("Pin", "Připnout")}
+                        title={tr("Pin")}
                         onClick={() =>
                           call(() => act("pin", { path: file.path }))
                         }
@@ -1044,7 +1021,7 @@ export function DialogView(props: any) {
                   }
                 >
                   <Plus />
-                  {tr("Pin a file", "Připnout soubor")}
+                  {tr("Pin a file")}
                 </button>
               </>
             )}
@@ -1061,7 +1038,7 @@ export function DialogView(props: any) {
                         {s.url}
                       </a>
                       <p className="muted">
-                        {tr("Loaded", "Načteno")} ·{" "}
+                        {tr("Loaded")} ·{" "}
                         {new Date(s.fetched_at * 1000).toLocaleString()}
                       </p>
                       <pre>{s.content}</pre>
@@ -1081,7 +1058,7 @@ export function DialogView(props: any) {
                         <a href={c.url} target="_blank" rel="noreferrer">
                           {c.url}
                         </a>
-                        <p>{tr("Found, not loaded", "Nalezeno, nenačteno")}</p>
+                        <p>{tr("Found, not loaded")}</p>
                       </section>
                     ))}
               </div>
@@ -1089,7 +1066,7 @@ export function DialogView(props: any) {
             {dialog.type === "checkpoints" && (
               <>
                 <label>
-                  {tr("New restore point", "Nový bod obnovy")}
+                  {tr("New restore point")}
                   <input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
@@ -1102,7 +1079,7 @@ export function DialogView(props: any) {
                   }
                 >
                   <Plus />
-                  {tr("Create", "Vytvořit")}
+                  {tr("Create")}
                 </button>
                 {detail?.checkpoints?.map((cp: any) => (
                   <div className="file-row" key={cp.id}>
@@ -1110,7 +1087,7 @@ export function DialogView(props: any) {
                     <div>
                       <strong>{cp.label}</strong>
                       <small>
-                        {cp.files} {tr("files", "souborů")} ·{" "}
+                        {cp.files} {tr("files")} ·{" "}
                         {new Date(cp.created * 1000).toLocaleString()}
                       </small>
                     </div>
@@ -1119,10 +1096,7 @@ export function DialogView(props: any) {
                       onClick={() =>
                         call(async () => {
                           const result = await act("restore", { id: cp.id });
-                          if (result.errors?.length && window.confirm(tr(
-                            "Some files changed after this checkpoint. Replace them with the saved versions?",
-                            "Některé soubory se od bodu obnovy změnily. Nahradit je uloženými verzemi?",
-                          ))) {
+                          if (result.errors?.length && window.confirm(tr("Some files changed after this checkpoint. Replace them with the saved versions?"))) {
                             const forced = await act("restore", { id: cp.id, force: true });
                             if (forced.errors?.length) error(forced.errors.join("\n"));
                           } else if (result.errors?.length)
@@ -1131,8 +1105,8 @@ export function DialogView(props: any) {
                       }
                     >
                       {cp.restored
-                        ? tr("Restored", "Obnoveno")
-                        : tr("Restore", "Obnovit")}
+                        ? tr("Restored")
+                        : tr("Restore")}
                     </button>
                   </div>
                 ))}
@@ -1158,7 +1132,7 @@ export function DialogView(props: any) {
                   }
                 >
                   <Save />
-                  {tr("Save", "Uložit")}
+                  {tr("Save")}
                 </button>
               </>
             )}
@@ -1201,7 +1175,7 @@ export function DialogView(props: any) {
             {busy && (
               <div className="busy">
                 <LoaderCircle className="spin" />
-                {tr("Working…", "Pracuji…")}
+                {tr("Working…")}
               </div>
             )}
           </div>

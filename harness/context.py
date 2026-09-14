@@ -1,4 +1,4 @@
-"""Správa kontextu - odhad tokenů, sumarizace (auto-komprese, handoff)."""
+"""Context management: token estimates, summarization, compression and handoff."""
 from __future__ import annotations
 
 import hashlib
@@ -20,7 +20,7 @@ CONVERSATION TRANSCRIPT:
 
 
 def render_messages_text(messages: list[dict], max_chars: int = 60_000) -> str:
-    """Zpravy jako compact text pro sumarizaci (obrázky jen jako poznámka)."""
+    """Render messages as compact summarization text, with notes for images."""
     lines: list[str] = []
     for m in messages:
         role = m.get("role", "?").upper()
@@ -71,7 +71,7 @@ def summarize_messages(llm: Any, messages: list[dict], should_stop=None) -> str:
 
     def summarize(text):
         if should_stop and should_stop():
-            raise RuntimeError("sumarizace zastavena uživatelem")
+            raise RuntimeError("Summarization stopped by the user")
         key = hashlib.sha256((mode + prompt + text).encode()).hexdigest()
         path = cache / (key + ".md")
         if path.is_file():
@@ -81,10 +81,10 @@ def summarize_messages(llm: Any, messages: list[dict], should_stop=None) -> str:
             {"role": "user", "content": prompt + text}],
             sampling=llm.cfg.sampling(False), thinking=False, should_stop=should_stop)
         if res.stopped:
-            raise RuntimeError("sumarizace zastavena uživatelem")
+            raise RuntimeError("Summarization stopped by the user")
         summary = (res.content or "").strip()
         if not summary:
-            raise RuntimeError("model vrátil prázdný souhrn")
+            raise RuntimeError("The model returned an empty summary")
         from harness.changes import atomic_write_text
         atomic_write_text(path, summary)
         return summary
@@ -93,6 +93,6 @@ def summarize_messages(llm: Any, messages: list[dict], should_stop=None) -> str:
         merged = "\n\n".join(summarize(transcript[i:i + budget])
                               for i in range(0, len(transcript), budget))
         if len(merged) >= len(transcript):
-            raise RuntimeError("Souhrn nezmenšil kontext; původní podklady zůstaly uložené")
+            raise RuntimeError("The summary did not reduce the context; original sources remain saved")
         transcript = merged
     return summarize(transcript)

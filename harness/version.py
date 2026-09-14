@@ -1,4 +1,4 @@
-"""Jediny zdroj viditelne verze aplikace pro source i instalovany build."""
+"""Single source of the application version for development and installed builds."""
 from __future__ import annotations
 
 import sys

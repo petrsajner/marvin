@@ -1,8 +1,6 @@
-"""Jednotné uživatelské pracovní režimy a jejich capability mapování.
+"""Work modes and their capability mappings.
 
-Labels are English (the base UI language); the web UI/TUI translate them
-via harness.i18n.t() when Czech is active.
-"""
+Labels use English by default and are translated by the optional UI localization."""
 from __future__ import annotations
 
 from dataclasses import dataclass

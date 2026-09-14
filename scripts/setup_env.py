@@ -1,11 +1,6 @@
-"""One-click instalace prostředí: pip deps + llama.cpp binárky + GGUF modely.
+"""Prepare Python dependencies, llama.cpp and configured GGUF models.
 
-Spouštět VENV pythonem:
-    .venv/Scripts/python scripts/setup_env.py
-Volby:
-    --skip-models   přeskočit download modelů (už jsou stažené)
-    --model all     stáhnout všechny modely (default: jen default_model z configu)
-"""
+Run with the virtual environment's Python. --skip-models keeps existing weights; --model all selects every model instead of the configured default."""
 from __future__ import annotations
 
 import argparse
@@ -35,7 +30,7 @@ def main() -> int:
     if rc:
         return rc
 
-    # Importy až po pip install (potřebují yaml, huggingface_hub apod.)
+    # Import these modules after dependency installation because they require third-party packages.
     import download_llama
     import download_models
 
@@ -43,7 +38,7 @@ def main() -> int:
     print("=" * 60)
     print("[2/3] llama.cpp CUDA binaries ...")
     print("=" * 60)
-    sys.argv = [sys.argv[0]]  # izolace argv pro argparse v podskriptech
+    sys.argv = [sys.argv[0]]  # isolate argv for argparse in child scripts
     rc = download_llama.main()
     if rc:
         return rc

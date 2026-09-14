@@ -1,10 +1,6 @@
-"""Správce projektů - interní registr projektů aplikace.
+"""Application project registry.
 
-projects.json v kořenu: [{"id", "name", "path", "created"}]
-- Nový projekt: vytvoří složku v {projects.root_dir}/{jméno} a zaregistruje ji
-- Připojení složky: zaregistruje existující složku (projekt se jmenuje dle složky)
-- Workspace session = path vybraného projektu
-"""
+projects.json contains id, name, path and creation time. New projects create a directory under projects.root_dir; attached projects register an existing directory. A session's workspace is the selected project's path."""
 from __future__ import annotations
 
 import json
@@ -44,7 +40,7 @@ class Projects:
     # ------------------------------------------------------------------
     def list_all(self) -> list[dict]:
         items = self._load()
-        for it in items:  # doplň chybějící složku (např. po smazání na disku)
+        for it in items:  # Recreate a missing directory, for example after external deletion.
             if not Path(it["path"]).is_dir():
                 it["missing"] = True
         return items
@@ -53,11 +49,11 @@ class Projects:
         return next((p for p in self._load() if p["path"] == path), None)
 
     def create_new(self, name: str) -> dict:
-        """Nový projekt: vytvoří složku v projects rootu a zaregistruje ji."""
+        """Create a project directory under the configured root and register it."""
         name = _safe_name(name)
         folder = self.root_dir / name
         i = 2
-        while folder.exists():  # unikátní jméno
+        while folder.exists():  # Choose a unique name.
             folder = self.root_dir / f"{name}-{i}"
             i += 1
         folder.mkdir(parents=True, exist_ok=True)
@@ -72,10 +68,10 @@ class Projects:
         return proj
 
     def attach_folder(self, path: str) -> dict:
-        """Připoj existující složku jako projekt (jméno dle složky)."""
+        """Register an existing directory as a project, using its directory name."""
         p = Path(path).resolve()
         if not p.is_dir():
-            raise ValueError(f"Adresář neexistuje: {p}")
+            raise ValueError(f"Directory does not exist: {p}")
         existing = self.by_path(str(p))
         if existing:
             return existing
@@ -90,7 +86,7 @@ class Projects:
         return proj
 
     def ensure_registered(self, path: str) -> dict | None:
-        """Workspace bez registru → zaregistruj (migrace ze starších verzí)."""
+        """Register an untracked workspace when migrating an older installation."""
         if not path:
             return None
         try:
@@ -111,19 +107,19 @@ class Projects:
         items = self._load()
         project = next((item for item in items if item.get("path") == path), None)
         if project is None:
-            raise ValueError("Projekt není registrovaný")
+            raise ValueError("The project is not registered")
         target = Path(project["path"]).resolve()
         protected = [self.cfg.root.resolve(), self.root_dir.resolve(), Path.home().resolve()]
         anchor = Path(target.anchor).resolve()
         if target == anchor or any(target == item or item.is_relative_to(target)
                                    for item in protected):
-            raise ValueError(f"Odmítám smazat chráněný adresář: {target}")
+            raise ValueError(f"Refusing to delete a protected directory: {target}")
         if target.exists():
             if target.is_symlink() or (hasattr(target, "is_junction") and target.is_junction()):
                 target.unlink() if target.is_symlink() else target.rmdir()
             elif target.is_dir():
                 shutil.rmtree(target)
             else:
-                raise ValueError(f"Cesta projektu není adresář: {target}")
+                raise ValueError(f"Project path is not a directory: {target}")
         self._save([item for item in items if item is not project])
         return project

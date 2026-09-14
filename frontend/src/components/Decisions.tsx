@@ -8,7 +8,7 @@ export function DecisionEditor({ items, tr, enabled, save, openChat }: any) {
   return (
     <>
       <label>
-        {tr("Decision", "Rozhodnutí")}
+        {tr("Decision")}
         <textarea
           className="memory-editor"
           value={draft}
@@ -17,13 +17,13 @@ export function DecisionEditor({ items, tr, enabled, save, openChat }: any) {
       </label>
       <div className="row">
         <select
-          aria-label={tr("Decision status", "Stav rozhodnutí")}
+          aria-label={tr("Decision status")}
           value={status}
           onChange={(e) => setStatus(e.target.value)}
         >
-          <option value="accepted">{tr("Accepted", "Přijaté")}</option>
-          <option value="proposed">{tr("Proposed", "Navržené")}</option>
-          <option value="retired">{tr("Retired", "Neplatné")}</option>
+          <option value="accepted">{tr("Accepted")}</option>
+          <option value="proposed">{tr("Proposed")}</option>
+          <option value="retired">{tr("Retired")}</option>
         </select>
         <button
           className="positive"
@@ -37,7 +37,7 @@ export function DecisionEditor({ items, tr, enabled, save, openChat }: any) {
           }}
         >
           <Save />
-          {tr("Save decision", "Uložit rozhodnutí")}
+          {tr("Save decision")}
         </button>
       </div>
       {items.map((item: any) => (
@@ -53,11 +53,11 @@ export function DecisionEditor({ items, tr, enabled, save, openChat }: any) {
               }}
             >
               <FileText />
-              {tr("Edit", "Upravit")}
+              {tr("Edit")}
             </button>
             <button onClick={() => openChat(item.source_session)}>
               <MessageSquare />
-              {tr("Source conversation", "Původní konverzace")}
+              {tr("Source conversation")}
             </button>
           </div>
         </section>

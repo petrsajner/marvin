@@ -1,12 +1,8 @@
-"""Computer-use nástroje - ovládání počítače přes screenshoty a GUI akce.
+"""Computer-use tools for screenshots and graphical application actions.
 
-Souřadnicový systém: model pracuje v pixelech obrázku, který dostal
-(screenshot může být downscaled). Nástroje přepočítávají na reálné
-souřadnice obrazovky automaticky podle posledního screenshotu.
+The model uses pixels in the image it receives, which may be downscaled. Tools convert them to screen coordinates using the most recent screenshot.
 
-FAILSAFE: pyautogi fail-safe je VŽDY zapnutý - rychlý pohyb myši do
-levého horního rohu obrazovky vyhodí výjimku a akce se přeruší.
-"""
+The pyautogui failsafe stays enabled: moving the pointer to the upper-left corner interrupts an action."""
 from __future__ import annotations
 
 import time
@@ -16,14 +12,14 @@ from pathlib import Path
 from harness.safety import Risk
 from harness.tools.base import AgentContext, Tool
 
-# Stav posledního screenshotu pro přepočet souřadnic (module-level, sdílený mezi nástroji)
+# Shared last-screenshot geometry for coordinate conversion.
 _last_shot: dict = {"screen_w": 0, "screen_h": 0, "img_w": 0, "img_h": 0, "origin_x": 0, "origin_y": 0}
 
 
 def _to_screen(x: float, y: float) -> tuple[int, int]:
-    """Převeď souřadnice z prostoru obrázku na reálnou obrazovku."""
+    """Convert image coordinates to physical screen coordinates."""
     if _last_shot["img_w"] == 0:
-        return round(x), round(y)  # žádný screenshot zatím - předpokládej 1:1
+        return round(x), round(y)  # Assume a 1:1 mapping before the first screenshot.
     sx = _last_shot["origin_x"] + x * (_last_shot["screen_w"] / _last_shot["img_w"])
     sy = _last_shot["origin_y"] + y * (_last_shot["screen_h"] / _last_shot["img_h"])
     return round(sx), round(sy)
@@ -31,7 +27,7 @@ def _to_screen(x: float, y: float) -> tuple[int, int]:
 
 def _pyautogui():
     import pyautogui
-    pyautogui.FAILSAFE = True  # vždy - myš do rohu = přerušení
+    pyautogui.FAILSAFE = True  # Keep the corner-triggered failsafe enabled.
     pyautogui.FAILSAFE_POINTS = [(0, 0)]
     return pyautogui
 
@@ -49,7 +45,7 @@ class ScreenshotTool(Tool):
 
         ccfg = ctx.cfg.computer
         with mss.mss() as sct:
-            mon = sct.monitors[1]  # primární monitor
+            mon = sct.monitors[1]  # Primary monitor.
             shot = sct.grab(mon)
             img = Image.frombytes("RGB", shot.size, shot.rgb)
 
@@ -114,7 +110,7 @@ class TypeTextTool(Tool):
         if ascii_ok and len(text) < 200:
             pag.write(text, interval=0.02)
             return f"Typed {len(text)} chars (keyboard)"
-        # non-ASCII nebo dlouhý text -> schránka + Ctrl+V
+        # Paste long or non-ASCII text through the clipboard.
         import pyperclip
         pyperclip.copy(text)
         time.sleep(0.1)

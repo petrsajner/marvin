@@ -1,4 +1,4 @@
-"""Detekce a synchronizace Python zavislosti podle obsahu requirements.txt."""
+"""Detect and synchronize Python dependencies using requirements.txt contents."""
 from __future__ import annotations
 
 import hashlib
@@ -44,15 +44,15 @@ def mark_dependencies_current(requirements: Path, venv_dir: Path) -> None:
 
 def sync_dependencies(requirements: Path, venv_dir: Path, *, force: bool = False) -> int:
     if dependencies_current(requirements, venv_dir) and not force:
-        print("Python zavislosti odpovidaji requirements.txt - preskakuji.")
+        print("Python dependencies match requirements.txt; skipping synchronization.")
         return 0
 
     python = venv_dir / "Scripts" / "python.exe"
     if not python.is_file():
-        print(f"[CHYBA] Python prostredi nenalezeno: {python}")
+        print(f"[ERROR] Python environment not found: {python}")
         return 1
     if not requirements.is_file():
-        print(f"[CHYBA] Soubor zavislosti nenalezen: {requirements}")
+        print(f"[ERROR] Dependency file not found: {requirements}")
         return 1
 
     lock = requirements.with_name("requirements-windows-py312.lock")

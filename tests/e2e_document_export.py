@@ -1,4 +1,4 @@
-"""GPU E2E: Research follow-up exportuje existujici odpoved bez noveho hledani."""
+"""GPU E2E: a research follow-up exports the existing answer without searching again."""
 from __future__ import annotations
 
 import shutil
@@ -34,12 +34,12 @@ def main() -> int:
         session = Session(
             cfg, system_prompt=build_system_prompt("chat", cfg, None, "research"),
             workspace=None, work_mode="research")
-        session.add("user", "Puvodni vyzkumna otazka")
-        session.add("assistant", "# Dulezity vysledek\n\nToto je ulozena synteza o inositolu.")
+        session.add("user", "Original research question")
+        session.add("assistant", "# Key result\n\nThis is the saved synthesis about inositol.")
         agent = Agent(
             cfg, LLMClient(cfg), session, build_registry("chat", "research"),
             SafetyPolicy("auto"), mode="chat", work_mode="research")
-        agent.new_task("Uloz predchozi vysledek jako PDF soubor jmenem e2e-research")
+        agent.new_task("Save the previous result as a PDF named e2e-research")
 
         final = None
         for _ in range(8):
@@ -52,15 +52,15 @@ def main() -> int:
         pdf = session.dir / "exports" / "e2e-research.pdf"
         if "export_document" not in calls or any(
                 name in calls for name in ("web_search", "web_fetch", "read_project_document")):
-            raise RuntimeError(f"Model zvolil spatne nastroje: {calls}")
+            raise RuntimeError(f"The model selected the wrong tools: {calls}")
         if not pdf.is_file():
-            raise RuntimeError(f"PDF nevznikl: {pdf}")
+            raise RuntimeError(f"PDF was not created: {pdf}")
         from pypdf import PdfReader
         text = "\n".join(page.extract_text() or "" for page in PdfReader(pdf).pages)
-        if "inositolu" not in text:
-            raise RuntimeError("PDF neobsahuje puvodni vysledek")
+        if "inositol" not in text:
+            raise RuntimeError("The PDF does not contain the original result")
         if final is None or final.status is not Status.FINAL:
-            raise RuntimeError(f"Export workflow neskoncil: {getattr(final, 'text', None)}")
+            raise RuntimeError(f"Export workflow did not complete: {getattr(final, 'text', None)}")
         print(f"[OK] tools={calls}, pdf={pdf}, bytes={pdf.stat().st_size}")
         return 0
     finally:

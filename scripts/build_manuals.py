@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import sys
 from html import escape
 from pathlib import Path
 
@@ -19,6 +20,8 @@ from reportlab.platypus import (
 from reportlab.platypus.tableofcontents import TableOfContents
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+from harness.i18n import translate
 SOURCE_DIR = ROOT / "docs" / "manual"
 OUTPUT_DIR = ROOT / "output" / "pdf"
 
@@ -165,7 +168,7 @@ class ManualDocTemplate(BaseDocTemplate):
         canvas.setFont(FONT, 7.4)
         canvas.setFillColor(MUTED)
         canvas.drawString(self.leftMargin, A4[1] - 9.5 * mm, self.manual_title)
-        label = "Strana" if self.language == "cs" else "Page"
+        label = translate("Page", self.language)
         canvas.drawRightString(A4[0] - self.rightMargin, 9 * mm, f"{label} {page}")
         canvas.restoreState()
 
@@ -181,8 +184,8 @@ class ManualDocTemplate(BaseDocTemplate):
 
 
 def cover(title: str, subtitle: str, version: str, language: str):
-    version_label = "Verze aplikace" if language == "cs" else "Application version"
-    date_label = "Uživatelský manuál" if language == "cs" else "User manual"
+    version_label = translate("Application version", language)
+    date_label = translate("User manual", language)
     return [
         Spacer(1, 24 * mm),
         HRFlowable(width="100%", thickness=5, color=ACCENT, spaceAfter=14 * mm),
@@ -285,7 +288,7 @@ def markdown_story(text: str, toc_title: str):
         if stripped.startswith("> "):
             flush()
             value = stripped[2:].strip()
-            style = STYLES["warning"] if value.upper().startswith(("WARNING", "VAROVÁNÍ")) else STYLES["callout"]
+            style = STYLES["warning"] if value.upper().startswith(("WARNING", translate("WARNING", "cs"))) else STYLES["callout"]
             story.append(Paragraph(inline(value), style))
             i += 1
             continue
@@ -357,7 +360,7 @@ def markdown_story(text: str, toc_title: str):
 
 def build(source: Path, target: Path, title: str, subtitle: str, language: str, version: str):
     target.parent.mkdir(parents=True, exist_ok=True)
-    toc_title = "Obsah" if language == "cs" else "Contents"
+    toc_title = translate("Contents", language)
     doc = ManualDocTemplate(target, title, language)
     story = cover(title, subtitle, version, language)
     story.extend(markdown_story(source.read_text(encoding="utf-8"), toc_title))
@@ -368,7 +371,7 @@ def main() -> int:
     version = (ROOT / "installer" / "version.txt").read_text(encoding="utf-8").strip()
     manuals = [
         ("manual_en.md", "Marvin User Manual", "Complete guide to the local chat and coding workstation", "en", "Marvin-Manual-EN.pdf"),
-        ("manual_cs.md", "Uživatelský manuál Marvin", "Kompletní průvodce lokální chatovací a vývojovou stanicí", "cs", "Marvin-Manual-CS.pdf"),
+        ("manual_cs.md", translate("Marvin User Manual", "cs"), translate("A complete guide to the local chat and development workspace", "cs"), "cs", "Marvin-Manual-CS.pdf"),
     ]
     for source_name, title, subtitle, language, target_name in manuals:
         build(SOURCE_DIR / source_name, OUTPUT_DIR / target_name,

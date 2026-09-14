@@ -22,14 +22,14 @@ if __name__ == "__main__":
         data["skills"]["directory"] = str(ROOT / "skills")
         cfg = Config(data, Path(directory))
         service = ApplicationService(cfg, llm_factory=Model, manage_model=False)
-        service.preferences["language"] = "cs"
-        project = Projects(cfg).create_new("Studio poznámek")
+        service.preferences["language"] = "en"
+        project = Projects(cfg).create_new("Notes Studio")
         session = service.new_session(project["path"], "development")
-        session.meta["title"] = "Vyhledávání a ukládání"
-        session.add("user", "Doplň vyhledávání a zachovej průběžné ukládání poznámek.")
-        session.add("assistant", "Prošel jsem ukládání poznámek. Následuje doplnění vyhledávání a kontrola obnovení rozepsané práce.")
+        session.meta["title"] = "Search and saving"
+        session.add("user", "Add search while preserving automatic note saving.")
+        session.add("assistant", "I checked note persistence. Next I will add search and verify restoration of unfinished work.")
         for i in range(25):
             older = service.new_session(project["path"], "development")
-            older.add("user", f"Jaké číslo je napsané na přiloženém obrázku? Odpověz prosím jen číslem. Kontrola zalomení názvu {i + 1}")
+            older.add("user", f"What number is written in the attached image? Answer with the number only. Title wrapping check {i + 1}")
         service.select_session(session.id)
         uvicorn.run(create_app(cfg, service=service), host="127.0.0.1", port=7878, log_level="warning")

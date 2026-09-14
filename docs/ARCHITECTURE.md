@@ -97,11 +97,11 @@ The modern frontend (`frontend/src/App.tsx`) is structured into three clear colu
 
 ### 3.2 Five Ordered Work Modes
 Work modes always maintain a strict canonical order:
-1. **Discussion (Diskuze)**: Everyday conversations, brainstorming, conceptual exploration; no coding rules or build tools.
-2. **Research (Výzkum)**: Web search, page fetching, research ledger recording, mandatory structured synthesis.
-3. **Writing (Psaní)**: Document creation and revision, text editing, creative drafting, checkpointing, and rollback.
-4. **Development (Vývoj)**: Coding agent with file patch/write tools, Git, shell execution, test profiles, symbol navigation, and repo map.
-5. **Computer (Počítač)**: Development capabilities plus full desktop control (MSS screenshots, PyAutoGUI mouse and keyboard automation).
+1. **Discussion**: Everyday conversations, brainstorming, conceptual exploration; no coding rules or build tools.
+2. **Research**: Web search, page fetching, research ledger recording, mandatory structured synthesis.
+3. **Writing**: Document creation and revision, text editing, creative drafting, checkpointing, and rollback.
+4. **Development**: Coding agent with file patch/write tools, Git, shell execution, test profiles, symbol navigation, and repo map.
+5. **Computer**: Development capabilities plus full desktop control (MSS screenshots, PyAutoGUI mouse and keyboard automation).
 
 ### 3.3 Categorized Settings Modal
 Settings are organized into dedicated tabs (`Dialogs.tsx`):

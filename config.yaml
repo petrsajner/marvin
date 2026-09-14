@@ -1,17 +1,17 @@
 # ============================================================
-# Qwen3.8-27B lokální harness - konfigurace
+# Local Qwen3.8-27B harness configuration
 # RTX 5090 32GB | llama.cpp backend
 # ============================================================
 
 server:
   host: 127.0.0.1
   port: 8080
-  n_gpu_layers: 999        # všechno na GPU
-  # Extra argumenty pro llama-server (seznam řetězců)
+  n_gpu_layers: 999        # all layers on the GPU
+  # Extra llama-server arguments (list of strings)
   extra_args: []
 
-# Modely - GGUF kvantizace z Hugging Face
-# Vybrané: unsloth UD (Unsloth Dynamic) kvantizace - dobrá kvalita/velikost
+# Models: GGUF quantizations from Hugging Face
+# Selected: unsloth UD (Unsloth Dynamic) quantizations for quality and size
 models:
   q4:
     alias: "Qwen3.8-27B Q4_K_M (16.5 GB, fast)"
@@ -22,10 +22,10 @@ models:
     ctx_size: 131072
     kv_cache: "f16"
     kv_cache_profiles:
-      f16: {label: "16-bit - more precise, context 128k", label_cs: "16 bit - přesnější, kontext 128k", ctx_size: 131072, min_vram_gb: 30}
-      q8_0: {label: "8-bit - larger context 256k", label_cs: "8 bit - větší kontext 256k", ctx_size: 262144, min_vram_gb: 30}
-      q8_0_compact: {cache_type: q8_0, label: "8-bit - compact for 24 GB, context 96k", label_cs: "8 bit - kompaktní pro 24 GB, kontext 96k", ctx_size: 98304, min_vram_gb: 23}
-      f16_compact: {cache_type: f16, label: "16-bit - compact for 24 GB, context 64k", label_cs: "16 bit - kompaktní pro 24 GB, kontext 64k", ctx_size: 65536, min_vram_gb: 24}
+      f16: {label: "16-bit - more precise, context 128k", ctx_size: 131072, min_vram_gb: 30}
+      q8_0: {label: "8-bit - larger context 256k", ctx_size: 262144, min_vram_gb: 30}
+      q8_0_compact: {cache_type: q8_0, label: "8-bit - compact for 24 GB, context 96k", ctx_size: 98304, min_vram_gb: 23}
+      f16_compact: {cache_type: f16, label: "16-bit - compact for 24 GB, context 64k", ctx_size: 65536, min_vram_gb: 24}
     server_args: ["-fa", "on"]
   q3:
     alias: "Qwen3.8-27B IQ3_S (12.0 GB, borderline quality - for 16 GB GPUs)"
@@ -36,12 +36,12 @@ models:
     ctx_size: 49152
     kv_cache: "q8_0"
     kv_cache_profiles:
-      q8_0: {label: "8-bit - context 48k (17 GB+)", label_cs: "8 bit - kontext 48k (17 GB+)", ctx_size: 49152, min_vram_gb: 17}
-      q8_0_32k: {cache_type: q8_0, label: "8-bit - context 32k (16 GB safe)", label_cs: "8 bit - kontext 32k (16 GB bezpečné)", ctx_size: 32768, min_vram_gb: 15.5, server_args: ["-b", "1024", "-ub", "128", "--no-mmproj-offload"]}
-      q8_0_128k: {cache_type: q8_0, label: "8-bit - context 128k (24 GB)", label_cs: "8 bit - kontext 128k (24 GB)", ctx_size: 131072, min_vram_gb: 20}
-      f16_96k: {cache_type: f16, label: "16-bit - context 96k (24 GB, max precision)", label_cs: "16 bit - kontext 96k (24 GB, max přesnost)", ctx_size: 98304, min_vram_gb: 23}
-      q8_0_256k: {cache_type: q8_0, label: "8-bit - context 256k (32 GB)", label_cs: "8 bit - kontext 256k (32 GB)", ctx_size: 262144, min_vram_gb: 26}
-      f16_192k: {cache_type: f16, label: "16-bit - context 192k (32 GB, borderline)", label_cs: "16 bit - kontext 192k (32 GB, hraniční)", ctx_size: 196608, min_vram_gb: 31}
+      q8_0: {label: "8-bit - context 48k (17 GB+)", ctx_size: 49152, min_vram_gb: 17}
+      q8_0_32k: {cache_type: q8_0, label: "8-bit - context 32k (16 GB safe)", ctx_size: 32768, min_vram_gb: 15.5, server_args: ["-b", "1024", "-ub", "128", "--no-mmproj-offload"]}
+      q8_0_128k: {cache_type: q8_0, label: "8-bit - context 128k (24 GB)", ctx_size: 131072, min_vram_gb: 20}
+      f16_96k: {cache_type: f16, label: "16-bit - context 96k (24 GB, max precision)", ctx_size: 98304, min_vram_gb: 23}
+      q8_0_256k: {cache_type: q8_0, label: "8-bit - context 256k (32 GB)", ctx_size: 262144, min_vram_gb: 26}
+      f16_192k: {cache_type: f16, label: "16-bit - context 192k (32 GB, borderline)", ctx_size: 196608, min_vram_gb: 31}
     server_args: ["-fa", "on"]
   q5:
     alias: "Qwen3.8-27B Q5_K_M (19.8 GB, high quality)"
@@ -52,9 +52,9 @@ models:
     ctx_size: 98304
     kv_cache: "q8_0"
     kv_cache_profiles:
-      f16: {label: "16-bit - more precise, context 96k", label_cs: "16 bit - přesnější, kontext 96k", ctx_size: 98304, min_vram_gb: 27}
-      q8_0: {label: "8-bit - larger context 192k", label_cs: "8 bit - větší kontext 192k", ctx_size: 196608, min_vram_gb: 30}
-      q8_0_compact: {cache_type: q8_0, label: "8-bit - compact for 24 GB, context 64k", label_cs: "8 bit - kompaktní pro 24 GB, kontext 64k", ctx_size: 65536, min_vram_gb: 23.75, server_args: ["-b", "1024", "-ub", "128", "--no-mmproj-offload"]}
+      f16: {label: "16-bit - more precise, context 96k", ctx_size: 98304, min_vram_gb: 27}
+      q8_0: {label: "8-bit - larger context 192k", ctx_size: 196608, min_vram_gb: 30}
+      q8_0_compact: {cache_type: q8_0, label: "8-bit - compact for 24 GB, context 64k", ctx_size: 65536, min_vram_gb: 23.75, server_args: ["-b", "1024", "-ub", "128", "--no-mmproj-offload"]}
     server_args: ["-fa", "on"]
   ornith_q5:
     alias: "Ornith 1.5 35B-A3B Abliterated Q5 (23.0 GB, reasoning, context 128k)"
@@ -64,10 +64,10 @@ models:
     file: "Ornith-1.5-35B-Abliterated-Dynamic-Q5_K_M.gguf"
     mmproj_repo: "ornith-ai/Ornith-1.5-35B-A3B-GGUF"
     mmproj: "mmproj-Ornith-1.5-35B-BF16.gguf"
-    ctx_size: 131072       # ověřeno na RTX 5090 včetně vision, cca 2.8 GiB rezerva
+    ctx_size: 131072       # validated on RTX 5090 including vision, about 2.8 GiB headroom
     kv_cache: "q8_0"
     kv_cache_profiles:
-      q8_0: {label: "8-bit - solid, context 128k", label_cs: "8 bit - pevné, kontext 128k", ctx_size: 131072, min_vram_gb: 30}
+      q8_0: {label: "8-bit - solid, context 128k", ctx_size: 131072, min_vram_gb: 30}
     server_args: ["-fa", "on"]
     supports_reasoning_effort: false
     sampling:
@@ -76,12 +76,6 @@ models:
         top_p: 0.95
         top_k: 20
         presence_penalty: 0.0
-
-# Grafická karta: auto = detekce přes nvidia-smi; číslo (24 / 32) přepisuje
-# detekci. Podle VRAM se při startu i v setupu vybírá model+KV profil, který
-# se vejde (min_vram_gb v profilech), a stahují se jen modely pro danou kartu.
-hardware:
-  vram_gb: auto
 
   nemotron_q4:
     alias: "Nemotron 3.5 Lightning 30B-A3B Q4_K_XL (25.5 GB, hybrid MoE, ~210 tok/s)"
@@ -92,12 +86,12 @@ hardware:
     ctx_size: 524288
     kv_cache: "q8_0_512k"
     kv_cache_profiles:
-      # namereno na RTX 5090 (cache q8_0, VRAM vc. desktopu ~2.4 GB)
-      q8_0_128k: {cache_type: q8_0, label: "8-bit - context 128k", label_cs: "8 bit - kontext 128k", ctx_size: 131072, min_vram_gb: 27}
-      q8_0_256k: {cache_type: q8_0, label: "8-bit - context 256k", label_cs: "8 bit - kontext 256k", ctx_size: 262144, min_vram_gb: 28}
-      q8_0_512k: {cache_type: q8_0, label: "8-bit - context 512k", label_cs: "8 bit - kontext 512k", ctx_size: 524288, min_vram_gb: 29.5}
-      q8_0_256k_spill: {cache_type: q8_0, label: "8-bit - context 256k, MoE overflow to RAM (24 GB)", label_cs: "8 bit - kontext 256k, MoE přeteče do RAM (24 GB)", ctx_size: 262144, min_vram_gb: 23, server_args: ["--n-cpu-moe", "14"]}
-      q8_0_512k_spill: {cache_type: q8_0, label: "8-bit - context 512k, MoE overflow to RAM (24 GB)", label_cs: "8 bit - kontext 512k, MoE přeteče do RAM (24 GB)", ctx_size: 524288, min_vram_gb: 23, server_args: ["--n-cpu-moe", "18"]}
+      # measured on RTX 5090 (Q8 cache, desktop VRAM about 2.4 GB)
+      q8_0_128k: {cache_type: q8_0, label: "8-bit - context 128k", ctx_size: 131072, min_vram_gb: 27}
+      q8_0_256k: {cache_type: q8_0, label: "8-bit - context 256k", ctx_size: 262144, min_vram_gb: 28}
+      q8_0_512k: {cache_type: q8_0, label: "8-bit - context 512k", ctx_size: 524288, min_vram_gb: 29.5}
+      q8_0_256k_spill: {cache_type: q8_0, label: "8-bit - context 256k, MoE overflow to RAM (24 GB)", ctx_size: 262144, min_vram_gb: 23, server_args: ["--n-cpu-moe", "14"]}
+      q8_0_512k_spill: {cache_type: q8_0, label: "8-bit - context 512k, MoE overflow to RAM (24 GB)", ctx_size: 524288, min_vram_gb: 23, server_args: ["--n-cpu-moe", "18"]}
     server_args: ["-fa", "on"]
     supports_reasoning_effort: false
     sampling:
@@ -116,10 +110,10 @@ hardware:
     ctx_size: 131072
     kv_cache: "q8_0_128k"
     kv_cache_profiles:
-      q8_0_128k: {cache_type: q8_0, label: "8-bit - context 128k (full GPU, borderline)", label_cs: "8 bit - kontext 128k (plně GPU, hraniční)", ctx_size: 131072, min_vram_gb: 31.5}
-      q8_0_256k: {cache_type: q8_0, label: "8-bit - context 256k (full GPU, borderline)", label_cs: "8 bit - kontext 256k (plně GPU, hraniční)", ctx_size: 262144, min_vram_gb: 31.5}
-      q8_0_256k_spill: {cache_type: q8_0, label: "8-bit - context 256k, MoE overflow to RAM (more headroom)", label_cs: "8 bit - kontext 256k, MoE přeteče do RAM (větší rezerva)", ctx_size: 262144, min_vram_gb: 29.5, server_args: ["--n-cpu-moe", "8"]}
-      q8_0_512k_spill: {cache_type: q8_0, label: "8-bit - context 512k, MoE overflow to RAM", label_cs: "8 bit - kontext 512k, MoE přeteče do RAM", ctx_size: 524288, min_vram_gb: 26, server_args: ["--n-cpu-moe", "16"]}
+      q8_0_128k: {cache_type: q8_0, label: "8-bit - context 128k (full GPU, borderline)", ctx_size: 131072, min_vram_gb: 31.5}
+      q8_0_256k: {cache_type: q8_0, label: "8-bit - context 256k (full GPU, borderline)", ctx_size: 262144, min_vram_gb: 31.5}
+      q8_0_256k_spill: {cache_type: q8_0, label: "8-bit - context 256k, MoE overflow to RAM (more headroom)", ctx_size: 262144, min_vram_gb: 29.5, server_args: ["--n-cpu-moe", "8"]}
+      q8_0_512k_spill: {cache_type: q8_0, label: "8-bit - context 512k, MoE overflow to RAM", ctx_size: 524288, min_vram_gb: 26, server_args: ["--n-cpu-moe", "16"]}
     server_args: ["-fa", "on"]
     supports_reasoning_effort: false
     sampling:
@@ -130,9 +124,15 @@ hardware:
       non_thinking:
         temperature: 0.2
 
-default_model: q5           # hlavní profil; výchozí KV Q8 = kontext 192k
+# GPU capacity: auto uses nvidia-smi; a number caps the usable VRAM budget.
+# Startup and setup select a compatible model/context profile using min_vram_gb.
+# Setup downloads only models compatible with the selected capacity.
+hardware:
+  vram_gb: auto
 
-# Sampling dle model cardu Qwen3.8-27B
+default_model: q5           # primary profile; default Q8 KV provides a 192k context
+
+# Sampling from the Qwen3.8-27B model card
 sampling:
   thinking:
     temperature: 1.0
@@ -144,54 +144,54 @@ sampling:
     top_p: 0.80
     top_k: 20
     presence_penalty: 1.5
-thinking: true             # režim uvažování modelu
-reasoning_effort: xhigh    # hloubka uvažování: xhigh | medium | low (jen při thinking: true)
+thinking: true             # enable model reasoning
+reasoning_effort: xhigh    # reasoning depth: xhigh | medium | low (only with thinking: true)
 work_mode: development     # discussion | research | writing | development | computer
 
 # Agent
 agent:
   mode: agent              # chat | agent | computer
   autonomy: supervised     # supervised | semi | auto
-  max_steps: 0             # 0 = bez limitu tool-call kol
-  semi_max_steps: 0        # 0 = bez limitu i v semi režimu
-  shell_timeout: 60        # sekund pro run_command
-  workspace: null          # null = adresář, kde byl harness spuštěn
+  max_steps: 0             # 0 = unlimited tool-call rounds
+  semi_max_steps: 0        # 0 = unlimited in semi mode as well
+  shell_timeout: 60        # seconds for run_command
+  workspace: null          # null = the directory where the harness was started
 
-# Počítač / computer-use
+# Computer use
 computer:
-  screenshot_max_edge: 1920   # downscale screenshotu pro model (úspora tokenů)
+  screenshot_max_edge: 1920   # downscale screenshots for the model to reduce token use
   screenshot_grayscale: false
-  failsafe: true              # pyautogui FAILSAFE - myš do levého horního rohu = okamžité přerušení
-  pause_between_actions: 0.15 # sekund mezi GUI akcemi
+  failsafe: true              # pyautogui FAILSAFE: move the pointer to the top-left corner to stop immediately
+  pause_between_actions: 0.15 # seconds between GUI actions
 
-# Trvalá paměť: globální + aktivní pracovní režim + projekt
+# Persistent memory: global + active work mode + project
 memory:
   directory: memory
   global_filename: GLOBAL.md
   modes_directory: modes
-  development_filename: MEMORY.md  # původní globální coding paměť
+  development_filename: MEMORY.md  # original global development memory
   project_filename: QWEN_MEMORY.md
 
-# Volitelné SKILL.md postupy: metadata se nabízejí vždy, obsah až podle potřeby.
+# Optional SKILL.md workflows: metadata is always available, contents load on demand.
 skills:
   directory: skills
   user_directory: user-skills
   project_directory: .qwen-skills
 
-# Webové UI + přístup modelu k internetu (read-only GET)
+# Web UI and model internet access (read-only GET)
 web:
   host: 127.0.0.1
   port: 7860
-  # internetové nástroje modelu (web_search / web_fetch)
+  # model web tools (web_search / web_fetch)
   enabled: true
-  backend: google     # google / auto / bing (backend knihovny ddgs)
-  timeout: 10         # s na jeden požadavek
-  max_chars: 12000    # max délka textu z web_fetch
-  research_source_max_chars: 200000  # technický strop uloženého textu jednoho zdroje
-  document_max_bytes: 50000000       # max velikost internetového PDF/DOCX
-  search_results: 5   # výchozí počet výsledků hledání
+  backend: google     # google / auto / bing (ddgs library backend)
+  timeout: 10         # seconds per request
+  max_chars: 12000    # maximum web_fetch text length
+  research_source_max_chars: 200000  # technical limit for stored text from a single source
+  document_max_bytes: 50000000       # maximum remote PDF/DOCX size
+  search_results: 5   # default search result count
 
-# Cesty (relativně ke kořenu projektu, pokud nejsou absolutní)
+# Paths (relative to the project root unless absolute)
 paths:
   runtime_dir: runtime
   llama_dir: runtime/llama

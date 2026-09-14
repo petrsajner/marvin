@@ -1,26 +1,26 @@
-# Marvin 1.8.2 — pokračování po změně modelu
+# Marvin 1.8.2: Continue after switching models
 
-Datum: 14. 9. 2026. Oprava navazuje na sestavení s automatickou přípravou WebView2; číslo vydání a veřejné odkazy zůstávají 1.8.2.
+14 September 2026. This fix followed the automatic WebView2 setup build. The release number and public links remained 1.8.2.
 
-## Příčina a oprava
+## Cause and behavior
 
-Uživatel po nedostatku paměti Flash-Next ručně spustil Qwen Q5. Volba v nastavení i poslední úspěšně spuštěný model byly správně uložené, ale přerušená úloha měla v SQLite nadále vlastní kopii původní konfigurace Flash-Next. Continue pouze znovu zařadilo tuto úlohu. Worker potom podle staré konfigurace zastavil nový model a znovu načetl původní.
+After Flash-Next ran out of memory, the user manually started Qwen Q5. Settings and the last successful model were correct, but the interrupted SQLite job retained a snapshot of the old Flash-Next configuration. Continue merely requeued that job, so the worker stopped Qwen and loaded Flash-Next again.
 
-`ApplicationService.resume()` nyní při kliknutí na Continue převezme aktuálně vybraný model, jeho aktuální definici a KV profil, hardwarové nastavení a požadavek na adaptivní KV. Stejnou opravenou konfiguraci uloží do pokračující úlohy i jejích nastavení. Již běžící správný model se kvůli pokračování znovu nespouští.
+`ApplicationService.resume()` now copies the currently selected model, current model definition and KV profile, hardware settings and requested adaptive context into the resumed job and its settings. A correctly configured running model is reused.
 
-Zůstávají zachované identita úlohy, zprávy, přílohy, režim práce, hloubka přemýšlení a bezpečnostní nastavení původní úlohy. Oprava funguje i pro dříve uložené přerušené úlohy; nevyžaduje migraci ani ruční úpravu uživatelské databáze. Nové zprávy a běžná fronta si ponechávají dosavadní pravidla pořizování konfigurace při odeslání.
+Job identity, messages, attachments, work mode, reasoning depth and safety settings remain attached to the original task. Previously saved interrupted tasks work without a database migration or manual edits. At the time of this fix, normal new/queued submissions retained their existing snapshot rules; later runtime-budget reconciliation is documented in [memory profiles](../design/memory-profiles.md).
 
-Při menším kontextu vychází automatická komprese z limitu nově vybraného modelu. Úplná historie zůstává uložená a dostupná v rozhraní.
+If the replacement model has a smaller context, automatic compression uses its limit while retaining the complete UI/history transcript.
 
-## Ověření
+## Verification recorded for this release
 
-- Před opravou regresní test reprodukoval návrat ke starému modelu, restart kvůli starému KV profilu i použití nesprávného kontextového limitu.
-- API testy pokrývají stavy failed, stopped, interrupted a waiting_confirmation; Flash-Next → Qwen Q5/Q4/Q3, změnu KV stejného modelu i nižší profil Flash-Next. Pokud vybraný model již běží se správným profilem, nepřijde žádný požadavek na jeho restart.
-- Ověřeno pokračování po restartu aplikace: obnoví se částečná odpověď, neznámý výsledek nástroje se označí pro kontrolu a použije se nově zvolený model.
-- Test přechodu na 32k kontext používá sumarizaci s novým modelem a zachovává všechny původní zprávy.
-- Na izolované kopii nahlášené skutečné úlohy se původní Flash-Next změnil na Qwen Q5 / Q8 / 196 608 tokenů. Nebyl vyžádán restart modelu; původní historie zůstala bajtově nezměněná. Šlo o řízenou zkoušku směrování bez generování nebo nástrojových akcí nad uživatelskou konverzací.
-- Prošlo 366 základních kontrol a 82 servisních testů včetně WebView2, obnovy historie, fronty a přepínání modelů.
-- Skutečný upgrade přes Minimal skončil kódem 0; všech 82 servisních testů prošlo i v nainstalované aplikaci. Instalovaný zdroj opravy a oba manuály odpovídají distribuci. Běžný Marvin se následně otevřel s Qwenem Q5 ve stavu Ready.
-- Full prošel sestavením a kontrolou přemístěného privátního Python prostředí, včetně API a načtení DLL llama.cpp. Inference runtime ani závislosti se v této opravě nemění.
+- Before the fix, regression tests reproduced the old-model reload, restart caused by stale KV settings, and wrong context limit.
+- API tests covered failed, stopped, interrupted and waiting-confirmation jobs; Flash-Next to Qwen Q5/Q4/Q3, KV changes within one model, and a smaller Flash-Next profile. Correctly running profiles received no restart request.
+- Recovery after an application restart preserved partial output, marked unknown tool results for checking, and used the new model.
+- Moving to a 32k context summarized with the new model and retained all original messages.
+- An isolated copy of the reported job changed from Flash-Next to Qwen Q5/Q8/196,608 tokens without a restart request. Original history bytes were unchanged. This was a controlled routing test, without generation or tool actions over the user's conversation.
+- 366 core checks and 82 service tests passed, including WebView2, history recovery, queueing and model switching.
+- A real Minimal upgrade exited 0. All 82 service tests also passed in the installed application. Installed source and both manuals matched the distribution, and normal Marvin opened with Qwen Q5 Ready.
+- Full passed its build and relocated private-Python checks, including API startup and llama.cpp DLL loading. Inference runtime and dependencies were unchanged.
 
-Aktuální instalátory, manuály a jejich kontrolní součty uvádí [manifest vydání](release-1.8.2.json). Offline balíček se aktualizuje pouze změněnými soubory distribuce; váhy, WebView2 a inference prostředí se nepřebalují.
+The [release manifest](release-1.8.2.json) identifies current installers, manuals and hashes. Offline updates replace changed distribution files without repacking weights, WebView2 or the inference environment.

@@ -1,7 +1,7 @@
 async (page) => {
   const assert = (ok, message) => { if (!ok) throw new Error(message); };
-  const left = page.getByRole('separator', { name: 'Šířka navigace' });
-  const right = page.getByRole('separator', { name: 'Šířka detailu' });
+  const left = page.getByRole('separator', { name: 'Navigation width' });
+  const right = page.getByRole('separator', { name: 'Detail width' });
   const widths = () => page.evaluate(() => ({
     left: document.querySelector('.sidebar-region').getBoundingClientRect().width,
     right: document.querySelector('.detail').getBoundingClientRect().width,
@@ -17,9 +17,9 @@ async (page) => {
   let state = await widths();
   assert(state.left === 330 && state.right === 427.5, 'Default columns are not 50% wider');
   assert(state.chats === 20 && state.fits && !state.overflow, 'Initial chat list layout');
-  await page.getByRole('button', { name: 'Zobrazit starší (6)' }).click();
+  await page.getByRole('button', { name: 'Show older (6)' }).click();
   assert((await widths()).chats === 26, 'Older conversations did not expand');
-  await page.getByRole('button', { name: 'Jen nejnovější' }).click();
+  await page.getByRole('button', { name: 'Show recent only' }).click();
   assert((await widths()).chats === 20, 'Conversation collapse failed');
   for (const [handle, dx] of [[left, 70], [right, -50]]) {
     const box = await handle.boundingBox();
@@ -39,7 +39,7 @@ async (page) => {
   for (const [width, height] of [[1920,1080],[1366,768],[1024,768],[720,450],[390,844]]) {
     await page.setViewportSize({ width, height });
     assert(!(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)), `Overflow at ${width}`);
-    const prompt = await page.getByRole('textbox', { name: 'Zpráva' }).boundingBox();
+    const prompt = await page.getByRole('textbox', { name: 'Message' }).boundingBox();
     assert(prompt.width > 100 && prompt.y + prompt.height <= height, `Prompt unavailable at ${width}`);
     await page.screenshot({ path: `output/playwright/columns-${width}.png` });
   }

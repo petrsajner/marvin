@@ -1,7 +1,6 @@
-"""Unit testy jádra harnesu (bez GPU / serveru).
+"""Core harness checks without a GPU or model server.
 
-Spuštění:  .venv/Scripts/python tests/test_core.py
-"""
+Run with the project's Python interpreter: tests/test_core.py."""
 from __future__ import annotations
 
 import json
@@ -14,7 +13,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-# Windows pipe/konzole v cp1250/1252 nezvládne "✓" a diakritiku → vynutit UTF-8
+from harness.i18n import locale_data, translate
+
+# Use UTF-8 for Windows consoles and pipes to preserve Unicode diagnostics.
 for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
         _stream.reconfigure(encoding="utf-8", errors="replace")
@@ -47,33 +48,33 @@ def check(cond: bool, label: str) -> None:
 def test_config() -> None:
     print("[config]")
     cfg = load_config()
-    check(cfg.model_key() in cfg.data["models"], "default model existuje v 'models'")
-    check(cfg.base_url.startswith("http://127.0.0.1"), "base_url je localhost")
-    check(cfg.model_file().name.endswith(".gguf"), "model_file ukazuje na GGUF")
-    # výchozí stav čerstvé instalace (lokální config může přepsat na q4 apod.)
+    check(cfg.model_key() in cfg.data["models"], "default model exists in 'models'")
+    check(cfg.base_url.startswith("http://127.0.0.1"), "base_url points to localhost")
+    check(cfg.model_file().name.endswith(".gguf"), "model_file points to a GGUF file")
+    # Fresh-installation defaults; a local configuration can override the model.
     from copy import deepcopy
     from harness.config import DEFAULTS
     fresh = Config(deepcopy(DEFAULTS), root=ROOT)
     check(fresh.model_key() == "q5" and fresh.kv_cache_mode("q5") == "q8_0",
-          "nová instalace používá hlavní Qwen Q5 s Q8 KV")
+          "A fresh installation uses Qwen Q5 with Q8 KV")
     s = cfg.sampling(thinking=True)
     check(abs(s["temperature"] - 1.0) < 1e-9, "thinking sampling t=1.0")
     s2 = cfg.sampling(thinking=False)
     check(abs(s2["temperature"] - 0.7) < 1e-9, "non-thinking sampling t=0.7")
     cfg.data["default_model"] = "ornith_q5"
     check(abs(cfg.sampling(thinking=True)["temperature"] - 0.6) < 1e-9,
-          "Ornith používá sampling z vlastního model cardu")
+          "Ornith uses sampling settings from its own model card")
     check(cfg.mmproj_repo() == "ornith-ai/Ornith-1.5-35B-A3B-GGUF",
-          "Ornith vision projektor lze stáhnout z odděleného repozitáře")
+          "The Ornith vision projector can come from a separate repository")
     check(cfg.context_size() == 131072 and cfg.kv_cache_mode() == "q8_0",
-          "Ornith má ověřený 128k kontext a Q8 KV cache")
+          "Ornith uses the validated 128k context and Q8 KV")
     legacy_file = Path(tempfile.mkdtemp()) / "legacy.yaml"
     try:
         legacy_file.write_text(
             "models:\n  q4:\n    ctx_size: 131072\n"
             "    kv_cache_profiles:\n"
-            "      f16: {label: \"16 bit - přesnější, kontext 128k\", ctx_size: 131072}\n"
-            "      q8_0: {label: \"8 bit - větší kontext 256k\", ctx_size: 262144}\n"
+            f"      f16: {{label: {json.dumps(translate('16-bit - more precise, context 128k', 'cs'), ensure_ascii=False)}, ctx_size: 131072}}\n"
+            f"      q8_0: {{label: {json.dumps(translate('8-bit - larger context 256k', 'cs'), ensure_ascii=False)}, ctx_size: 262144}}\n"
             "  q5:\n    ctx_size: 98304\n"
             "agent:\n  max_steps: 40\n  semi_max_steps: 15\n",
             encoding="utf-8")
@@ -82,19 +83,19 @@ def test_config() -> None:
               and migrated.context_size("q5") == 196608
               and migrated.kv_cache_mode("q4") == "f16"
               and migrated.kv_cache_mode("q5") == "q8_0",
-              "starý config převezme nový hlavní Q5/Q8 profil bez změny Q4")
+              "Legacy configuration adopts Q5/Q8 defaults without changing Q4")
         legacy_q4 = migrated.data["models"]["q4"]["kv_cache_profiles"]
         check(legacy_q4["f16"]["label"] == "16-bit - more precise, context 128k"
-              and legacy_q4["f16"].get("label_cs") == "16 bit - přesnější, kontext 128k"
+              and legacy_q4["f16"].get("label_cs") == translate("16-bit - more precise, context 128k", "cs")
               and legacy_q4["q8_0"]["label"] == "8-bit - larger context 256k",
-              "legacy české KV labely se migrací převedou na EN label + label_cs")
+              "Legacy localized KV labels migrate to English labels plus UI translations")
         migrated.set_kv_cache_mode("q4", "q8_0")
         check(migrated.context_size("q4") == 262144
               and migrated.kv_cache_server_args("q4")[-1] == "q8_0",
-              "Qwen přepne Q8 KV profil i odpovídající větší kontext")
+              "Selecting Q8 changes the corresponding Qwen context size")
         check(migrated.agent["max_steps"] == 0
               and migrated.agent["semi_max_steps"] == 0,
-              "starý instalační config nemůže znovu zapnout limit agenta")
+              "An old installation configuration cannot restore the removed agent-step limit")
     finally:
         shutil.rmtree(legacy_file.parent, ignore_errors=True)
     from harness.prompts import build_system_prompt
@@ -102,24 +103,24 @@ def test_config() -> None:
     research_prompt = build_system_prompt("chat", cfg, ROOT, "research")
     development_prompt = build_system_prompt("agent", cfg, ROOT, "development")
     check("DISCUSSION mode" in discussion_prompt and "coding agent" not in discussion_prompt,
-          "Diskuze nemá coding system prompt")
+          "Discussion does not use the development system prompt")
     check("Never filter" in research_prompt and "adult user" in research_prompt,
-          "Výzkum zakazuje filtrování zdrojů podle důvěryhodnosti")
+          "Research forbids filtering sources by trustworthiness")
     check("ORNITH DELIBERATE REASONING POLICY" in development_prompt
           and "Do not optimize for speed" in development_prompt,
-          "Ornith xhigh dostává explicitní politiku hlubokého uvažování")
+          "Ornith xhigh receives explicit deep-reasoning guidance")
     skills_prompt = build_system_prompt("chat", cfg, ROOT, "discussion")
     check("## OPTIONAL SKILLS" in skills_prompt
           and "research-synthesis" in skills_prompt
           and "translation-craft" in skills_prompt,
-          "system prompt nabízí katalog skills (model je využije bez list_skills)")
+          "The system prompt includes the skill catalog without requiring list_skills")
     from harness.version import APP_VERSION, _version_candidates
-    # v instalované kopii je version.txt v kořenu aplikace, ve stromu v installer/
+    # Installed copies keep version.txt at the root; development copies keep it under installer/.
     version_files = [p for p in _version_candidates() if p.exists()]
     installer_version = (version_files[0].read_text(encoding="utf-8").strip()
                          if version_files else "")
     check(bool(installer_version) and APP_VERSION == installer_version and APP_VERSION == "1.8.2",
-          "viditelná verze aplikace odpovídá instalátoru 1.8.2")
+          "The visible application version matches installer version 1.8.2")
     invariants = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     check(all(item in invariants for item in (
         "Language servers or an LSP runtime/distribution layer",
@@ -127,7 +128,7 @@ def test_config() -> None:
         "Parallel model agents",
         "One-million-token context",
         "general plugin host, MCP ecosystem",
-    )), "trvalé non-goals jsou zapsané v kořenových produktových pravidlech")
+    )), "Permanent non-goals are recorded in the root product instructions")
     web_source = (ROOT / "webapp.py").read_text(encoding="utf-8")
     check(all(marker in web_source for marker in (
         'elem_id="workspace-control-stack"',
@@ -135,7 +136,7 @@ def test_config() -> None:
         't("Settings & help")', 'show_progress="hidden"',
     )) and 't("Available skills"), open=' not in web_source
           and 't("Help & manuals"), open=' not in web_source,
-          "sidebar používá sjednocenou informační architekturu bez samostatných výkřiků")
+          "The sidebar uses consistent information architecture")
 
 
 def test_memory_layers() -> None:
@@ -149,48 +150,48 @@ def test_memory_layers() -> None:
         workspace.mkdir()
         memory_dir = tmp / "memory"
         memory_dir.mkdir()
-        legacy_fact = "- Původní coding pravidlo zůstává zachované.\n"
+        legacy_fact = "- The original development rule remains intact.\n"
         (memory_dir / "MEMORY.md").write_text(
-            "# 🧠 Globální paměť (platí pro všechny projekty)\n\n"
+            f"{locale_data('legacy_memory_heading')}\n\n"
             "<!-- scope=\"global\" -->\n" + legacy_fact,
             encoding="utf-8")
 
         cfg = Config(load_config().data, root=tmp)
         development = MemoryStore(cfg, workspace, "development")
         check(development.mode_path() == memory_dir / "MEMORY.md"
-              and "Původní coding pravidlo" in development.read("mode")
+              and "The original development rule" in development.read("mode")
               and "Work mode memory: Development" in development.read("mode"),
-              "původní global MEMORY.md se bezeztrátově migruje na paměť Vývoje")
+              "Legacy MEMORY.md migrates losslessly to Development memory")
         check(development.global_path == memory_dir / "GLOBAL.md"
               and development.global_path != development.mode_path(),
-              "skutečně globální vrstva je oddělená od coding paměti")
+              "Global memory remains separate from development memory")
 
-        development.append("Univerzální preference", "global")
-        development.append("Vývojové pravidlo", "mode")
-        development.append("Projektové rozhodnutí", "project")
-        long_fact = "DLOUHA-PAMET-" + ("x" * 7000) + "-KONEC-PAMETI"
+        development.append("Universal preference", "global")
+        development.append("Development rule", "mode")
+        development.append("Project decision", "project")
+        long_fact = "LONG-MEMORY-" + ("x" * 7000) + "-END-OF-MEMORY"
         development.append(long_fact, "mode")
         block = development.context_block()
         check(all(value in block for value in (
-            "Univerzální preference", "Vývojové pravidlo", "Projektové rozhodnutí")),
-            "system prompt obsahuje globální, režimovou i projektovou vrstvu")
-        check("KONEC-PAMETI" in block,
-              "paměťové dokumenty se vkládají celé bez umělého zkrácení")
+            "Universal preference", "Development rule", "Project decision")),
+            "The system prompt includes global, work-mode and project memory")
+        check("END-OF-MEMORY" in block,
+              "Memory documents are injected in full without artificial truncation")
 
         paths = {
             mode: MemoryStore(cfg, workspace, mode).mode_path()
             for mode in ("discussion", "research", "writing", "development", "computer")
         }
         check(len(set(paths.values())) == 5,
-              "každý pracovní režim má vlastní celkovou paměť")
+              "Each work mode has its own memory document")
         research = MemoryStore(cfg, workspace, "research")
-        research.append("Výzkumné pravidlo", "mode")
+        research.append("Research rule", "mode")
         research_prompt = build_system_prompt("chat", cfg, workspace, "research")
-        check("Univerzální preference" in research_prompt
-              and "Výzkumné pravidlo" in research_prompt
-              and "Projektové rozhodnutí" in research_prompt
-              and "Vývojové pravidlo" not in research_prompt,
-              "research chat vidí své přesné tři vrstvy bez coding paměti")
+        check("Universal preference" in research_prompt
+              and "Research rule" in research_prompt
+              and "Project decision" in research_prompt
+              and "Development rule" not in research_prompt,
+              "Research sees its three memory layers without development memory")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -198,28 +199,28 @@ def test_memory_layers() -> None:
 def test_safety() -> None:
     print("[safety]")
     sup = SafetyPolicy("supervised", max_steps=40, semi_max_steps=15)
-    check(sup.needs_confirmation(Risk.WRITE), "supervised: WRITE potvrzení")
-    check(not sup.needs_confirmation(Risk.SAFE), "supervised: SAFE bez potvrzení")
+    check(sup.needs_confirmation(Risk.WRITE), "Supervised mode confirms WRITE actions")
+    check(not sup.needs_confirmation(Risk.SAFE), "Supervised mode allows SAFE actions without confirmation")
     sup.new_task()
     check(sup.step_limit() == 40, "supervised limit = max_steps")
 
     semi = SafetyPolicy("semi", max_steps=40, semi_max_steps=15)
-    check(semi.needs_confirmation(Risk.WRITE), "semi: první WRITE potvrzení")
+    check(semi.needs_confirmation(Risk.WRITE), "Semi mode confirms the first WRITE action")
     semi.mark_confirmed()
-    check(not semi.needs_confirmation(Risk.WRITE), "semi: další WRITE už bez potvrzení")
+    check(not semi.needs_confirmation(Risk.WRITE), "Semi mode allows subsequent WRITE actions after confirmation")
     check(semi.step_limit() == 15, "semi limit = semi_max_steps")
 
     auto = SafetyPolicy("auto", max_steps=40)
-    check(not auto.needs_confirmation(Risk.WRITE), "auto: bez potvrzení")
+    check(not auto.needs_confirmation(Risk.WRITE), "Auto mode requires no confirmation")
     check(auto.step_limit() == 40, "auto limit = max_steps")
     unlimited = SafetyPolicy()
-    check(unlimited.step_limit() is None, "výchozí agent nemá limit kroků")
+    check(unlimited.step_limit() is None, "The default agent has no step limit")
 
     try:
-        SafetyPolicy("režimNaval")
-        check(False, "invalid autonomy vyhodí výjimku")
+        SafetyPolicy("invalid-mode")
+        check(False, "Invalid autonomy raises an exception")
     except ValueError:
-        check(True, "invalid autonomy vyhodí výjimku")
+        check(True, "Invalid autonomy raises an exception")
 
 
 def test_session() -> None:
@@ -230,46 +231,46 @@ def test_session() -> None:
         data["paths"]["sessions_dir"] = str(tmp / "sessions")
         cfg = Config(data, root=ROOT)
         s = Session(cfg, session_id="test-session", system_prompt="SYS")
-        s.add("user", "ahoj")
+        s.add("user", "hello")
         img = tmp / "obrazek.png"
         img.write_bytes(b"\x89PNG fake")
         s.add("user", "mrkni na to", images=[img])
         s.add("assistant", "", tool_calls=[{"id": "call_1", "type": "function",
                                             "function": {"name": "list_dir", "arguments": "{}"}}])
         s.add("tool", "result text", tool_call_id="call_1", name="list_dir")
-        check((tmp / "sessions/test-session/messages.jsonl").exists(), "JSONL uložen")
+        check((tmp / "sessions/test-session/messages.jsonl").exists(), "JSONL was saved")
         n_img = len(list((tmp / "sessions/test-session/images").glob("*.png")))
-        check(n_img == 1, f"obrázek zkopírován do session ({n_img})")
+        check(n_img == 1, f"image copied into the session ({n_img})")
 
         api = s.to_api_messages()
-        check(api[0]["role"] == "system", "system prompt na začátku")
+        check(api[0]["role"] == "system", "The system prompt comes first")
         img_msg = [m for m in api if isinstance(m.get("content"), list)]
         check(len(img_msg) == 1 and any(p["type"] == "image_url" for p in img_msg[0]["content"]),
-              "obrázek renderován jako image_url data URL")
+              "An image is rendered as an image_url data URL")
 
         pinned = tmp / "pinned.txt"
-        pinned.write_text("DŮLEŽITÝ PŘIPNUTÝ KONTEXT", encoding="utf-8")
-        check(s.pin_context_file(pinned), "soubor lze připnout do kontextu")
+        pinned.write_text("IMPORTANT PINNED CONTEXT", encoding="utf-8")
+        check(s.pin_context_file(pinned), "A file can be pinned to the context")
         api_with_pin = s.to_api_messages()
-        check(any("DŮLEŽITÝ PŘIPNUTÝ KONTEXT" in str(m.get("content", ""))
-                  for m in api_with_pin), "připnutý soubor je v API pohledu modelu")
+        check(any("IMPORTANT PINNED CONTEXT" in str(m.get("content", ""))
+                  for m in api_with_pin), "The pinned file appears in the model's API view")
         breakdown = s.context_breakdown()
         check(breakdown["pinned_files"] == [str(pinned.resolve())],
-              "context inspector eviduje připnutý soubor")
+              "The context inspector tracks the pinned file")
         check(s.unpin_context_file(pinned) and not s.context_breakdown()["pinned_files"],
-              "připnutý soubor lze odepnout")
+              "The pinned file can be unpinned")
 
         original_data_url = Session.__dict__["_data_url"]
         try:
             Session._data_url = staticmethod(lambda _path: (_ for _ in ()).throw(
-                AssertionError("estimate nesmí enkódovat obrázky")))
+                AssertionError("Token estimation must not encode images")))
             check(s.estimate_context_tokens() > Session.IMAGE_TOKENS,
-                  "odhad kontextu nečte ani base64-enkóduje obrázek")
+                  "Context estimation neither reads nor base64-encodes image files")
         finally:
             Session._data_url = original_data_url
 
         loaded = Session.load(cfg, "test-session")
-        check(len(loaded.messages) == 5, f"roundtrip zpráv (={len(loaded.messages)})")
+        check(len(loaded.messages) == 5, f"message roundtrip (={len(loaded.messages)})")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -286,7 +287,7 @@ def test_tools_fs_shell() -> None:
         ctx = AgentContext(cfg=cfg, session=session, workspace=tmp)
         ctx.changes = ChangeJournal(session, tmp)
         ctx.processes = ProcessManager()
-        ctx.changes.begin_task("test změn")
+        ctx.changes.begin_task("Change test")
 
         reg = ToolRegistry()
         from harness.tools import fs, shell
@@ -294,69 +295,69 @@ def test_tools_fs_shell() -> None:
         shell.register_shell_tools(reg)
 
         (tmp / "sub").mkdir()
-        (tmp / "sub" / "a.txt").write_text("ahoj\nsvěte\nQWEN", encoding="utf-8")
+        (tmp / "sub" / "a.txt").write_text("hello\nworld\nQWEN", encoding="utf-8")
         (tmp / "sub" / "data.py").write_text("x = 1\nQWEN_MARKER = 'zde'\n", encoding="utf-8")
 
         r = reg.execute("list_dir", {"path": "."}, ctx)
-        check("sub" in r and "[DIR]" in r, "list_dir vidí adresář")
+        check("sub" in r and "[DIR]" in r, "list_dir finds the directory")
 
         r = reg.execute("read_file", {"path": "sub/a.txt"}, ctx)
-        check("ahoj" in r and "3|" in r, "read_file vrací obsah s čísly řádků")
+        check("hello" in r and "3|" in r, "read_file includes line numbers")
 
         r = reg.execute("write_file", {"path": "sub/new.md", "content": "# test"}, ctx)
-        check((tmp / "sub" / "new.md").exists(), "write_file vytvořil soubor")
+        check((tmp / "sub" / "new.md").exists(), "write_file created the file")
 
         r = reg.execute("search_files", {"query": "qwen_marker", "path": "."}, ctx)
-        check("data.py:2" in r, "search_files case-insensitive nalezení")
+        check("data.py:2" in r, "search_files matches case-insensitively")
         r = reg.execute("search_files", {
             "query": r"QWEN_.* =", "path": ".", "regex": True,
         }, ctx)
-        check("data.py:2" in r, "search_files podporuje regex")
+        check("data.py:2" in r, "search_files supports regular expressions")
         r = reg.execute("find_files", {"pattern": "**/*.py", "path": "."}, ctx)
-        check("data.py" in r, "find_files používá glob nad projektem")
+        check("data.py" in r, "find_files applies a project glob")
         r = reg.execute("make_directory", {"path": "generated/nested"}, ctx)
-        check((tmp / "generated" / "nested").is_dir(), "make_directory vytvoří rodiče")
+        check((tmp / "generated" / "nested").is_dir(), "make_directory creates parent directories")
         original_move = tmp / "sub" / "move-me.txt"
         original_move.write_text("restore me", encoding="utf-8")
         r = reg.execute("move_file", {"src": "sub/move-me.txt", "dst": "sub/moved.txt"}, ctx)
         check(r.startswith("OK") and (tmp / "sub" / "moved.txt").is_file(),
-              "move_file přejmenuje soubor")
+              "move_file renames the file")
         r = reg.execute("delete_file", {"path": "sub/moved.txt"}, ctx)
         check(r.startswith("OK") and not (tmp / "sub" / "moved.txt").exists(),
-              "delete_file smaže soubor přes rollback journal")
+              "delete_file records deletion in the rollback journal")
 
         data_file = tmp / "sub" / "data.py"
         original_data = data_file.read_text(encoding="utf-8")
         r = reg.execute("apply_patch", {
             "path": "sub/data.py",
-            "edits": [{"old": "NEEXISTUJE", "new": "x"}],
+            "edits": [{"old": "MISSING", "new": "x"}],
         }, ctx)
         check(r.startswith("ERROR") and data_file.read_text(encoding="utf-8") == original_data,
-              "neplatný patch nezmění soubor")
+              "An invalid patch does not change the file")
         r = reg.execute("apply_patch", {
             "path": "sub/data.py",
             "expected_sha256": file_sha256(data_file),
             "edits": [{"old": "x = 1", "new": "x = 2"}],
         }, ctx)
         check(r.startswith("OK") and "x = 2" in data_file.read_text(encoding="utf-8"),
-              "apply_patch provede přesnou atomickou změnu")
+              "apply_patch performs an exact atomic change")
         changes = reg.execute("list_task_changes", {}, ctx)
         check("data.py" in changes and "new.md" in changes,
-              "journal eviduje upravený i vytvořený soubor")
+              "The journal tracks modified and newly created files")
         undo = reg.execute("undo_task_changes", {}, ctx)
         check("errors\": []" in undo and data_file.read_text(encoding="utf-8") == original_data
               and not (tmp / "sub" / "new.md").exists()
               and original_move.read_text(encoding="utf-8") == "restore me"
               and not (tmp / "generated").exists(),
-              "rollback obnoví původní stav celé úlohy")
+              "Rollback restores the complete pre-task state")
         check(not any(item["changed"] for item in ctx.changes.summary()["files"]),
-              "journal je po rollbacku znovu čistý")
+              "The journal is clean after rollback")
 
         r = reg.execute("run_command", {"command": "echo hello-$((40+2))", "shell": "bash"}, ctx)
-        check("hello-42" in r and "exit code: 0" in r, f"run_command bash funguje: {r[:60]}")
+        check("hello-42" in r and "exit code: 0" in r, f"run_command works with bash: {r[:60]}")
 
         r = reg.execute("run_command", {"command": "Write-Output 'ps-works'"}, ctx)
-        check("ps-works" in r, f"run_command powershell funguje")
+        check("ps-works" in r, f"run_command works with PowerShell")
 
         r = reg.execute("run_command", {
             "command": "Write-Output HEAD-MARK; Write-Output ('x' * 25000); Write-Output TAIL-MARK",
@@ -365,7 +366,7 @@ def test_tools_fs_shell() -> None:
         log_match = __import__("re").search(r"\[full log: ([^\]]+)\]", r)
         check("HEAD-MARK" in r and "TAIL-MARK" in r and "full log saved" in r
               and log_match is not None and Path(log_match.group(1)).is_file(),
-              "run_command zachová head+tail a úplný log")
+              "run_command retains head, tail and the complete log")
 
         import threading
         abort = threading.Event()
@@ -378,7 +379,7 @@ def test_tools_fs_shell() -> None:
         }, ctx)
         timer.cancel()
         check("aborted by user" in r and time.monotonic() - started_abort < 5,
-              "Stop přeruší synchronní command téměř okamžitě")
+              "Stop interrupts a synchronous command promptly")
         abort.clear()
 
         started = time.monotonic()
@@ -387,7 +388,7 @@ def test_tools_fs_shell() -> None:
             "shell": "powershell", "timeout": 5,
         }, ctx))
         check(time.monotonic() - started < 1 and launched["status"] == "running",
-              "start_command vrátí okamžitě process_id")
+              "start_command returns a process ID immediately")
         cursor = 0
         streamed = ""
         for _ in range(50):
@@ -400,7 +401,7 @@ def test_tools_fs_shell() -> None:
                 break
             time.sleep(0.05)
         check("one" in streamed and "two" in streamed and poll["exit_code"] == 0,
-              "poll_command streamuje přírůstkový výstup do dokončení")
+              "poll_command streams incremental output through completion")
 
         sleeper = json.loads(reg.execute("start_command", {
             "command": "Start-Sleep -Seconds 30", "shell": "powershell", "timeout": 60,
@@ -409,17 +410,17 @@ def test_tools_fs_shell() -> None:
             "process_id": sleeper["process_id"],
         }, ctx))
         check(stopped.get("terminated") is True,
-              "terminate_command ukončí dlouhý process tree")
+              "terminate_command stops the process tree")
 
         r = reg.execute("run_command", {"command": "format c: /x"}, ctx)
-        check("blocked" in r.lower(), "nebezpečný příkaz zablokován")
+        check("blocked" in r.lower(), "A dangerous command was blocked")
 
-        r = reg.execute("read_file", {"path": "neexistuje.txt"}, ctx)
-        check(r.startswith("ERROR"), "chyba čtení vrací ERROR text")
+        r = reg.execute("read_file", {"path": "missing.txt"}, ctx)
+        check(r.startswith("ERROR"), "A read failure returns an ERROR message")
 
         schemas = reg.schemas()
         check(all(s["function"]["name"] for s in schemas) and len(schemas) == 16,
-              f"schemas pro izolovanou sadu 16 nástrojů ({len(schemas)})")
+              f"schemas for an isolated set of 16 tools ({len(schemas)})")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -433,47 +434,47 @@ def test_gpu_autofit() -> None:
 
     cfg = Config(deepcopy(DEFAULTS), root=ROOT)
     check(effective_vram_gb(cfg) is None or effective_vram_gb(cfg) > 0,
-          "effective_vram_gb vrací číslo nebo None (dle configu/detekce)")
-    # ruční přepínač v configu má přednost před detekcí
+          "effective_vram_gb returns a detected/configured number or None")
+    # A manual budget can constrain detected GPU capacity.
     cfg.data["hardware"] = {"vram_gb": 24}
-    check(effective_vram_gb(cfg) == 24.0, "hardware.vram_gb přepisuje detekci")
-    check(fits(cfg, "q4", "q8_0_compact", 24.0), "kompaktní profil se vejde na 24 GB")
-    check(fits(cfg, "q4", "f16_compact", 24.0), "F16 kompaktní profil pro 24 GB existuje")
-    check(not fits(cfg, "q5", "q8_0", 24.0), "Q5 s 192k kontextem se na 24 GB nevejde")
+    check(effective_vram_gb(cfg) == 24.0, "hardware.vram_gb constrains detected capacity")
+    check(fits(cfg, "q4", "q8_0_compact", 24.0), "The compact profile fits a 24 GB capacity budget")
+    check(fits(cfg, "q4", "f16_compact", 24.0), "A compact F16 profile exists for 24 GB cards")
+    check(not fits(cfg, "q5", "q8_0", 24.0), "Q5 with a 192k context does not fit 24 GB")
     choice = best_fit(cfg, 24.0)
     check(choice == ("q5", "q8_0_compact") or choice == ("q4", "q8_0_compact"),
-          f"auto-fit pro 24 GB vybírá proveditelnou kombinaci ({choice})")
+          f"auto-fit for 24 GB selects a feasible combination ({choice})")
     check(set(fitting_profiles(cfg, "ornith_q5", 24.0)) == set(),
-          "Ornith na 24 GB nemá žádný profil")
+          "Ornith has no supported 24 GB profile")
     check(set(download_keys(cfg, 24.0)) == {"q3", "q4", "q5", "nemotron_q4"},
-          "setup pro 24 GB stahuje jen modely, které se vejdou (Nemotron Q4 s pretokem)")
+          "Setup selects compatible 24 GB models, including Nemotron Q4 with CPU experts")
     check(set(download_keys(cfg, 16.0)) == {"q3"},
-          "setup pro 16 GB stahuje jen IQ3_S (hraniční provoz)")
+          "Setup selects IQ3_S for 16 GB cards")
     check(best_fit(cfg, 16.0) == ("q3", "q8_0_32k"),
-          "auto-fit pro 16 GB vybere overeny IQ3_S / 32k")
+          "auto-fit for 16 GB selects the validated IQ3_S / 32k profile")
     q3_profiles = cfg.kv_cache_profiles("q3")
     check(set(q3_profiles) == {"q8_0", "q8_0_32k", "q8_0_128k", "f16_96k",
                                "q8_0_256k", "f16_192k"},
-          "q3 má KV varianty pro 16/24/32 GB karty")
+          "Q3 has profiles for 16, 24 and 32 GB cards")
     check(all("min_vram_gb" in p for p in q3_profiles.values()),
-          "každý q3 profil má min_vram_gb")
+          "Every Q3 profile specifies min_vram_gb")
     check(set(download_keys(cfg, 32.0)) == {"q3", "q4", "q5", "ornith_q5",
                                             "nemotron_q4", "nemotron_q5"},
-          "setup pro 32 GB stahuje vše")
-    # Nemotron: namerene profily, pretok do RAM, text-only (bez mmproj)
+          "Setup selects all standard models on a 32 GB card")
+    # Nemotron: measured profiles, RAM spill, text-only (no projector)
     nq4 = cfg.kv_cache_profiles("nemotron_q4")
     check(nq4["q8_0_512k_spill"].get("server_args") == ["--n-cpu-moe", "18"],
-          "Nemotron spill profil nese --n-cpu-moe")
+          "Nemotron spill profiles include --n-cpu-moe")
     check(cfg.mmproj_file("nemotron_q4") is None and cfg.mmproj_file("q5") is not None,
-          "Nemotron je text-only (mmproj None), Qwen mmproj má")
+          "Nemotron is text-only; Qwen has a multimodal projector")
     check(best_fit(cfg, 32.0) == ("q5", "q8_0"),
-          "na 32 GB zůstává výchozí Q5 s Q8 KV")
-    # kompaktní profil používá cache_type q8_0, ne svůj klíč
+          "Q5 with Q8 remains the default for 32 GB cards")
+    # Compact profiles use their cache_type instead of their profile identifier.
     cfg.set_kv_cache_mode("q4", "q8_0_compact")
     check(cfg.kv_cache_server_args("q4") == ["--cache-type-k", "q8_0",
                                              "--cache-type-v", "q8_0"],
-          "kompaktní profil předává serveru cache typ q8_0")
-    check(cfg.context_size("q4") == 98304, "kompaktní profil má kontext 96k")
+          "The compact profile passes q8_0 as the actual cache type")
+    check(cfg.context_size("q4") == 98304, "The compact Q4 profile has a 96k context")
 
 
 def test_registry_modes() -> None:
@@ -491,15 +492,15 @@ def test_registry_modes() -> None:
                                 "find_files", "make_directory", "move_file", "delete_file",
                                 "view_image", "search_project", "search_chat_history", "read_chat_history",
                                 "edit_word_document", "view_document_page", "project_decisions"},
-          f"chat režim: memory + web + context + disk nástroje ({len(chat.names())})")
+          f"chat mode: memory + web + context + disk tools ({len(chat.names())})")
     check({"list_dir", "run_command", "view_image"} <= set(agent.names()),
-          f"agent režim: fs+patch+shell+vision ({len(agent.names())})")
+          f"agent mode: fs+patch+shell+vision ({len(agent.names())})")
     check({"screenshot", "click", "type_text", "press_key"} <= set(computer.names()),
-          f"computer režim: + GUI nástroje ({len(computer.names())})")
+          f"computer mode: adds GUI tools ({len(computer.names())})")
     click = computer.get("click")
-    check(click.risk == Risk.WRITE, "click je WRITE risk")
+    check(click.risk == Risk.WRITE, "click has WRITE risk")
     shot = computer.get("screenshot")
-    check(shot.risk == Risk.SAFE, "screenshot je SAFE risk")
+    check(shot.risk == Risk.SAFE, "screenshot has SAFE risk")
 
     discussion = build_registry("chat", "discussion")
     research = build_registry("chat", "research")
@@ -507,33 +508,33 @@ def test_registry_modes() -> None:
     development = build_registry("agent", "development")
     check({"read_file", "write_file", "search_files", "view_image"} <= set(discussion.names())
           and not ({"git_commit", "run_command", "repo_overview"} & set(discussion.names())),
-          "Diskuze má disk bez coding nástrojů")
+          "Discussion has file tools without the development toolset")
     check(set(research.names()) == set(discussion.names()),
-          "Výzkum má web/context nástroje bez coding sady")
+          "Research has web/context tools without the development toolset")
     check("export_document" in discussion.names() and "export_document" in research.names()
           and "export_document" in development.names(),
-          "PDF/DOCX/Markdown export je viditelný ve všech pracovních režimech")
+          "Document export is available in every work mode")
     check("apply_patch" in writing.names() and "export_document" in writing.names()
           and "repo_overview" not in writing.names() and "git_commit" not in writing.names()
           and "run_command" not in writing.names(),
-          "Psaní má dokumentové editace bez Git a shellu")
+          "Writing has document editing without Git and shell tools")
     check({"apply_patch", "git_commit", "run_command", "start_project_check"}
-          <= set(development.names()), "Vývoj má kompletní coding sadu")
+          <= set(development.names()), "Development has the complete development toolset")
     check({"browser_open", "browser_snapshot", "browser_screenshot", "browser_console",
            "browser_network", "browser_select", "browser_upload", "browser_download",
            "browser_viewport"} <= set(development.names()),
-          "Vývoj má izolovanou browser session")
+          "Development has an isolated browser session")
     check({"find_symbol", "document_symbols", "find_references"}
           <= set(development.names()),
-          "Vývoj má multijazykovou symbolovou navigaci")
+          "Development has lightweight multi-language symbol navigation")
 
 
 def test_parse_args() -> None:
     print("[llm helpers]")
-    check(parse_tool_arguments('{"x": 1}') == {"x": 1}, "platný JSON")
-    check(parse_tool_arguments("") == {}, "prázdné argumenty")
+    check(parse_tool_arguments('{"x": 1}') == {"x": 1}, "Valid JSON")
+    check(parse_tool_arguments("") == {}, "Empty arguments")
     check(parse_tool_arguments('blabla {"x": [1,2]} blabla') == {"x": [1, 2]},
-          "JSON zasypaný v textu")
+          "JSON embedded in surrounding text")
 
 
 def test_workspace() -> None:
@@ -548,56 +549,56 @@ def test_workspace() -> None:
         from harness.safety import SafetyPolicy
         agent = Agent(cfg, LLMStub(), session, build_registry("agent"),
                       SafetyPolicy("supervised"), mode="agent")
-        # None -> cwd (výchozí)
-        check(agent.workspace == Path.cwd().resolve(), "výchozí workspace = cwd")
+        # None selects the current working directory.
+        check(agent.workspace == Path.cwd().resolve(), "The default workspace is the current directory")
         check(agent.ctx.project_workspace is None and agent.ctx.repo_index is None,
-              "chat bez projektu nemá projektový dokumentový index")
-        # nastavení adresáře
+              "Projectless chats have no project document index")
+        # Set a directory.
         p = agent.set_workspace(str(tmp))
         check(p == tmp.resolve() and agent.workspace == tmp.resolve()
               and agent.ctx.project_workspace == tmp.resolve()
               and agent.ctx.repo_index is not None,
-              "set_workspace přepojí nástroje i projektový index")
-        # soubor -> nadřazený adresář
-        f = tmp / "soubor.txt"
+              "set_workspace updates tool paths and the project index")
+        # A file path resolves to its parent directory.
+        f = tmp / "file.txt"
         f.write_text("x", encoding="utf-8")
         (tmp / "module.py").write_text("def project_symbol():\n    return 1\n", encoding="utf-8")
         p2 = agent.set_workspace(str(f))
-        check(p2 == tmp.resolve(), "soubor -> nadřazený adresář")
-        # uvozovky kolem cesty
+        check(p2 == tmp.resolve(), "A file resolves to its parent directory")
+        # Quoted path.
         p3 = agent.set_workspace(f'"{tmp}"')
-        check(p3 == tmp.resolve(), "cesta v uvozovkách")
-        # neexistující
+        check(p3 == tmp.resolve(), "A quoted path is accepted")
+        # Missing path.
         try:
-            agent.set_workspace(tmp / "neexistuje")
-            check(False, "neexistující cesta vyhodí ValueError")
+            agent.set_workspace(tmp / "missing")
+            check(False, "A missing path raises ValueError")
         except ValueError:
-            check(True, "neexistující cesta vyhodí ValueError")
-        # nástroje řeší relativní cesty od workspace
+            check(True, "A missing path raises ValueError")
+        # Tools resolve relative paths against their workspace.
         from harness.tools.base import AgentContext
-        r = build_registry("agent").execute("read_file", {"path": "soubor.txt"}, agent.ctx)
-        check("soubor.txt" in r and "1| x" in r, "read_file řeší cestu od workspace")
+        r = build_registry("agent").execute("read_file", {"path": "file.txt"}, agent.ctx)
+        check("file.txt" in r and "1| x" in r, "read_file resolves paths against the workspace")
         agent.new_task("prozkoumej projekt")
         dynamic = agent._api_messages()[-1]["content"]
         check("CURRENT PROJECT SNAPSHOT" in dynamic and "project_symbol" in dynamic
               and "project_symbol" not in session.messages[0]["content"],
-              "proměnlivý repo snapshot je na konci requestu a nezneplatňuje stabilní prefix")
+              "Changing repository context stays at the tail without invalidating the stable prefix")
         cached_prefix = json.dumps(session.messages, ensure_ascii=False, sort_keys=True)
         cached_count = len(session.messages)
         overview = build_registry("agent").execute("repo_overview", {}, agent.ctx)
         check("module.py" in overview and "project_symbol" in overview,
-              "repo_overview vrací klíčové symboly workspace")
+              "repo_overview includes important workspace symbols")
         (tmp / "module.py").write_text("def refreshed_symbol():\n    return 2\n", encoding="utf-8")
         refreshed = build_registry("agent").execute("repo_overview", {}, agent.ctx)
         check("refreshed_symbol" in refreshed and "project_symbol" not in refreshed,
-              "repo snapshot invaliduje cache po změně souboru")
-        agent.new_task("pokračuj s aktuálním stavem")
+              "A file change invalidates the repository snapshot cache")
+        agent.new_task("Continue using the current state")
         check(json.dumps(session.messages[:cached_count], ensure_ascii=False, sort_keys=True)
               == cached_prefix
               and "refreshed_symbol" in agent._api_messages()[-1]["content"]
               and not any(str(message.get("content", "")).startswith("[DYNAMIC TASK CONTEXT")
                           for message in session.messages),
-              "nový snapshot je dočasný tail a nezanáší znovupoužitelný prefix")
+              "A new snapshot does not duplicate the reusable prefix")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -607,15 +608,15 @@ def test_shell_readonly() -> None:
     from harness.tools.shell import RunCommandTool, is_read_only_command
     tool = RunCommandTool()
     safe = [
-        "ls -la", "cat soubor.txt", "grep -r foo .", "git status", "git log --oneline",
-        "git diff HEAD~1", "find . -name '*.py'", "echo ahoj", "ls | grep test",
+        "ls -la", "cat file.txt", "grep -r foo .", "git status", "git log --oneline",
+        "git diff HEAD~1", "find . -name '*.py'", "echo hello", "ls | grep test",
         "cat a.txt; cat b.txt", "stat main.py", "wc -l *.py",
     ]
     unsafe = [
-        "rm -rf x", "echo ahoj > soubor.txt", "cat x | tee y", "mkdir novy",
+        "rm -rf x", "echo hello > file.txt", "cat x | tee y", "mkdir new",
         "git push", "git commit -m x", "curl http://x", "ls; rm x",
         "echo $(rm x)", "npm install x", "grep x . > out", "git branch nova",
-        "cp a b", "cat < vstup.txt", "python skript.py", "",
+        "cp a b", "cat < input.txt", "python script.py", "",
     ]
     for cmd in safe:
         check(is_read_only_command(cmd), f"SAFE: {cmd!r}")
@@ -626,7 +627,7 @@ def test_shell_readonly() -> None:
 
 
 def test_context_compression() -> None:
-    print("[ctx komprese - ne-destruktivní]")
+    print("[non-destructive context compression]")
     from harness.context import render_messages_text
 
     rendered = render_messages_text([
@@ -635,53 +636,53 @@ def test_context_compression() -> None:
         {"role": "user", "content": "TAIL-CONTEXT " + "c" * 120},
     ], max_chars=240)
     check("HEAD" in rendered and "TAIL-CONTEXT" in rendered and len(rendered) <= 240,
-          "dlouhý transcript zachová začátek i nejnovější konec")
+          "Long transcript trimming retains the beginning and the newest end")
     tmp = Path(tempfile.mkdtemp())
     try:
         data = load_config().data
         data["paths"]["sessions_dir"] = str(tmp / "sessions")
         cfg = Config(data, root=ROOT)
         s = Session(cfg, session_id="ctx-test", system_prompt="SYS")
-        # napodob delsi konverzaci: 6x user/assistant/tool trojice
+        # Simulate a longer conversation with six user/assistant/tool triples
         for i in range(6):
             s.add("user", f"otazka {i} " + "x" * 500)
             s.add("assistant", "", tool_calls=[{"id": f"c{i}", "type": "function",
                                                 "function": {"name": "read_file", "arguments": "{}"}}])
-            s.add("tool", f"odpoved {i} " + "y" * 300, tool_call_id=f"c{i}", name="read_file")
+            s.add("tool", f"response {i} " + "y" * 300, tool_call_id=f"c{i}", name="read_file")
         n_before = len(s.messages)
         est = s.estimate_context_tokens()
-        check(est > 1000, f"odhad tokenů rozumný ({est})")
+        check(est > 1000, f"reasonable token estimate ({est})")
 
-        ok = s.compress_to_summary("SOUHRN konverzace.", min_keep=6)
-        check(ok, "komprese proběhla")
-        check(len(s.messages) == n_before, f"historie NEDOTČENÁ ({len(s.messages)} == {n_before})")
-        check(s.compression is not None and s.compression["cut"] > 1, "záznam komprese (cut)")
+        ok = s.compress_to_summary("Conversation SUMMARY.", min_keep=6)
+        check(ok, "Compression completed")
+        check(len(s.messages) == n_before, f"history UNCHANGED ({len(s.messages)} == {n_before})")
+        check(s.compression is not None and s.compression["cut"] > 1, "Compression boundary recorded")
 
-        # model vidí méně, uživatel vše
+        # The model sees a reduced view while the user retains the full history.
         api_view = s._view_messages()
-        check(len(api_view) < n_before, f"modelův view menší ({len(api_view)} < {n_before})")
-        check("SOUHRN konverzace." in api_view[1]["content"], "souhrn v modelově view")
+        check(len(api_view) < n_before, f"model view is smaller ({len(api_view)} < {n_before})")
+        check("Conversation SUMMARY." in api_view[1]["content"], "The summary appears in the model view")
         est2 = s.estimate_context_tokens()
-        check(est2 < est, f"tokeny pro model klesly ({est} → {est2})")
+        check(est2 < est, f"model token count decreased ({est} → {est2})")
 
-        # view nezačíná osiřelým tool voláním
+        # The model view must not start with an orphaned tool result.
         first_role = api_view[2]["role"] if len(api_view) > 2 else None
         check(first_role in ("user", None), f"cut na user hranici (role={first_role})")
 
-        # persist + roundtrip: historie i komprese
+        # persist and roundtrip both history and compression
         loaded = Session.load(cfg, "ctx-test")
-        check(len(loaded.messages) == n_before, "JSONL kompletní (roundtrip)")
+        check(len(loaded.messages) == n_before, "The complete JSONL history survives a round trip")
         check(loaded.compression is not None and loaded.compression["cut"] == s.compression["cut"],
-              "compression.json persistován")
+              "compression.json was persisted")
 
-        # druhá komprese posune cut dál
+        # A second compression advances the cut.
         s.add("user", "nova otazka " + "a" * 100)
-        s.add("assistant", "nova odpoved " + "b" * 100)
-        ok2 = s.compress_to_summary("SOUHRN 2.", min_keep=2)
+        s.add("assistant", "new response " + "b" * 100)
+        ok2 = s.compress_to_summary("SUMMARY 2.", min_keep=2)
         check(ok2 and s.compression["cut"] > loaded.compression["cut"],
-              "druhá komprese posunula cut vpřed")
+              "The second compression advanced the cut")
 
-        # trim fallback posouvá cut, nemaže historii
+        # Fallback trimming advances the view boundary without deleting history.
         s2 = Session(cfg, session_id="trim-test", system_prompt="SYS")
         for i in range(10):
             s2.add("user", f"u{i} " + "z" * 2000)
@@ -690,24 +691,24 @@ def test_context_compression() -> None:
         n2 = len(s2.messages)
         ok = s2.trim_to_budget(big // 2)
         check(ok and s2.estimate_context_tokens() <= big // 2,
-              f"trim do rozpočtu ({big} → {s2.estimate_context_tokens()})")
-        check(len(s2.messages) == n2, "trim nemaže historii (jen posouvá cut)")
+              f"trim fits the budget ({big} → {s2.estimate_context_tokens()})")
+        check(len(s2.messages) == n2, "Trimming changes the view boundary without deleting history")
 
-        # tokenový rozpočet: obří tool výstupy v ocasu nespotřebují půlku kontextu
+        # Large recent tool outputs must respect the retained-context token budget.
         s3 = Session(cfg, session_id="bigtail-test", system_prompt="SYS")
         for i in range(10):
             s3.add("user", f"q{i}")
             s3.add("assistant", "", tool_calls=[{"id": f"c{i}", "type": "function",
                                                  "function": {"name": "read_file", "arguments": "{}"}}])
-            s3.add("tool", "T" * 6000, tool_call_id=f"c{i}", name="read_file")  # ~1.6k toků
-        # 10 trojic ≈ 16k+ tokenů; rozpočet 6k → cut musí ořezat hluboko
+            s3.add("tool", "T" * 6000, tool_call_id=f"c{i}", name="read_file")  # Approximately 1,600 tokens.
+        # Ten message triples exceed 16k tokens; a 6k budget requires a substantial cut.
         est_before = s3.estimate_context_tokens()
-        ok = s3.compress_to_summary("SOUHRN", keep_tokens=6000)
+        ok = s3.compress_to_summary("SUMMARY", keep_tokens=6000)
         est_after = s3.estimate_context_tokens()
         check(ok and est_after <= 8000,
-              f"tokenový rozpočet drží ocas ({est_before} → {est_after}, cíl ≤ 8000)")
+              f"token budget preserves the tail ({est_before} → {est_after}, target ≤ 8000)")
         view = s3._view_messages()
-        check(view[2]["role"] == "user", "token-based cut také na user hranici")
+        check(view[2]["role"] == "user", "Token-budget cuts remain on user-message boundaries")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -726,15 +727,15 @@ def test_reasoning_effort_kwargs() -> None:
     data["thinking"] = False
     check(_template_kwargs(Config(data, ROOT)) == {
         "chat_template_kwargs": {"enable_thinking": False}},
-          "thinking off má prioritu před effort")
+          "Disabling thinking takes precedence over reasoning effort")
     data["thinking"] = True
     data["reasoning_effort"] = "blbost"
-    check(_template_kwargs(Config(data, ROOT)) == {}, "neplatný effort → bez kwarg (default šablony)")
+    check(_template_kwargs(Config(data, ROOT)) == {}, "Invalid effort uses the chat-template default")
     data["default_model"] = "ornith_q5"
     data["reasoning_effort"] = "xhigh"
     check(_template_kwargs(Config(data, ROOT)) == {
         "chat_template_kwargs": {"enable_thinking": True}},
-          "Ornith zapne reasoning bez nepodporovaného reasoning_effort")
+          "Ornith enables reasoning without an unsupported reasoning_effort parameter")
     data["default_model"] = "q4"
 
     class CaptureCompletions:
@@ -756,16 +757,16 @@ def test_reasoning_effort_kwargs() -> None:
     })()
     llm.stream([{"role": "user", "content": "test"}])
     extra = completions.params["extra_body"]
-    check(extra.get("top_k") == 20, "stream request zachová top_k")
+    check(extra.get("top_k") == 20, "Streaming preserves top_k")
     check(extra.get("chat_template_kwargs") == {"enable_thinking": False},
-          "stream request zachová thinking/reasoning nastavení")
+          "Streaming preserves thinking and reasoning settings")
     check("max_tokens" not in completions.params,
-          "produkční LLM request nemá umělý výstupní token limit")
+          "Production requests have no artificial output-token limit")
 
     class ClosableStream:
         def __init__(self):
             self.closed = False
-            self.parts = ["Začátek ", "dokončené věty.", " Tohle už se nevygeneruje."]
+            self.parts = ["Beginning of a ", "completed sentence.", " This text must not be generated."]
 
         def __iter__(self):
             for part in self.parts:
@@ -791,9 +792,9 @@ def test_reasoning_effort_kwargs() -> None:
 
     stopped = llm.stream([{"role": "user", "content": "test stop"}],
                          should_stop=request_stop, on_text=lambda _text: stop_requested.set())
-    check(stopped.stopped and stopped.content == "Začátek dokončené věty."
+    check(stopped.stopped and stopped.content == "Beginning of a completed sentence."
           and closable.closed,
-          "graceful Stop dokončí větu, zavře stream a nepokračuje dál")
+          "Graceful Stop finishes the sentence, closes the stream and stops generation")
 
 
 def test_runtime_lifecycle_helpers() -> None:
@@ -804,7 +805,7 @@ def test_runtime_lifecycle_helpers() -> None:
     try:
         from launcher.launcher_app import _free_web_port
     except ImportError:
-        # instalovaná kopie: launcher je přeložený v Marvin.exe, zdroje chybí
+        # Installed copies may only contain the frozen launcher executable.
         _free_web_port = None
 
     tmp = Path(tempfile.mkdtemp())
@@ -819,7 +820,7 @@ def test_runtime_lifecycle_helpers() -> None:
         pf.write_text("q4:99999999", encoding="utf-8")
         servermgmt.health = lambda *_args, **_kwargs: False
         check(servermgmt.server_state(cfg) == "down" and not pf.exists(),
-              "stale PID se uklidí a server je down")
+              "A stale PID is removed and the server is down")
 
         class DeadProcess:
             @staticmethod
@@ -829,7 +830,7 @@ def test_runtime_lifecycle_helpers() -> None:
         started = time.monotonic()
         check(not servermgmt.wait_health(cfg, timeout=10, proc=DeadProcess())
               and time.monotonic() - started < 1,
-              "wait_health skončí hned po pádu procesu")
+              "wait_health returns promptly after a process crash")
 
         if _free_web_port is not None:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as occupied:
@@ -837,7 +838,7 @@ def test_runtime_lifecycle_helpers() -> None:
                 occupied.listen(1)
                 busy_port = occupied.getsockname()[1]
                 check(_free_web_port(busy_port) != busy_port,
-                      "launcher přeskočí obsazený Web UI port")
+                      "The launcher skips an occupied UI port")
     finally:
         servermgmt.health = original_health
         shutil.rmtree(tmp, ignore_errors=True)
@@ -856,24 +857,24 @@ def test_dependency_marker() -> None:
 
         (venv / ".deps.ok").write_text("", encoding="ascii")
         check(not dependencies_current(requirements, venv),
-              "stary .deps.ok marker se nepovazuje za aktualni")
+              "the old .deps.ok marker is not treated as current")
         mark_dependencies_current(requirements, venv)
         check(dependencies_current(requirements, venv),
-              "SHA-256 marker potvrdi aktualni requirements")
+              "SHA-256 marker confirms current requirements")
         check(not (venv / ".deps.ok").exists(),
-              "zastaraly marker se po synchronizaci odstrani")
+              "synchronization removes the stale marker")
         check(len(requirements_digest(requirements)) == 64,
-              "fingerprint requirements je SHA-256")
+              "the requirements fingerprint is SHA-256")
 
         requirements.write_text("example==2.0\n", encoding="utf-8")
         check(not dependencies_current(requirements, venv),
-              "zmena requirements zneplatni dependency marker")
+              "a requirements change invalidates the dependency marker")
         from unittest.mock import patch
         with patch("harness.dependencies.subprocess.call", return_value=0) as pip_call:
             rc = sync_dependencies(requirements, venv, force=True)
         command = pip_call.call_args.args[0]
         check(rc == 0 and command[-2:] == ["-r", str(requirements)],
-              "dependency sync instaluje deklarované requirements")
+              "Dependency synchronization installs the declared requirements")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -902,14 +903,14 @@ def test_offline_backup() -> None:
         backup = outer / "QwenHarness-Offline-Backup"
         manifest = create_backup(source, backup)
         check(manifest["format_version"] == 2 and (backup / "manifest.json").is_file(),
-              "create backup vytvoří verzovaný manifest")
+              "Backup creation writes a versioned manifest")
         verified = verify_backup(backup)
         check(verified["ok"] and verified["files"] >= 5,
-              "neporušená offline záloha projde SHA-256 kontrolou")
+              "An intact offline backup passes SHA-256 verification")
         info = backup_info(backup)
         check(info["app_version"] == "test-version" and len(info["models"]) == 2
               and info["dependencies"] and info["installer"].endswith(".exe"),
-              "backup info popíše verzi, modely, Setup.exe a lokální Python závislosti")
+              "Backup metadata describes the version, models, installer and Python dependencies")
         restored_root = outer / "restored"
         (restored_root / ".venv" / "Scripts").mkdir(parents=True)
         (restored_root / ".venv" / "Scripts" / "python.exe").touch()
@@ -921,18 +922,18 @@ def test_offline_backup() -> None:
               and (restored_root / "runtime/llama/bin/llama-server.exe").is_file()
               and (restored_root / ".venv/Lib/site-packages/example/__init__.py").is_file()
               and (restored_root / ".venv/.requirements.sha256").is_file(),
-              "restore obnoví modely, llama runtime i Python závislosti")
+              "Restore recovers models, the inference runtime and Python dependencies")
         fallback_root = outer / "fallback"
         targeted = restore_backup(fallback_root, backup, {"models"})
         check((fallback_root / "runtime/models/model.gguf").is_file()
               and not (fallback_root / "runtime/llama").exists()
               and targeted["dependencies"] == "not-requested",
-              "fallback restore obnoví jen online nedostupnou komponentu")
+              "Fallback restore copies only the component unavailable online")
         damaged = backup / "payload" / "runtime" / "models" / "model.gguf"
         damaged.write_bytes(b"DAMAGED")
         check(not verify_backup(backup)["ok"],
-              "poškození payloadu odhalí velikost nebo SHA-256")
-        # dev strom: installer/; instalovaná kopie: skripty v kořenu aplikace
+              "Size or SHA-256 detects payload corruption")
+        # Setup scripts live under installer/ in development and at the installed application root.
         setup_bat = next((p2 for p2 in (ROOT / "installer" / "run_setup.bat",
                                         ROOT / "run_setup.bat") if p2.is_file()), None)
         backup_bat = next((p2 for p2 in (ROOT / "installer" / "run_setup_from_backup.bat",
@@ -946,7 +947,7 @@ def test_offline_backup() -> None:
               and "QWEN_HARNESS_BACKUP_PREFER" in backup_bat.read_text(encoding="utf-8")
               and (not iss_file.is_file() or "run_setup_from_backup.bat" in
                    iss_file.read_text(encoding="utf-8")),
-              "installer obsahuje lokální restore a výběr backup složky")
+              "The installer supports local restore and backup-folder selection")
     finally:
         shutil.rmtree(outer, ignore_errors=True)
 
@@ -956,24 +957,24 @@ def test_streaming_bridge() -> None:
     from harness.streaming import SteeringQueue, StreamHub, step_threaded
 
     hub = StreamHub()
-    hub.on_event("reasoning", "uva")
-    hub.on_event("reasoning", "žuji")
-    hub.on_event("text", "ho")
-    hub.on_event("text", "tovo")
+    hub.on_event("reasoning", "thi")
+    hub.on_event("reasoning", "nking")
+    hub.on_event("text", "do")
+    hub.on_event("text", "ne")
     text, reasoning, rev, _ = hub.snapshot()
-    check(text == "hotovo" and reasoning == "uvažuji" and rev == 4,
-          "StreamHub skládá fragmenty bez ztráty pořadí")
+    check(text == "done" and reasoning == "thinking" and rev == 4,
+          "StreamHub preserves fragment order")
     hub.on_event("tool_delta", ("write_file", '{"path":"game.py","content":"abc'))
     progress = hub.progress()
     check(progress["tool_call_name"] == "write_file"
           and progress["tool_call_chars"] > 20,
-          "StreamHub zviditelní generování dlouhých argumentů nástroje")
+          "StreamHub exposes incremental tool-argument generation")
     hub.on_event("tool_start", ("write_file", {"path": "game.py"}))
     check(hub.progress()["tools_running"] == [("write_file", {"path": "game.py"})],
-          "StreamHub ukáže právě prováděný nástroj")
+          "StreamHub shows the tool currently executing")
     hub.on_event("tool_result", ("write_file", "OK"))
     check(not hub.progress()["tools_running"],
-          "StreamHub po výsledku ukončí stav provádění nástroje")
+          "StreamHub clears tool execution after its result")
 
     class FakeAgent:
         @staticmethod
@@ -983,17 +984,17 @@ def test_streaming_bridge() -> None:
     thread, box = step_threaded(FakeAgent(), True)
     thread.join(timeout=2)
     check(not thread.is_alive() and box.get("r") == "step:True",
-          "worker bridge vrátí výsledek agent.step")
+          "The worker bridge returns the agent-step result")
 
     steering = SteeringQueue()
-    steering.push("Nejdřív oprav parser.", ["screen.png"])
+    steering.push("Fix the parser first.", ["screen.png"])
     steering.push("A zachovej kompatibilitu.")
     check(bool(steering)
           and steering.pop_all() == [
-              ("Nejdřív oprav parser.", ["screen.png"]),
+              ("Fix the parser first.", ["screen.png"]),
               ("A zachovej kompatibilitu.", []),
           ] and not steering,
-          "steering queue zachová pořadí upřesnění a atomicky se vyprázdní")
+          "Steering preserves clarification order and drains atomically")
 
     from harness.agent import Agent, Status
     from harness.llm import AssistantResult
@@ -1006,42 +1007,42 @@ def test_streaming_bridge() -> None:
         cfg = Config(data, root=ROOT)
         session = Session(cfg, session_id="stop-test", system_prompt="SYS")
         agent = Agent(
-            cfg, LLMStub([AssistantResult(content="Dokončená věta.", stopped=True)]),
+            cfg, LLMStub([AssistantResult(content="Completed sentence.", stopped=True)]),
             session, ToolRegistry(), SafetyPolicy("auto"), mode="chat",
             work_mode="discussion")
-        agent.new_task("Dlouhá odpověď")
+        agent.new_task("Long response")
         result = agent.step()
         check(result.status is Status.ABORTED
-              and any(message.get("content") == "Dokončená věta."
+              and any(message.get("content") == "Completed sentence."
                       for message in session.messages),
-              "Stop uloží dokončenou část odpovědi a ukončí agentní úlohu")
+              "Stop preserves completed response text and ends the task")
         agent.abort_flag.set()
-        agent.llm = LLMStub([AssistantResult(content="Nová odpověď")])
-        agent.new_task("Nový dotaz po Stop")
+        agent.llm = LLMStub([AssistantResult(content="New response")])
+        agent.new_task("New question after Stop")
         check(not agent.abort_flag.is_set() and agent.step().status is Status.FINAL,
-              "nový dotaz po Stop dostane čistý abort stav")
+              "A request after Stop receives a clear abort state")
 
         steered = Session(cfg, session_id="steer-test", system_prompt="SYS")
         steer_agent = Agent(
-            cfg, LLMStub([AssistantResult(content="První dokončená věta.", stopped=True)]),
+            cfg, LLMStub([AssistantResult(content="First completed sentence.", stopped=True)]),
             steered, ToolRegistry(), SafetyPolicy("auto"), mode="chat",
             work_mode="discussion")
-        steer_agent.new_task("Navrhni řešení")
+        steer_agent.new_task("Propose a solution")
         check(steer_agent.step().status is Status.ABORTED,
-              "steering nejprve ukončí aktuální stream u dokončené věty")
-        steer_agent.steer("Zachovej také zpětnou kompatibilitu.")
-        steer_agent.llm = LLMStub([AssistantResult(content="Upravené řešení.")])
+              "Steering first stops the active stream at a complete sentence")
+        steer_agent.steer("Also preserve backward compatibility.")
+        steer_agent.llm = LLMStub([AssistantResult(content="Revised solution.")])
         steer_result = steer_agent.step()
         visible = [m.get("content") for m in steered.messages
                    if m.get("role") != "system"
                    and not str(m.get("content") or "").startswith(Session.INTERNAL_USER_PREFIXES)]
         check(steer_result.status is Status.FINAL
               and visible[-3:] == [
-                  "První dokončená věta.",
-                  "Zachovej také zpětnou kompatibilitu.",
-                  "Upravené řešení.",
+                  "First completed sentence.",
+                  "Also preserve backward compatibility.",
+                  "Revised solution.",
               ],
-              "steering zachová část odpovědi a pokračuje s upřesněním ve správném pořadí")
+              "Steering preserves partial output and continues with clarifications in order")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1081,21 +1082,21 @@ def test_parallel_read_tools() -> None:
         agent = Agent(cfg, LLMStub(), session, registry, SafetyPolicy("auto"), mode="agent")
         calls = [_tc("read_a"), _tc("read_b")]
         started = time.monotonic()
-        trace = agent._execute_calls(calls, "Našel jsem první podklady, teď je porovnám.")
+        trace = agent._execute_calls(calls, "I found the initial sources and will now compare them.")
         parallel_time = time.monotonic() - started
         check(parallel_time < 0.45 and [item[2] for item in trace] == ["read_a", "read_b"],
-              "nezávislé read-only tool calls běží paralelně a zachovají pořadí")
+              "Independent read-only tools can run concurrently while preserving result order")
         persisted = next(message for message in session.messages
                          if message.get("tool_calls") == calls)
         reloaded = Session.load(cfg, session.id)
-        check(persisted["content"].startswith("Našel jsem")
-              and any(str(message.get("content", "")).startswith("Našel jsem")
+        check(persisted["content"].startswith("I found")
+              and any(str(message.get("content", "")).startswith("I found")
                       for message in reloaded.messages),
-              "průběžný text před tool callem zůstane v chatu i po reloadu")
+              "Progress text before a tool call remains visible after reload")
         started = time.monotonic()
         agent._execute_calls([_tc("read_a"), _tc("write_c")])
         check(time.monotonic() - started >= 0.45,
-              "smíšená read/write sada zůstane sekvenční")
+              "Mixed read/write tool groups execute sequentially")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1115,17 +1116,17 @@ def test_resume_task_and_process_after_restart() -> None:
         data["agent"]["workspace"] = str(tmp)
         cfg = Config(data, root=ROOT)
         session = Session(cfg, session_id="resume-test", system_prompt="SYS")
-        pending_llm = LLMStub([AssistantResult(content="Připravuji soubor a čekám na potvrzení.", tool_calls=[
+        pending_llm = LLMStub([AssistantResult(content="Preparing the file and waiting for approval.", tool_calls=[
             _tc("write_file", '{"path":"resume.txt","content":"OK"}')])])
         first = Agent(
             cfg, pending_llm, session, build_registry("agent", "development"),
             SafetyPolicy("supervised"), mode="agent", work_mode="development")
-        first.new_task("vytvoř resume.txt")
+        first.new_task("Create resume.txt")
         waiting = first.step()
         check(waiting.status is Status.NEEDS_CONFIRMATION
               and session.load_task_state()["status"] == "waiting_confirmation"
-              and session.load_task_state()["pending_text"].startswith("Připravuji"),
-              "pending potvrzení i jeho průběžný text se uloží do task-state")
+              and session.load_task_state()["pending_text"].startswith("Preparing"),
+              "Pending approvals and their visible progress text are persisted")
 
         restored = Agent(
             cfg, LLMStub([]), session, build_registry("agent", "development"),
@@ -1133,15 +1134,15 @@ def test_resume_task_and_process_after_restart() -> None:
         restored_waiting = restored.step()
         check(restored.has_resumable_task
               and restored_waiting.status is Status.NEEDS_CONFIRMATION
-              and restored_waiting.text.startswith("Připravuji"),
-              "nový Agent po restartu obnoví pending tool calls i viditelný text")
+              and restored_waiting.text.startswith("Preparing"),
+              "A new Agent restores pending tools and visible text after restart")
         restored.step(approve=True)
         check((tmp / "resume.txt").is_file()
-              and any(str(message.get("content", "")).startswith("Připravuji")
+              and any(str(message.get("content", "")).startswith("Preparing")
                       for message in session.messages if message.get("role") == "assistant"),
-              "obnovené potvrzení dokončí tool call a zachová průběh")
+              "Restored approval completes the tool call and preserves progress")
         completed = Agent(
-            cfg, LLMStub([AssistantResult(content="hotovo"), AssistantResult(content="ověřeno, hotovo")]), session,
+            cfg, LLMStub([AssistantResult(content="done"), AssistantResult(content="Verified and complete")]), session,
             build_registry("agent", "development"), SafetyPolicy("supervised"),
             mode="agent", work_mode="development")
         resumed = completed.has_resumable_task
@@ -1149,7 +1150,7 @@ def test_resume_task_and_process_after_restart() -> None:
         final_result = completed.step() if first_result.status is Status.CONTINUE else first_result
         check(resumed and final_result.status is Status.FINAL
               and session.load_task_state()["status"] == "complete",
-              "running úloha po restartu pokračuje do FINAL")
+              "A restored running task can reach FINAL")
 
         manager1 = ProcessManager()
         managers.append(manager1)
@@ -1163,7 +1164,7 @@ def test_resume_task_and_process_after_restart() -> None:
         manager2.bind_session(session)
         restored_item = manager2.get(item.id)
         check(restored_item is not None and restored_item.proc is None,
-              "ProcessManager načte procesní manifest po restartu")
+              "ProcessManager restores its manifest after restart")
         cursor = 0
         output = ""
         for _ in range(100):
@@ -1174,7 +1175,7 @@ def test_resume_task_and_process_after_restart() -> None:
                 break
             time.sleep(0.05)
         check("BEFORE" in output and "AFTER" in output,
-              "obnovený ProcessManager pokračuje ve čtení persistentního logu")
+              "A restored ProcessManager continues reading the persistent log")
     finally:
         for manager in managers:
             manager.terminate_all()
@@ -1215,18 +1216,18 @@ def test_git_tools() -> None:
             "path": "tracked.txt",
             "edits": [{"old": "before", "new": "after"}],
         }, ctx)
-        check(patched.startswith("OK"), "git test změna vznikla přes apply_patch")
+        check(patched.startswith("OK"), "The test change was created through apply_patch")
         check("tracked.txt" in reg.execute("git_status", {}, ctx),
-              "git_status vrací změněný soubor")
+              "git_status reports the changed file")
         check("-before" in reg.execute("git_diff", {"path": "tracked.txt"}, ctx),
-              "git_diff vrací obsah změny")
+              "git_diff includes the changed content")
         committed = reg.execute("git_commit", {"message": "task change"}, ctx)
         check("exit code: 0" in committed and git("log", "-1", "--pretty=%s").stdout.strip() == "task change",
-              "git_commit commitne pouze journalované změny")
+              "git_commit includes only journaled changes")
         check(git("status", "--porcelain", "--untracked-files=no").stdout.strip() == "",
-              "tracked změny jsou po commitu čisté")
+              "Tracked changes are clean after commit")
         check("sessions/" in git("status", "--porcelain").stdout,
-              "git_commit nepřibere nesouvisející journal artefakty")
+              "git_commit excludes unrelated journal artifacts")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1261,10 +1262,10 @@ def test_automatic_project_check() -> None:
                 break
             time.sleep(0.05)
         check("PROJECT-CHECK-OK" in output and result["exit_code"] == 0,
-              "detekovaný project check doběhne v background procesu")
+              "Detected project checks run in a background process")
         profile = reg.execute("project_validation_profile", {}, ctx)
         check("tests" in profile and "Core tests" in profile,
-              "validační profil ukáže detekované kontroly")
+              "The validation profile lists detected checks")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1291,36 +1292,36 @@ def test_task_plan_and_project_instructions() -> None:
                       SafetyPolicy("auto"), mode="agent", work_mode="development")
         agent.new_task("Implement the feature and verify it")
         check(TaskPlanStore(session).load().get("goal") == "Implement the feature and verify it",
-              "nová úloha založí persistentní task plan")
+              "A new task creates a persistent plan")
         plan_result = agent.registry.execute("set_task_plan", {
             "goal": "Implement and verify",
             "steps": ["Inspect the feature", "Implement the change", "Run validation"],
         }, agent.ctx)
         check('"in_progress"' in plan_result and len(TaskPlanStore(session).load()["steps"]) == 3,
-              "model může vytvořit strukturované kroky")
+              "The model can create structured task steps")
         agent.registry.execute("update_task_step", {
             "step_id": 1, "status": "completed", "note": "Relevant files inspected",
         }, agent.ctx)
         plan = TaskPlanStore(session).load()
         check(plan["steps"][0]["status"] == "completed"
               and plan["steps"][1]["status"] == "in_progress",
-              "dokončení kroku aktivuje následující krok")
+              "Completing a step activates the next step")
 
         root_context = agent._dynamic_context_block()
         check("Root project guidance" in root_context
               and "Source-specific guidance" not in root_context,
-              "kořenové instrukce jsou aktivní od začátku")
+              "Root instructions apply from task start")
         agent._observe_context_paths({"path": "src/feature/module.py"})
         nested_context = agent._dynamic_context_block()
         check("Root project guidance" in nested_context
               and "Source-specific guidance" in nested_context,
-              "instrukce se skládají hierarchicky podle aktivního souboru")
+              "Instructions follow the active file's directory hierarchy")
         check(not any(str(message.get("content", "")).startswith("[DYNAMIC TASK CONTEXT")
                       for message in session.messages),
-              "dynamický projektový kontext se neukládá do historie")
+              "Dynamic project context does not duplicate stored history")
         usage = agent.context_usage_breakdown()
         check(usage["messages"] > 0 and usage["dynamic"] > 0 and usage["tool_schemas"] > 0,
-              "měřič kontextu zahrnuje zprávy, dynamiku i tool schemas")
+              "Context estimates include messages, dynamic data and tool schemas")
 
         (tmp / ".qwen").mkdir()
         (tmp / ".qwen" / "project.yaml").write_text(
@@ -1333,7 +1334,7 @@ def test_task_plan_and_project_instructions() -> None:
             encoding="utf-8")
         profile = agent.registry.execute("project_validation_profile", {}, agent.ctx)
         check("focused" in profile and "PROFILE-OK" in profile,
-              ".qwen/project.yaml přepíše automatickou detekci kontrol")
+              ".qwen/project.yaml overrides automatic check detection")
         launched = json.loads(agent.registry.execute(
             "start_project_check", {"check": "focused", "timeout": 10}, agent.ctx))
         cursor = 0
@@ -1351,7 +1352,7 @@ def test_task_plan_and_project_instructions() -> None:
             import time
             time.sleep(0.05)
         check(TaskPlanStore(session).load()["validations"][-1]["status"] == "passed",
-              "dokončený project check se propíše do task planu")
+              "Completed project checks update the task plan")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1383,24 +1384,24 @@ def test_code_index() -> None:
         alpha = index.find_symbol("Alpha")
         widget = index.find_symbol("Widget")
         check(any(item["kind"] == "class" and item["path"] == "module.py"
-                  for item in alpha), "Python AST indexuje třídy a funkce")
+                  for item in alpha), "The Python AST index finds classes and functions")
         check(any(item["path"] == "ui.ts" for item in widget)
               and any(item["path"] == "lib.rs" for item in widget),
-              "index hledá deklarace v TypeScriptu i Rustu")
+              "The symbol index finds TypeScript and Rust declarations")
         document = index.document_symbols("module.py")
         check(any(item["qualified"] == "Alpha.run" for item in document),
-              "document_symbols zachová kvalifikované Python metody")
+              "document_symbols preserves qualified Python method names")
         refs = index.find_references("Widget")
         check(len(refs) >= 2 and all("line" in item for item in refs),
-              "find_references vrací celo-slovní použití s řádky")
+              "find_references returns whole-word matches and line numbers")
         (tmp / "module.py").write_text("def refreshed_symbol():\n    return 1\n",
                                         encoding="utf-8")
         index.invalidate()
         check(index.find_symbol("refreshed_symbol"),
-              "symbolový index lze po editaci invalidovat")
+              "The symbol index can be invalidated after an edit")
         browser = BrowserSession()
         check(browser.status()["running"] is False,
-              "browser session je lazy a bez použití nespouští proces")
+              "An unused browser session starts no process")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1418,21 +1419,21 @@ def test_research_ledger_and_synthesis() -> None:
         session = Session(cfg, session_id="research-test", system_prompt="SYS",
                           work_mode="research")
         ledger = ResearchLedger(session)
-        ledger.begin("Jaké jsou dvě protichůdné interpretace?")
-        ledger.record_query("první hledání", [
-            ("Zdroj A", "https://example.test/a", "tvrdí A"),
-            ("Zdroj B", "https://example.test/b", "tvrdí B"),
+        ledger.begin("What are the two conflicting interpretations?")
+        ledger.record_query("Initial search", [
+            ("Source A", "https://example.test/a", "Claims A"),
+            ("Source B", "https://example.test/b", "Claims B"),
         ])
-        ledger.record_source("https://example.test/a", "Zdroj A",
-                             "Interpretace A říká ano.")
-        ledger.record_source("https://example.test/b", "Zdroj B",
-                             "Interpretace B říká ne.")
+        ledger.record_source("https://example.test/a", "Source A",
+                             "Interpretation A says yes.")
+        ledger.record_source("https://example.test/b", "Source B",
+                             "Interpretation B says no.")
         run = ledger.current()
         check(len(run["candidates"]) == 2 and len(run["sources"]) == 2,
-              "ledger zachová všechny kandidáty i načtené zdroje")
+              "The ledger retains every candidate and loaded source")
         check(all("credibility" not in source and "trust" not in source
                   for source in run["sources"]),
-              "ledger neobsahuje trust scoring ani filtr důvěryhodnosti")
+              "The ledger has no trust scoring or source filter")
 
         class ResearchLLM:
             def __init__(self):
@@ -1444,43 +1445,43 @@ def test_research_ledger_and_synthesis() -> None:
                 self.prompts.append(prompt)
                 if "Return JSON only" in prompt:
                     return AssistantResult(content=json.dumps({
-                        "subquestions": ["Co tvrdí A?", "Co tvrdí B?"],
-                        "search_angles": ["protiklady"],
-                        "source_types_to_include": ["všechny dostupné"],
+                        "subquestions": ["What does A claim?", "What does B claim?"],
+                        "search_angles": ["contradictions"],
+                        "source_types_to_include": ["all available"],
                         "known_constraints": [],
                     }, ensure_ascii=False))
-                if "Chybějící zdroje" in prompt:
-                    return AssistantResult(content="Opravená syntéza zahrnuje [S1] i [S2].")
-                if "Vytvoř přehlednou závěrečnou syntézu" in prompt:
-                    return AssistantResult(content="První syntéza obsahuje pouze [S1].")
-                return AssistantResult(content="Dílčí loss-aware poznámky [S1] [S2].")
+                if "Missing sources" in prompt:
+                    return AssistantResult(content="The revised synthesis includes [S1] and [S2].")
+                if "Create a clear final synthesis" in prompt:
+                    return AssistantResult(content="The first synthesis includes only [S1].")
+                return AssistantResult(content="Intermediate loss-aware notes [S1] [S2].")
 
             def stream(self, messages, **kwargs):
                 if kwargs.get("thinking") is False:
                     return self.ask(messages, **kwargs)
-                return AssistantResult(content="Pracovní draft před syntézou")
+                return AssistantResult(content="Working draft before synthesis")
 
         fake = ResearchLLM()
         class EmptyPlannerLLM(ResearchLLM):
             def ask(self, messages, **_kwargs):
-                return AssistantResult(content="", reasoning="nedokončené uvažování")
+                return AssistantResult(content="", reasoning="Unfinished reasoning")
 
-        fallback = plan_research(EmptyPlannerLLM(), "Co je potřeba zjistit?")
-        check(fallback["subquestions"] == ["Co je potřeba zjistit?"]
+        fallback = plan_research(EmptyPlannerLLM(), "What needs to be established?")
+        check(fallback["subquestions"] == ["What needs to be established?"]
               and len(fallback["search_angles"]) >= 3,
-              "prázdná odpověď planneru použije plán a nezastaví výzkum")
+              "An empty planner response uses the fallback plan without stopping research")
 
         synthesis = synthesize_research(fake, run)
         check("[S1]" in synthesis and "[S2]" in synthesis,
-              "coverage kontrola doplní každý zpracovaný source ID")
+              "Coverage repair includes every processed source ID")
         final_prompt = next(prompt for prompt in fake.prompts
-                            if "Vytvoř přehlednou závěrečnou syntézu" in prompt)
-        check("Interpretace A" in final_prompt and "Interpretace B" in final_prompt
-              and "Nehodnoť ani nefiltruj" in final_prompt,
-              "syntéza dostane protichůdná data bez trust filtru")
+                            if "Create a clear final synthesis" in prompt)
+        check("Interpretation A" in final_prompt and "Interpretation B" in final_prompt
+              and "Do not assess or filter" in final_prompt,
+              "Synthesis receives conflicting evidence without trust-based filtering")
         ledger.complete(synthesis)
         check(ledger.status()["status"] == "complete" and ledger.path.is_file(),
-              "research ledger je persistentní a označí hotovou syntézu")
+              "The research ledger persists and records completed synthesis")
 
         from harness.agent import Agent, Status
         from harness.safety import SafetyPolicy
@@ -1492,39 +1493,39 @@ def test_research_ledger_and_synthesis() -> None:
             build_registry("chat", "research"), SafetyPolicy("auto"),
             mode="chat", work_mode="research",
         )
-        agent.new_task("Integrovaná research otázka")
+        agent.new_task("Integrated research question")
         agent.ctx.research.record_source("https://example.test/a", "A", "Ano [S1]")
         agent.ctx.research.record_source("https://example.test/b", "B", "Ne [S2]")
         result = agent.step()
         check(result.status is Status.FINAL and "[S1]" in result.text and "[S2]" in result.text
-              and "Pracovní draft" not in result.text,
-              "research Agent nahradí draft povinnou coverage syntézou")
+              and "Working draft" not in result.text,
+              "The research Agent produces a synthesis with source coverage")
         check(any(message.get("role") == "assistant"
-                  and message.get("content") == "Pracovní draft před syntézou"
+                  and message.get("content") == "Working draft before synthesis"
                   for message in integrated_session.messages),
-              "pracovní draft před syntézou zůstane viditelně uložený v chatu")
+              "The pre-synthesis draft remains saved and visible")
         integrated_run = agent.ctx.research.current()
-        check(integrated_run["plan"]["subquestions"] == ["Co tvrdí A?", "Co tvrdí B?"]
+        check(integrated_run["plan"]["subquestions"] == ["What does A claim?", "What does B claim?"]
               and any(str(message.get("content", "")).startswith("[RESEARCH PLAN")
                       for message in integrated_session.messages),
-              "research plán vznikne před hledáním a uloží se do ledgeru i kontextu")
+              "Research planning precedes searching and is saved in the ledger and context")
 
         run_id = integrated_run["id"]
-        agent.new_task("Ulož předchozí výstup jako PDF soubor")
+        agent.new_task("Save the previous response as a PDF file")
         check(agent.ctx.research.current()["id"] == run_id,
-              "PDF follow-up v Research režimu nezakládá nový výzkum")
+              "A PDF export follow-up does not create a new research run")
         exported = agent.registry.execute("export_document", {
-            "content": "# Uložený výsledek\n\nDůležitá syntéza.",
-            "filename": "research-vystup",
+            "content": "# Saved result\n\nImportant synthesis.",
+            "filename": "research-output",
             "format": "pdf",
-            "title": "Výzkumný výstup",
+            "title": "Research result",
         }, agent.ctx)
-        no_project_pdf = integrated_session.dir / "exports" / "research-vystup.pdf"
+        no_project_pdf = integrated_session.dir / "exports" / "research-output.pdf"
         check(exported.startswith("OK:") and no_project_pdf.is_file()
-              and "Důležitá syntéza" in "\n".join(
+              and "Important synthesis" in "\n".join(
                   page.extract_text() or "" for page in __import__("pypdf").PdfReader(
                       no_project_pdf).pages),
-              "Research export bez projektu uloží čitelné PDF do session")
+              "Projectless research export saves a readable PDF in the session")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1540,11 +1541,11 @@ def test_project_document_library() -> None:
 
     tmp = Path(tempfile.mkdtemp())
     try:
-        (tmp / "film.md").write_text("# Film Aurora\nHrdinka se jmenuje Klára.\n", encoding="utf-8")
+        (tmp / "film.md").write_text("# Aurora film\nThe protagonist is Clara.\n", encoding="utf-8")
         (tmp / "code.py").write_text("SECRET_CODE = 1\n", encoding="utf-8")
         document = Document()
-        document.add_paragraph("DOCX podklad o postavě Klára")
-        document.save(tmp / "postava.docx")
+        document.add_paragraph("DOCX source about the character Clara")
+        document.save(tmp / "character.docx")
         writer = PdfWriter()
         writer.add_blank_page(width=200, height=200)
         with open(tmp / "reference.pdf", "wb") as handle:
@@ -1560,11 +1561,11 @@ def test_project_document_library() -> None:
             cfg, LLMStub(), discussion_session, build_registry("chat", "discussion"),
             SafetyPolicy("auto"), mode="chat", work_mode="discussion")
         discussion_agent.set_workspace(tmp)
-        discussion_agent.new_task("Pověz mi o filmu")
+        discussion_agent.new_task("Tell me about the film")
         prompt = discussion_agent._api_messages()[-1]["content"]
         check("CURRENT PROJECT DOCUMENT LIBRARY" in prompt and "film.md" in prompt
               and "CURRENT PROJECT SNAPSHOT" not in prompt and "code.py" not in prompt,
-              "Diskuze vidí dokumentovou knihovnu bez coding repo snapshotu")
+              "Discussion sees the document library without a development repository snapshot")
 
         research_session = Session(
             cfg, session_id="research-docs", system_prompt="SYS",
@@ -1573,35 +1574,35 @@ def test_project_document_library() -> None:
             cfg, LLMStub(), research_session, build_registry("chat", "research"),
             SafetyPolicy("auto"), mode="chat", work_mode="research")
         research_agent.set_workspace(tmp)
-        research_agent.new_task("Kdo je hrdinka?")
+        research_agent.new_task("Who is the heroine?")
         content = research_agent.registry.execute(
             "read_project_document", {"path": "film.md"}, research_agent.ctx)
         sources = research_agent.ctx.research.current()["sources"]
-        check("Klára" in content and len(sources) == 1
+        check("Clara" in content and len(sources) == 1
               and sources[0]["url"].startswith("file://"),
-              "lokální dokument se ve Výzkumu uloží jako ledger source")
+              "Research records a local document as a ledger source")
         library = RepoIndex(tmp)
-        _, docx_text = library.read_document("postava.docx")
+        _, docx_text = library.read_document("character.docx")
         pdf_path, pdf_text = library.read_document("reference.pdf")
-        check("DOCX podklad" in docx_text, "projektová knihovna čte skutečný DOCX")
+        check("DOCX source" in docx_text, "The project library reads a real DOCX file")
         check(pdf_path.suffix == ".pdf" and isinstance(pdf_text, str),
-              "projektová knihovna načte validní PDF")
+              "The project library reads a valid PDF file")
         exported_docx = export_document(
-            "# Nadpis\n\nText o Kláře.\n\n- bod A", tmp / "exports", "vystup", "docx", "Film")
+            "# Heading\n\nText about Clara and λ.\n\n- item A", tmp / "exports", "output", "docx", "Film")
         exported_pdf = export_document(
-            "# Nadpis\n\n**Text o Kláře.** a Na⁺.\n\n"
-            "| Položka | Hodnota |\n|---|---|\n"
-            "| Zdroj | [Web](https://example.com) |\n\n## 📋 Next steps",
-            tmp / "exports", "vystup", "pdf", "Film")
+            "# Heading\n\n**Text about Clara and λ.** and Na⁺.\n\n"
+            "| Item | Value |\n|---|---|\n"
+            "| Source | [Web](https://example.com) |\n\n## 📋 Next steps",
+            tmp / "exports", "output", "pdf", "Film")
         exported_docx_text = "\n".join(
             paragraph.text for paragraph in Document(exported_docx).paragraphs)
         exported_pdf_text = "\n".join(
             page.extract_text() or "" for page in __import__("pypdf").PdfReader(exported_pdf).pages)
-        check("Kláře" in exported_docx_text, "Psaní exportuje strukturovaný DOCX s češtinou")
-        check("Kláře" in exported_pdf_text and "**" not in exported_pdf_text
-              and "Položka" in exported_pdf_text and "Zdroj" in exported_pdf_text
+        check("Clara" in exported_docx_text, "Writing exports structured DOCX with Unicode content")
+        check("Clara" in exported_pdf_text and "**" not in exported_pdf_text
+              and "Item" in exported_pdf_text and "Source" in exported_pdf_text
               and "Na+" in exported_pdf_text and "Next steps" in exported_pdf_text,
-              "PDF export vykreslí češtinu, inline Markdown a tabulku")
+              "PDF export renders Unicode, inline Markdown and tables")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1617,43 +1618,43 @@ def test_async_model_switch() -> None:
     callbacks: list[str] = []
 
     def ensure(_cfg, key):
-        if key == "q5":  # prvni cil - "loading", dokud ho nezabijeme
+        if key == "q5":  # Keep the first target loading until it is cancelled.
             entered.set()
             release.wait(timeout=2)
-            return False  # server zabit -> ensure selze
+            return False  # Stopping the server causes ensure to fail
         return key == "q4"
 
     stop_calls: list[int] = []
 
     def stop(_cfg, **_kwargs):
         stop_calls.append(1)
-        if len(stop_calls) >= 2:  # 1. stop = worker pred ensure; dalsi = preruseni
-            release.set()  # simulace zabiti loadingu
+        if len(stop_calls) >= 2:  # The first stop precedes ensure; later stops interrupt obsolete work.
+            release.set()  # Simulate interruption during loading
             stopped.set()
         return True
 
     controller = ModelSwitchController(load_config(), ensure_fn=ensure, stop_fn=stop,
                                        running_fn=lambda _cfg, _key: False)
     check(controller.request("q5", on_success=callbacks.append),
-          "první switch se spustí na pozadí")
+          "The first model switch starts in the background")
     check(entered.wait(timeout=1) and controller.snapshot().busy,
-          "controller ihned hlásí starting")
+          "The controller reports starting immediately")
     check(controller.request("q4", on_success=callbacks.append),
-          "souběžný request se přijme (přepíše cíl, nepřipraví odmítnutí)")
-    check(controller.wait(timeout=3), "background switch doběhne")
+          "A concurrent request replaces the pending target")
+    check(controller.wait(timeout=3), "The background switch completes")
     snap = controller.snapshot()
     check(snap.status == "ready" and snap.target == "q4",
-          f"nejnovější cíl vyhraje ({snap.status}/{snap.target})")
-    check(callbacks == ["q4"], "callback přišel jen pro vítězný cíl")
-    check(stopped.is_set(), "přepnutí přerušilo probíhající loading")
+          f"latest target wins ({snap.status}/{snap.target})")
+    check(callbacks == ["q4"], "Only the winning target receives the callback")
+    check(stopped.is_set(), "Switching interrupts the obsolete load")
 
     failed = ModelSwitchController(load_config(), ensure_fn=lambda _cfg, _key: False,
                                    stop_fn=stop, running_fn=lambda _cfg, _key: False)
     check(failed.request("q4") and failed.wait(timeout=2)
           and failed.snapshot().status == "failed",
-          "selhání serveru se propíše do stavu controlleru")
+          "Server failure appears in controller state")
 
-    #KV profil se aplikuje pri startu (set_kv_cache_mode pred ensure)
+    #Apply the KV profile before startup (set_kv_cache_mode before ensure)
     applied: list[tuple[str, str]] = []
 
     def ensure_kv(cfg2, key):
@@ -1665,42 +1666,42 @@ def test_async_model_switch() -> None:
     kvctl.request("q4", kv_profile="q8_0", on_success=callbacks.append)
     kvctl.wait(timeout=2)
     check(applied == [("q4", "q8_0")],
-          "kv_profile z requestu se aplikuje před startem serveru")
+          "The requested KV profile is applied before server startup")
 
 
 def test_session_meta() -> None:
-    print("[session meta + historie]")
+    print("[session metadata and history]")
     tmp = Path(tempfile.mkdtemp())
     try:
         data = load_config().data
         data["paths"]["sessions_dir"] = str(tmp / "sessions")
         cfg = Config(data, root=ROOT)
-        # session s workspace + titulkem z prvního dotazu
+        # Session workspace and title derived from the first user request.
         s = Session(cfg, session_id="meta-a", system_prompt="SYS", workspace=r"C:\projekty\Alfa")
         s.add("user", "Oprav bug v parseru")
-        s.add("assistant", "hotovo")
-        check(s.meta["title"] == "Oprav bug v parseru", "titulek z prvního dotazu")
-        check((tmp / "sessions/meta-a/meta.json").exists(), "meta.json uložen")
-        # protokolová poznámka se titulkem stát nesmí
+        s.add("assistant", "done")
+        check(s.meta["title"] == "Oprav bug v parseru", "The title comes from the first user request")
+        check((tmp / "sessions/meta-a/meta.json").exists(), "meta.json was saved")
+        # Internal protocol messages must not become conversation titles.
         s2 = Session(cfg, session_id="meta-b", system_prompt="SYS")
         s2.add("user", "[TASK PROTOCOL - follow] abc")
-        s2.add("user", "Skutečný dotaz")
-        check(s2.meta["title"] == "Skutečný dotaz", "poznámka [..] se titulkem nestává")
-        # výpis s metadaty, setříděný podle updated
+        s2.add("user", "Actual user request")
+        check(s2.meta["title"] == "Actual user request", "Internal notes do not become conversation titles")
+        # List metadata sorted by the update timestamp.
         lst = Session.list_sessions(cfg)
-        check({x["id"] for x in lst} == {"meta-a", "meta-b"}, "list_sessions vidí obě")
+        check({x["id"] for x in lst} == {"meta-a", "meta-b"}, "list_sessions returns both conversations")
         a = next(x for x in lst if x["id"] == "meta-a")
         check(a["workspace"] == r"C:\projekty\Alfa" and a["title"] == "Oprav bug v parseru",
-              "meta ve výpisu (workspace + titulek)")
+              "The listing includes workspace and title metadata")
         check(a["messages"] == s.meta["message_count"] == len(s.messages),
-              "počet zpráv se čte z meta indexu")
-        check(lst[0]["id"] == "meta-b", "novější session první")
-        # stará session bez meta → titulek dohoní z první user zprávy
+              "Message counts come from the metadata index")
+        check(lst[0]["id"] == "meta-b", "Newer sessions appear first")
+        # Recover an older session title from its first user message.
         s3 = Session(cfg, session_id="meta-old", system_prompt="SYS")
-        s3.add("user", "Starý dotaz bez mety")
+        s3.add("user", "Old request without metadata")
         (tmp / "sessions/meta-old/meta.json").unlink()
         loaded = Session.load(cfg, "meta-old")
-        check(loaded.meta["title"] == "Starý dotaz bez mety", "zpětná kompatibilita titulku")
+        check(loaded.meta["title"] == "Old request without metadata", "Legacy conversation titles remain supported")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1714,101 +1715,101 @@ def test_chat_rewind_and_fork() -> None:
         cfg = Config(data, root=ROOT)
         session = Session(cfg, session_id="original", system_prompt="SYS", workspace=str(tmp),
                           work_mode="writing")
-        session.add("user", "první dotaz")
-        session.add("assistant", "první odpověď")
+        session.add("user", "First request")
+        session.add("assistant", "First response")
         image = tmp / "source.png"
         image.write_bytes(b"image-data")
-        session.add("user", "druhý dotaz", images=[image])
+        session.add("user", "Second request", images=[image])
         session.add("user", "[TASK PROTOCOL - internal]")
-        session.add("assistant", "druhá odpověď")
+        session.add("assistant", "Second response")
         original_count = len(session.messages)
 
         markdown = session.export_markdown()
         jsonl = session.export_jsonl()
-        check(markdown.is_file() and "druhý dotaz" in markdown.read_text(encoding="utf-8"),
-              "chat lze exportovat do čitelného Markdownu")
+        check(markdown.is_file() and "Second request" in markdown.read_text(encoding="utf-8"),
+              "Conversation export produces readable Markdown")
         imported = Session.import_jsonl(cfg, jsonl, "IMPORTED SYS", workspace=str(tmp))
         check(imported.id != session.id and imported.messages[0]["content"] == "IMPORTED SYS"
               and imported.last_user_index() is not None,
-              "JSONL import vytvoří novou session a obnoví system prompt")
-        found = Session.search_sessions(cfg, "druhý dotaz")
-        check(any(item["id"] == session.id and "druhý dotaz" in item["snippet"]
+              "JSONL import creates a new session and restores the system prompt")
+        found = Session.search_sessions(cfg, "Second request")
+        check(any(item["id"] == session.id and "Second request" in item["snippet"]
                   and "sessions" not in item["snippet"] for item in found),
-              "fulltextové hledání najde dotaz v historii")
+              "Full-text history search finds the request")
         check((tmp / "sessions" / "history-index.sqlite3").is_file(),
-              "historie používá persistentní SQLite FTS index")
+              "History search uses a persistent SQLite FTS index")
 
         fork = session.fork_at_last_user("FORK SYS")
         check(fork is not None and len(session.messages) == original_count and fork.id != session.id,
-              "fork vytvoří novou session bez změny originálu")
-        check(fork.meta["work_mode"] == "writing", "fork zachová pracovní režim session")
+              "Forking creates a new session without changing the original")
+        check(fork.meta["work_mode"] == "writing", "Forking preserves the work mode")
         fork_index = fork.last_user_index()
         fork_user = fork.messages[fork_index] if fork_index is not None else {}
         copied_images = fork_user.get("images", [])
-        check(fork_user.get("content") == "druhý dotaz" and copied_images
+        check(fork_user.get("content") == "Second request" and copied_images
               and Path(copied_images[0]).exists() and copied_images[0] != session.messages[3]["images"][0],
-              "fork končí posledním dotazem a kopíruje jeho přílohy")
+              "Forking retains the last user request and copies its attachments")
 
         session.compression = {"cut": 2, "summary": "old"}
         session._save_compression()
         prompt = session.rewind_last_turn(keep_user=True)
-        check(prompt == "druhý dotaz" and session.messages[-1]["content"] == "druhý dotaz"
+        check(prompt == "Second request" and session.messages[-1]["content"] == "Second request"
               and session.compression is None,
-              "retry ponechá dotaz a odstraní odpověď i starou kompresi")
+              "Retry keeps the question and removes the response and old compression")
 
-        session.add("assistant", "nová odpověď")
+        session.add("assistant", "New response")
         removed = session.rewind_last_turn(keep_user=False)
-        check(removed == "druhý dotaz" and session.last_user_index() is not None
-              and session.messages[session.last_user_index()]["content"] == "první dotaz",
-              "undo odstraní celé poslední kolo")
+        check(removed == "Second request" and session.last_user_index() is not None
+              and session.messages[session.last_user_index()]["content"] == "First request",
+              "Undo removes the entire last turn")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
 def test_transient_session() -> None:
-    print("[transient session - lazy zápis na disk]")
+    print("[transient session persistence]")
     tmp = Path(tempfile.mkdtemp())
     try:
         data = load_config().data
         data["paths"]["sessions_dir"] = str(tmp / "sessions")
         cfg = Config(data, root=ROOT)
         s = Session(cfg, system_prompt="SYS", workspace=r"C:\projekty\Alfa", transient=True)
-        s.add("assistant", "ahoj")
+        s.add("assistant", "hello")
         check(s.transient and not s.dir.exists(),
-              "bez user zprávy nic na disku (transient)")
+              "A transient session writes nothing before a user message")
         s.add("user", "Oprav bug")
         check(not s.transient and s.dir.exists() and s._jsonl.exists(),
-              "první user zpráva = persist na disk")
+              "The first user message persists the session")
         lines = s._jsonl.read_text(encoding="utf-8").strip().splitlines()
-        check(len(lines) == 3, f"celá historie zapsána ({len(lines)} řádků)")
+        check(len(lines) == 3, f"entire history written ({len(lines)} lines)")
         s2 = Session.load(cfg, s.id)
-        check(len(s2.messages) == 3 and not s2.transient, "load po persist")
-        check(Session.delete(cfg, "neexistujici-x") is False, "delete neexistující = False")
+        check(len(s2.messages) == 3 and not s2.transient, "load after persistence")
+        check(Session.delete(cfg, "neexistujici-x") is False, "Deleting a missing session returns False")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
 def test_web_tools() -> None:
-    print("[web nástroje - offline parsery + registrace]")
+    print("[web tools: offline parsers and registration]")
     from io import BytesIO
     from harness.tools import web as webt
     from reportlab.pdfgen import canvas
 
-    txt = webt._strip_tags("<html><body><script>bad()</script><h1>Ahoj</h1>"
-                           "<p>sv&#233;te &amp; nazdar</p></body></html>")
-    check("Ahoj" in txt and "svéte & nazdar" in txt and "bad()" not in txt,
-          "_strip_tags: tagy pryč, entity dekódovány")
+    txt = webt._strip_tags("<html><body><script>bad()</script><h1>Hello</h1>"
+                           "<p>world &amp; hello</p></body></html>")
+    check("Hello" in txt and "world & hello" in txt and "bad()" not in txt,
+          "_strip_tags removes markup and decodes entities")
     u = webt._ddg_unwrap("//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fdoc")
-    check(u == "https://example.com/doc", "_ddg_unwrap rozbalí uddg redirect")
+    check(u == "https://example.com/doc", "_ddg_unwrap resolves the uddg redirect")
     enc = ("https://www.bing.com/ck/a?!&amp;&amp;p=xx&u=a1aHR0cHM6Ly9naXRodWIuY29tL3Rlc3Q"
            "&ntb=1")
-    check(webt._bing_unwrap(enc) == "https://github.com/test", "_bing_unwrap dekóduje base64 url")
+    check(webt._bing_unwrap(enc) == "https://github.com/test", "_bing_unwrap decodes the base64 URL")
     pdf_buffer = BytesIO()
     pdf_canvas = canvas.Canvas(pdf_buffer)
     pdf_canvas.drawString(72, 720, "INTERNET-PDF-OK")
     pdf_canvas.save()
     pdf_text, _ = webt._extract_downloaded_document(
-        pdf_buffer.getvalue(), "application/pdf", "https://example.test/studie.pdf")
+        pdf_buffer.getvalue(), "application/pdf", "https://example.test/study.pdf")
     docx_buffer = BytesIO()
     docx_document = __import__("docx").Document()
     docx_document.add_paragraph("INTERNET-DOCX-OK")
@@ -1816,18 +1817,18 @@ def test_web_tools() -> None:
     docx_text, _ = webt._extract_downloaded_document(
         docx_buffer.getvalue(),
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "https://example.test/studie.docx")
-    check("INTERNET-PDF-OK" in pdf_text, "web_fetch extrahuje text internetového PDF")
-    check("INTERNET-DOCX-OK" in docx_text, "web_fetch extrahuje text internetového DOCX")
+        "https://example.test/study.docx")
+    check("INTERNET-PDF-OK" in pdf_text, "web_fetch extracts text from a PDF response")
+    check("INTERNET-DOCX-OK" in docx_text, "web_fetch extracts text from a DOCX response")
     for mode in ("chat", "agent", "computer"):
         reg = build_registry(mode)
         check("web_search" in reg.names() and "web_fetch" in reg.names(),
-              f"web nástroje v režimu {mode}")
+              f"web tools in mode {mode}")
     reg = build_registry("chat")
     cfgd = load_config()
     ctx = type("C", (), {"cfg": cfgd})()
-    out = reg.execute("web_fetch", {"url": "ftp://neplatne.cz"}, ctx)
-    check(out.startswith("ERROR"), "web_fetch odmítne non-http url")
+    out = reg.execute("web_fetch", {"url": "ftp://invalid.example"}, ctx)
+    check(out.startswith("ERROR"), "web_fetch rejects non-HTTP URLs")
 
     import requests
     from harness.research import ResearchLedger
@@ -1843,22 +1844,22 @@ def test_web_tools() -> None:
         session = Session(cfg, session_id="web-research", system_prompt="SYS",
                           work_mode="research")
         ledger = ResearchLedger(session)
-        ledger.begin("test internetového ledgeru")
+        ledger.begin("Web ledger test")
         research_ctx = type("RC", (), {"cfg": cfg, "research": ledger})()
         webt._ensure_ddgs = lambda: False
         webt.WebSearchTool._bing = staticmethod(lambda *_args: [
-            ("A", "https://example.test/a", "ano"),
-            ("B", "https://example.test/b", "ne"),
+            ("A", "https://example.test/a", "yes"),
+            ("B", "https://example.test/b", "no"),
         ])
         webt.WebSearchTool._ddg = staticmethod(lambda *_args: [])
-        webt.WebSearchTool().run(research_ctx, "protiklad", 2)
+        webt.WebSearchTool().run(research_ctx, "contradiction", 2)
         check(len(ledger.current()["candidates"]) == 2,
-              "web_search uloží všechny nalezené kandidáty do ledgeru")
+              "web_search records every discovered candidate")
 
         class Response:
             url = "https://example.test/a"
             headers = {"content-type": "text/html"}
-            text = "<html><title>Zdroj A</title><body>Obsah tvrdí ano i ne.</body></html>"
+            text = "<html><title>Source A</title><body>The source contains claims for yes and no.</body></html>"
             status_code = 200
 
             @staticmethod
@@ -1868,10 +1869,10 @@ def test_web_tools() -> None:
         requests.get = lambda *_args, **_kwargs: Response()
         fetched = webt.WebFetchTool().run(research_ctx, "https://example.test/a")
         source = ledger.current()["sources"][0]
-        check("Obsah tvrdí ano i ne" in fetched and "ano i ne" in source["content"],
-              "web_fetch uloží plný čitelný obsah zdroje do ledgeru")
+        check("The source contains claims for yes and no" in fetched and "yes and no" in source["content"],
+              "web_fetch retains the complete readable source in the ledger")
         check("credibility" not in source and "trust" not in source,
-              "web integrace nepřidává hodnocení důvěryhodnosti")
+              "Web integration adds no trustworthiness scoring")
     finally:
         webt._ensure_ddgs = original_ensure
         webt.WebSearchTool._bing = original_bing
@@ -1881,7 +1882,7 @@ def test_web_tools() -> None:
 
 
 def test_projects() -> None:
-    print("[projekty]")
+    print("[projects]")
     from harness.projects import Projects
     tmp = Path(tempfile.mkdtemp())
     try:
@@ -1890,50 +1891,50 @@ def test_projects() -> None:
         data["work_mode"] = "writing"
         cfg = Config(data, root=tmp)
         pj = Projects(cfg)
-        # nový projekt - složka v projects rootu
-        p1 = pj.create_new("Můj-Test:Projekt")  # nebezpečné znaky → sanitizace
-        check((tmp / "projects" / p1["name"]).is_dir(), f"složka vytvořena ({p1['name']})")
-        check(p1["work_mode"] == "writing", "projekt uloží výchozí pracovní režim")
-        check(p1["name"] != "Můj-Test:Projekt" or True, "název sanitizován")
-        # duplicita jmen → -2
+        # Create a new directory under the project root.
+        p1 = pj.create_new("My-Test:Project")  # Sanitize unsafe name characters.
+        check((tmp / "projects" / p1["name"]).is_dir(), f"directory created ({p1['name']})")
+        check(p1["work_mode"] == "writing", "The project records its default work mode")
+        check(p1["name"] != "My-Test:Project" or True, "The project name was sanitized")
+        # Duplicate names receive a -2 suffix
         p2 = pj.create_new(p1["name"])
-        check(p2["name"] != p1["name"], "unikátní název při duplicitě")
-        # připojení existující složky - jméno dle složky, idempotentní
+        check(p2["name"] != p1["name"], "Duplicate names receive a unique suffix")
+        # Attaching a directory is idempotent and uses its name.
         ext = tmp / "Existujici"
         ext.mkdir()
         a1 = pj.attach_folder(str(ext))
         a2 = pj.attach_folder(str(ext))
-        check(a1["name"] == "Existujici" and a1["id"] == a2["id"], "attach idempotentní")
+        check(a1["name"] == "Existujici" and a1["id"] == a2["id"], "Attaching a project is idempotent")
         pj.set_work_mode(str(ext.resolve()), "research")
         check(pj.by_path(str(ext.resolve()))["work_mode"] == "research",
-              "výchozí režim projektu lze změnit")
-        # registr vrátí vše
+              "The default project mode can be changed")
+        # The registry returns every project.
         names = [p["name"] for p in pj.list_all()]
         check(len(names) == 3, f"3 projekty v registru ({names})")
         managed_file = Path(p1["path"]) / "data" / "artifact.txt"
         managed_file.parent.mkdir()
-        managed_file.write_text("projektová data", encoding="utf-8")
+        managed_file.write_text("Project data", encoding="utf-8")
         pj.delete_by_path(p1["path"])
         check(not Path(p1["path"]).exists() and pj.by_path(p1["path"]) is None,
-              "smazání projektu odstraní registraci, složku i všechny soubory")
+              "Project deletion removes its registry entry, directory and files")
         # session delete + adopt
         s = Session(cfg, session_id="proj-s", system_prompt="SYS", workspace=str(ext))
         check(Session.delete(cfg, "proj-s") and not (tmp/"sessions"/"proj-s").exists(),
               "session delete")
-        s2 = Session(cfg, session_id="adopt-s", system_prompt="SYS")  # bez workspace
+        s2 = Session(cfg, session_id="adopt-s", system_prompt="SYS")  # without a workspace
         s2.adopt_workspace(str(ext))
         check(s2.meta["workspace"] == str(ext), "adopt workspace")
-        s2.adopt_workspace("jina")  # už má - nesmí přepsat
-        check(s2.meta["workspace"] == str(ext), "adopt nepřepisuje existující")
+        s2.adopt_workspace("jina")  # Do not overwrite an existing assignment.
+        check(s2.meta["workspace"] == str(ext), "Adoption preserves an existing project assignment")
         (ext / "external.txt").write_text("data", encoding="utf-8")
         pj.delete_by_path(str(ext.resolve()))
-        check(not ext.exists(), "explicitní smazání připojeného projektu odstraní jeho adresář")
+        check(not ext.exists(), "Explicitly deleting an attached project removes its directory")
         protected = pj.attach_folder(str(tmp))
         try:
             pj.delete_by_path(protected["path"])
-            check(False, "kořen aplikace nelze smazat jako projekt")
+            check(False, "The application root cannot be deleted as a project")
         except ValueError:
-            check(tmp.exists(), "kořen aplikace nelze smazat jako projekt")
+            check(tmp.exists(), "The application root cannot be deleted as a project")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1946,9 +1947,9 @@ def test_skill_library() -> None:
     check({"systematic-debugging", "architecture-options", "implementation-verification",
            "excel-spreadsheet-craft", "word-document-craft", "pdf-generation-craft",
            "computer-automation-craft", "web-scraping-extraction", "code-refactoring-patterns"}
-          <= set(names), "systémová knihovna objeví bundlované i nové SKILL.md")
+          <= set(names), "The skill library discovers bundled and newly added SKILL.md files")
     check("root cause" in system.read("systematic-debugging").lower(),
-          "tělo skillu se načte až explicitním čtením")
+          "Skill bodies load only when explicitly read")
 
     tmp = Path(tempfile.mkdtemp())
     try:
@@ -1961,19 +1962,19 @@ def test_skill_library() -> None:
         library = SkillLibrary(load_config(), tmp)
         info = next(item for item in library.list() if item.name == "systematic-debugging")
         check(info.source == "project" and "PROJECT OVERRIDE" in library.read(info.name),
-              "projektový skill může přepsat systémový skill stejného jména")
+              "A project skill can override a bundled skill with the same name")
         ctx = type("SkillCtx", (), {
             "cfg": load_config(), "project_workspace": tmp,
         })()
         output = build_registry("chat").execute(
             "read_skill", {"name": "systematic-debugging"}, ctx)
-        check("PROJECT OVERRIDE" in output, "read_skill zpřístupní vybraný postup modelu")
+        check("PROJECT OVERRIDE" in output, "read_skill exposes the selected instructions to the model")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
 class LLMStub:
-    """Fake LLM se scénářem - vrací předpřipravené odpovědi v pořadí."""
+    """Deterministic model fixture that returns scripted responses in sequence."""
     def __init__(self, script=None):
         from harness.llm import AssistantResult
         self.script = list(script or [])
@@ -1991,7 +1992,7 @@ def _tc(name, args="{}"):
 
 
 def test_communication_protocol() -> None:
-    print("[komunikační protokol]")
+    print("[communication protocol]")
     from harness.agent import Agent, Status
     from harness.llm import AssistantResult
     from harness.safety import SafetyPolicy
@@ -2009,55 +2010,55 @@ def test_communication_protocol() -> None:
                           SafetyPolicy("auto"), mode="agent")
             return agent, session
 
-        # 1) poznámky zůstávají v historii, aby se neměnil již cachovaný prefix
+        # 1) Preserve internal context messages to keep the cached prefix stable.
         agent, session = make_agent([])
         agent.new_task("udelej neco")
         notes = [m for m in session.messages if "[TASK PROTOCOL" in str(m.get("content"))]
-        check(len(notes) == 1, "TASK PROTOCOL poznámka přidána (user role)")
-        agent.new_task("dalsi ukol")
+        check(len(notes) == 1, "The task protocol is added as a user message")
+        agent.new_task("Next task")
         notes = [m for m in session.messages if "[TASK PROTOCOL" in str(m.get("content"))]
-        check(len(notes) == 2, "nová úloha nemění starý cachovaný protokol")
+        check(len(notes) == 2, "A new task preserves the previously cached protocol")
         reloaded = Session.load(cfg, session.id)
         persisted_notes = [m for m in reloaded.messages
                            if "[TASK PROTOCOL" in str(m.get("content"))]
-        check(len(persisted_notes) == 2, "cache-friendly protokoly přežijí reload beze změny")
+        check(len(persisted_notes) == 2, "Cache-preserving protocol messages survive reload unchanged")
 
-        # 2) progress nudge po 4 tool-krocích bez slov
+        # 2) Request an update after four silent tool steps.
         script = [AssistantResult(tool_calls=[_tc("list_dir", '{"path": "."}')]) for _ in range(4)]
-        script.append(AssistantResult(content="hotovo"))
+        script.append(AssistantResult(content="done"))
         agent, session = make_agent(script)
-        agent.new_task("prohledat adresar")
+        agent.new_task("search the directory")
         statuses = [agent.step(approve=True).status for _ in range(5)]
         prog = [m for m in session.messages if "[PROGRESS UPDATE" in str(m.get("content"))]
-        check(len(prog) >= 1, f"PROGRESS nudge po 4 krocích (počet: {len(prog)})")
+        check(len(prog) >= 1, f"PROGRESS nudge after 4 steps (count: {len(prog)})")
 
-        # 3) vynucení strukturovaného souhrnu po úloze s nástroji
+        # 3) Require a structured summary after a tool-driven task.
         script = [
             AssistantResult(tool_calls=[_tc("list_dir")]),
             AssistantResult(tool_calls=[_tc("list_dir"), _tc("list_dir")]),
-            AssistantResult(content="jen kratka odpoved"),   # nezaklad vyzaduje souhrn
-            AssistantResult(content="✅ Hotovo: nic\n- **x**: y"),  # strukturovany
+            AssistantResult(content="just a short answer"),   # a nontrivial task needs a summary
+            AssistantResult(content="✅ Done: nothing\n- **x**: y"),  # structured
         ]
         agent, session = make_agent(script)
-        agent.new_task("test souhrnu")
+        agent.new_task("summary test")
         r1 = agent.step(approve=True)
         r2 = agent.step(approve=True)
         r3 = agent.step(approve=True)
-        check(r3.status is Status.CONTINUE, "krátká odpověď po nástrojích → vynucen souhrn (CONTINUE)")
+        check(r3.status is Status.CONTINUE, "A short response after tools requests a final summary")
         notes = [m for m in session.messages if "[FINAL SUMMARY" in str(m.get("content"))]
-        check(len(notes) == 1, "SUMMARY poznámka vložena")
+        check(len(notes) == 1, "The summary request was inserted")
         r4 = agent.step(approve=True)
-        check(r4.status is Status.FINAL and "✅" in r4.text, "druhý průchod → FINAL se souhrnem")
-        check(agent.llm.calls == 4, "žádné zbytečné navíc volání")
+        check(r4.status is Status.FINAL and "✅" in r4.text, "The second pass returns FINAL with a summary")
+        check(agent.llm.calls == 4, "No unnecessary model call is made")
 
-        # 4) chat režim: žádný protokol (bez nástrojů netřeba)
+        # 4) Discussion without tools does not need the development protocol.
         session = Session(cfg, session_id="chat-proto")
         agent = Agent(cfg, LLMStub([]), session, build_registry("chat"), SafetyPolicy("auto"), mode="chat")
-        agent.new_task("ahoj")
+        agent.new_task("hello")
         notes = [m for m in session.messages if "[TASK PROTOCOL" in str(m.get("content"))]
-        check(not notes, "chat režim bez protokolu")
+        check(not notes, "Discussion does not receive the development protocol")
 
-        # 5) přetečení kontextu → komprese + retry (1×), pak FINAL
+        # 5) Compress and retry once after context overflow, then finish normally.
         class OverflowLLM(LLMStub):
             def stream(self, messages, **kw):
                 self.calls += 1
@@ -2073,18 +2074,18 @@ def test_communication_protocol() -> None:
         ovf_llm = OverflowLLM()
         agent = Agent(cfg, ovf_llm, session, build_registry("agent"), SafetyPolicy("auto"), mode="agent")
         agent.llm = ovf_llm
-        # naplnění session, aby komprese měla co zahodit
+        # Populate enough history to exercise compression.
         for i in range(8):
             session.add("user", f"q{i} " + "y" * 900)
             session.add("assistant", f"a{i} " + "z" * 900)
-        agent.new_task("dalsi dotaz")
+        agent.new_task("Next question")
         agent._steps = 0
         r = agent.step(approve=True)
-        check(r.status is St.CONTINUE, "overflow → CONTINUE (komprese + retry)")
+        check(r.status is St.CONTINUE, "overflow → CONTINUE (compression + retry)")
         r2 = agent.step(approve=True)
         check(r2.status is St.FINAL and ovf_llm.calls == 2,
-              "retry po kompresi uspěl (2 volání)")
-        # druhé přetečení už retry nedostane → ERROR
+              "Retry after compression succeeds with two model calls")
+        # A second overflow returns ERROR instead of retrying indefinitely.
         class AlwaysOverflow(LLMStub):
             def stream(self, messages, **kw):
                 self.calls += 1
@@ -2096,7 +2097,7 @@ def test_communication_protocol() -> None:
         agent.safety.new_task()
         r3 = agent.step(approve=True)
         r4 = agent.step(approve=True)
-        check(r4.status is St.ERROR and ao.calls == 2, "druhé přetečení → ERROR (žádná smyčka)")
+        check(r4.status is St.ERROR and ao.calls == 2, "A second overflow returns ERROR without looping")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -2110,25 +2111,24 @@ def test_user_manuals() -> None:
             15, ("1.8.0", "Flash-Next", "Python 3.12", "Installing from the offline backup", "Work Modes",
                  "User-Facing Tool Reference", "Troubleshooting")),
         "Marvin-Manual-CS.pdf": (
-            10, ("1.8.0", "Flash-Next", "Python 3.12", "offline zálohy", "Pracovní režimy",
-                 "Reference nástrojů", "Řešení problémů")),
+            10, ("1.8.0", "Flash-Next", "Python 3.12", *locale_data("manual_headings"))),
     }
     for filename, (minimum_pages, required_text) in expected.items():
-        # dev strom: output/pdf; instalovaná kopie: docs (tam je umísťuje instalátor)
+        # Manuals live under output/pdf in development and docs in an installed copy.
         candidates = [ROOT / "output" / "pdf" / filename, ROOT / "docs" / filename]
         path = next((p for p in candidates if p.is_file()), candidates[0])
         check(path.is_file() and path.stat().st_size > 50_000,
-              f"{filename} existuje a není prázdný")
+              f"{filename} exists and is not empty")
         if not path.is_file():
             continue
         reader = PdfReader(path)
         text = "".join((page.extract_text() or "") for page in reader.pages)
         check(len(reader.pages) >= minimum_pages,
-              f"{filename} má úplný rozsah ({len(reader.pages)} stran)")
+              f"{filename} has the full scope ({len(reader.pages)} pages)")
         check(all((page.extract_text() or "").strip() for page in reader.pages),
-              f"{filename} nemá prázdné stránky")
+              f"{filename} has no empty pages")
         check(all(item in text for item in required_text),
-              f"{filename} obsahuje verzi a klíčové kapitoly")
+              f"{filename} contains the version and key chapters")
 
 
 def test_thinking_and_communication():
@@ -2138,58 +2138,58 @@ def test_thinking_and_communication():
     from harness.config import load_config
     import webapp
 
-    # 1) ThinkStreamParser s rozdělenými tagy přes chunky
+    # 1) Parse reasoning tags split across stream chunks.
     text_accum, reason_accum = [], []
     parser = ThinkStreamParser(on_text=text_accum.append, on_reasoning=reason_accum.append)
     t1, r1 = parser.feed("<th")
-    t2, r2 = parser.feed("ink>Hluboka uvaha modelu</thi")
-    t3, r3 = parser.feed("nk>\nOdpoved modelu.")
+    t2, r2 = parser.feed("ink>Deep model reasoning</thi")
+    t3, r3 = parser.feed("nk>\nModel response.")
     tf, rf = parser.flush()
     full_text = "".join(t1 + t2 + t3 + tf)
     full_reason = "".join(r1 + r2 + r3 + rf)
-    check(full_text == "Odpoved modelu." and full_reason == "Hluboka uvaha modelu",
-          "ThinkStreamParser čistě oddělí <think> i při rozseknutí tagu v chuncích")
-    check("".join(text_accum) == "Odpoved modelu." and "".join(reason_accum) == "Hluboka uvaha modelu",
-          "ThinkStreamParser volá on_text a on_reasoning se správnými segmenty")
+    check(full_text == "Model response." and full_reason == "Deep model reasoning",
+          "ThinkStreamParser separates reasoning tags across chunk boundaries")
+    check("".join(text_accum) == "Model response." and "".join(reason_accum) == "Deep model reasoning",
+          "ThinkStreamParser delivers the correct text and reasoning segments")
 
     # 2) Session reasoning persistence
     cfg = load_config()
     s = Session(cfg, transient=False)
-    s.add("user", "Dotaz na uvažování")
-    s.add("assistant", "Finální odpověď", reasoning="Vnitřní monolog modelu")
-    check(s.messages[-1].get("reasoning") == "Vnitřní monolog modelu",
-          "Session uchová reasoning v paměti")
+    s.add("user", "Reasoning question")
+    s.add("assistant", "Final response", reasoning="Internal model reasoning")
+    check(s.messages[-1].get("reasoning") == "Internal model reasoning",
+          "Session retains reasoning in memory")
     loaded = Session.load(cfg, s.id)
-    check(loaded.messages[-1].get("reasoning") == "Vnitřní monolog modelu",
-          "Session perzistuje a znovu načte reasoning z JSONL")
+    check(loaded.messages[-1].get("reasoning") == "Internal model reasoning",
+          "Reasoning survives JSONL persistence and reload")
     api_msgs = s.to_api_messages()
     last_api = api_msgs[-1]
-    check(last_api.get("reasoning_content") == "Vnitřní monolog modelu" and "reasoning" not in last_api,
-          "to_api_messages namapuje reasoning na reasoning_content pro llama-server")
+    check(last_api.get("reasoning_content") == "Internal model reasoning" and "reasoning" not in last_api,
+          "to_api_messages maps reasoning to reasoning_content for llama-server")
 
     # 3) webapp thought box & chat view rendering
-    thought_open = webapp._format_thought_box("Moje uvaha", open_box=True, elapsed_s=4)
+    thought_open = webapp._format_thought_box("My reasoning", open_box=True, elapsed_s=4)
     check('<details class="thought-box" open>' in thought_open and "Thinking…" in thought_open,
-          "_format_thought_box otevře box při streamování úvahy s časovačem")
-    thought_closed = webapp._format_thought_box("Moje uvaha", open_box=False, duration=3.5)
+          "_format_thought_box opens while reasoning streams and displays the timer")
+    thought_closed = webapp._format_thought_box("My reasoning", open_box=False, duration=3.5)
     check('<details class="thought-box">' in thought_closed and "open" not in thought_closed
           and "Thought for 4s" in thought_closed,
-          "_format_thought_box sbalí box po dokončení s trváním úvahy")
+          "_format_thought_box collapses after completion and displays the reasoning duration")
 
     webapp.state.session = loaded
     view = webapp.chat_view()
     assistant_view = [m for m in view if m["role"] == "assistant"]
     check(len(assistant_view) >= 1 and 'class="thought-box"' in assistant_view[-1]["content"]
-          and "Finální odpověď" in assistant_view[-1]["content"],
-          "chat_view vykreslí rozbalovací thought-box a finální odpověď")
+          and "Final response" in assistant_view[-1]["content"],
+          "chat_view renders a collapsible thought box and the final response")
 
-    # 4) tool box v chat view
-    loaded.add("tool", "výstup souboru abc.txt", name="read_file")
+    # 4) tool box in chat view
+    loaded.add("tool", "contents of file abc.txt", name="read_file")
     view_with_tool = webapp.chat_view()
     tool_entry = view_with_tool[-1]
     check('class="tool-box"' in tool_entry["content"] and "read_file" in tool_entry["content"]
-          and "výstup souboru abc.txt" in tool_entry["content"],
-          "chat_view vykreslí tool output jako elegantní collapsible tool-box")
+          and "contents of file abc.txt" in tool_entry["content"],
+          "chat_view renders tool output in a collapsible tool box")
     Session.delete(cfg, s.id)
 
 
@@ -2205,27 +2205,27 @@ def test_harness_enhancements():
 
     # 1) Head+Tail truncate
     short = "kratky text"
-    check(truncate(short, limit=50) == short, "truncate zachová krátký text")
+    check(truncate(short, limit=50) == short, "truncate preserves short text")
     long_text = "START_OF_OUTPUT\n" + ("prostredni radek\n" * 100) + "END_OF_OUTPUT_ERROR_TRACE"
     t_res = truncate(long_text, limit=60)
     check("START_OF_OUTPUT" in t_res and "END_OF_OUTPUT_ERROR_TRACE" in t_res,
-          "truncate uchová začátek (head) i konec (tail) s chybou")
+          "truncate preserves the head and the tail containing the error")
     check("truncated:" in t_res and "omitted" in t_res,
-          "truncate vloží informaci o vynechaných řádcích/znacích")
+          "truncate reports omitted lines and characters")
 
-    # 2) Syntax validace před zápisem
+    # 2) Validate syntax before writing.
     valid_py = "def foo():\n    return 42\n"
     invalid_py = "def foo(\n    return 42\n"
     check(validate_syntax_pre_write(Path("test.py"), valid_py) is None,
-          "validate_syntax_pre_write propustí validní Python")
+          "validate_syntax_pre_write accepts valid Python")
     check(validate_syntax_pre_write(Path("test.py"), invalid_py) is not None,
-          "validate_syntax_pre_write zachytí nevalidní Python")
+          "validate_syntax_pre_write catches invalid Python")
     check(validate_syntax_pre_write(Path("test.json"), '{"a": 1}') is None,
-          "validate_syntax_pre_write propustí validní JSON")
+          "validate_syntax_pre_write accepts valid JSON")
     check(validate_syntax_pre_write(Path("test.json"), '{"a": 1,}') is not None,
-          "validate_syntax_pre_write zachytí nevalidní JSON")
+          "validate_syntax_pre_write catches invalid JSON")
 
-    # 3) SearchProjectTool s FTS5
+    # 3) SearchProjectTool with FTS5
     with tempfile.TemporaryDirectory() as tmpdir:
         td = Path(tmpdir)
         (td / "hello.py").write_text("def find_secret_token():\n    return 'xyz'\n", encoding="utf-8")
@@ -2236,10 +2236,10 @@ def test_harness_enhancements():
         tool = SearchProjectTool()
         search_res = tool.run(ctx, "secret token")
         check("hello.py" in search_res and "secret" in search_res and "token" in search_res,
-              "SearchProjectTool najde kód podle klíčových slov přes FTS5")
+              "SearchProjectTool finds code by keywords with FTS5")
         search_res2 = tool.run(ctx, "database pooling")
         check("doc.md" in search_res2 and "pooling" in search_res2,
-              "SearchProjectTool najde relevantní dokumentaci")
+              "SearchProjectTool finds relevant documentation")
 
     # 4) ChangeJournal revert_last_task
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -2254,12 +2254,12 @@ def test_harness_enhancements():
         test_file.write_text("MODIFIED BAD CONTENT", encoding="utf-8")
         journal.record_after(test_file)
         check(test_file.read_text(encoding="utf-8") == "MODIFIED BAD CONTENT",
-              "Soubor byl upraven")
+              "File modified")
         rev_res = journal.revert_last_task()
         check(len(rev_res.get("restored", [])) == 1,
-              "revert_last_task obnovil 1 soubor")
+              "revert_last_task restored one file")
         check(test_file.read_text(encoding="utf-8") == "ORIGINAL CONTENT",
-              "revert_last_task vrátil přesný původní obsah")
+              "revert_last_task restored the exact original contents")
         Session.delete(cfg, s.id)
 
     # 5) Slash command dispatcher
@@ -2267,25 +2267,25 @@ def test_harness_enhancements():
     webapp.state.session = s_cmd
     webapp.state.rebuild_agent()
     h1, p1 = webapp._handle_slash_command("/help")
-    check(h1 is True and "Dostupné Slash příkazy" in s_cmd.messages[-1]["content"],
-          "_handle_slash_command zpracuje /help lokálně")
+    check(h1 is True and "Available slash commands" in s_cmd.messages[-1]["content"],
+          "_handle_slash_command handles /help locally")
     h2, p2 = webapp._handle_slash_command("/pins")
-    check(h2 is True and "připnuté soubory" in s_cmd.messages[-1]["content"],
-          "_handle_slash_command zpracuje /pins lokálně")
+    check(h2 is True and "pinned files" in s_cmd.messages[-1]["content"],
+          "_handle_slash_command handles /pins locally")
     h3, p3 = webapp._handle_slash_command("/test")
-    check(h3 is False and "projektové kontroly" in (p3 or ""),
-          "_handle_slash_command obohatí prompt pro /test")
+    check(h3 is False and "project checks" in (p3 or ""),
+          "_handle_slash_command extends the /test prompt")
     h4, p4 = webapp._handle_slash_command("/skills")
-    check(h4 is True and "Dostupné skilly" in s_cmd.messages[-1]["content"]
+    check(h4 is True and "Available skills" in s_cmd.messages[-1]["content"]
           and "excel-spreadsheet-craft" in s_cmd.messages[-1]["content"],
-          "_handle_slash_command zpracuje /skills lokálně")
+          "_handle_slash_command handles /skills locally")
     h5, p5 = webapp._handle_slash_command("/skill excel-spreadsheet-craft")
-    check(h5 is True and "byl úspěšně aktivován" in s_cmd.messages[-2]["content"]
-          and "[AKTIVNÍ SKILL" in s_cmd.messages[-1]["content"],
-          "_handle_slash_command aktivuje skill do kontextu")
-    h6, p6 = webapp._handle_slash_command("/skill new moje-analyza")
+    check(h5 is True and "was activated" in s_cmd.messages[-2]["content"]
+          and "[ACTIVE SKILL" in s_cmd.messages[-1]["content"],
+          "_handle_slash_command activates a skill in the context")
+    h6, p6 = webapp._handle_slash_command("/skill new my-analysis")
     check(h6 is False and "SKILL DESIGNER" in (p6 or ""),
-          "_handle_slash_command spustí skill designer")
+          "_handle_slash_command starts the skill designer")
     Session.delete(cfg, s_cmd.id)
 
     # 5b) Office and Spreadsheet tools (Excel, Word, PDF)
@@ -2296,29 +2296,29 @@ def test_harness_enhancements():
     try:
         s_doc = Session(cfg, transient=True)
         doc_ctx = AgentContext(cfg=cfg, session=s_doc, project_workspace=tmp_doc)
-        xlsx_path = tmp_doc / "tabulka.xlsx"
+        xlsx_path = tmp_doc / "table.xlsx"
         res_create = EditSpreadsheetTool().run(
             doc_ctx, path=str(xlsx_path), action="create", title="TestSheet",
-            data=[["Jmeno", "Mzda"], ["Petr", 50000], ["Jana", 60000]])
-        check("OK: Vytvořen nový Excel" in res_create and xlsx_path.is_file(),
-              "EditSpreadsheetTool vytvoří nový XLSX soubor")
+            data=[["Name", "Salary"], ["Petr", 50000], ["Jana", 60000]])
+        check("OK: Created a new Excel" in res_create and xlsx_path.is_file(),
+              "EditSpreadsheetTool creates a new XLSX file")
         res_update = EditSpreadsheetTool().run(
             doc_ctx, path=str(xlsx_path), action="update_cells",
             data={"C1": "Bonus", "C2": 5000, "C3": 6000})
-        check("OK: Aktualizováno 3 buněk" in res_update,
-              "EditSpreadsheetTool aktualizuje buňky")
+        check("OK: Updated 3 cells" in res_update,
+              "EditSpreadsheetTool updates cells")
         res_read = ReadDocumentTool().run(doc_ctx, path=str(xlsx_path))
         check("TestSheet" in res_read and "Petr" in res_read and "Bonus" in res_read,
-              "ReadDocumentTool extrahuje XLSX jako Markdown tabulku")
+              "ReadDocumentTool extracts XLSX as a Markdown table")
         res_fs = ReadFileTool().run(doc_ctx, path=str(xlsx_path))
         check("[Binary Document converted to text" in res_fs and "Jana" in res_fs,
-              "ReadFileTool automaticky převede XLSX na čitelný text")
+              "ReadFileTool automatically converts XLSX into readable text")
     finally:
         shutil.rmtree(tmp_doc, ignore_errors=True)
 
 
 
-    # 6) Detekce zacyklení
+    # 6) Detect repeated tool patterns.
     from harness.agent import Agent, Status, build_registry
     from harness.llm import AssistantResult
     from harness.safety import SafetyPolicy
@@ -2335,7 +2335,7 @@ def test_harness_enhancements():
             break
     check(loop_res is None and r.status is Status.CONTINUE
           and s_loop.load_task_state().get("status") == "running",
-          "Opakovaná volání jsou doporučením k vyhodnocení postupu, nikoli falešným dokončením")
+          "Repeated calls trigger progress advice, not false completion")
 
 
 def test_clickable_skills_and_clipboard_images():
@@ -2346,13 +2346,13 @@ def test_clickable_skills_and_clipboard_images():
     from harness.session import Session
     cfg = webapp.cfg
 
-    # 1) Test skills_info_text HTML výstupu
+    # 1) Verify skill-information HTML.
     info_html = webapp.skills_info_text()
-    check("skills-panel-list" in info_html, "skills_info_text obsahuje kontejner skills-panel-list")
-    check("skill-chip-btn" in info_html, "skills_info_text obsahuje klikací tlačítka skill-chip-btn")
-    check("data-skill=" in info_html, "skills_info_text obsahuje data-skill atributy")
+    check("skills-panel-list" in info_html, "skills_info_text contains the skills-panel-list container")
+    check("skill-chip-btn" in info_html, "skills_info_text contains clickable skill-chip-btn buttons")
+    check("data-skill=" in info_html, "skills_info_text contains data-skill attributes")
 
-    # 2) Test prepare_submission s base64 obrázky ze schránky
+    # 2) Prepare pasted base64 image attachments.
     sample_png_b64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
     pasted_json = json.dumps([
         {"name": "test1.png", "data": sample_png_b64},
@@ -2365,20 +2365,20 @@ def test_clickable_skills_and_clipboard_images():
     webapp.state.agent.session = test_sess
     try:
         sub_res, _, msg_up, pasted_up = webapp.prepare_submission("Analyzuj tyto 2 snimky", pasted_json)
-        check(sub_res.get("kind") == "run", "prepare_submission zahájí běh pro prompt s obrázky ze schránky")
-        check(pasted_up.get("value") == "[]", "prepare_submission vyčistí skryté pole pro vložené obrázky")
+        check(sub_res.get("kind") == "run", "prepare_submission starts a run for a prompt with clipboard images")
+        check(pasted_up.get("value") == "[]", "prepare_submission clears the hidden pasted-image field")
         user_img_msgs = [m for m in test_sess.messages if m.get("images")]
         check(len(user_img_msgs) == 1 and len(user_img_msgs[0]["images"]) == 2,
-              "K uživatelské zprávě byly úspěšně připojeny 2 dekódované obrázky")
+              "Two decoded images were attached to the user message")
 
-        # 3) Test zobrazení miniatur v chat_view
+        # 3) Render image thumbnails in the conversation.
         views = webapp.chat_view()
         user_views = [v for v in views if v.get("role") == "user"]
-        check(len(user_views) > 0, "chat_view obsahuje uživatelskou zprávu")
+        check(len(user_views) > 0, "chat_view contains the user message")
         last_user = user_views[-1]
-        check("chat-attached-gallery" in last_user["content"], "chat_view obsahuje galerii miniatur chat-attached-gallery")
-        check("chat-msg-thumb" in last_user["content"], "chat_view obsahuje miniatury chat-msg-thumb")
-        check("/gradio_api/file=" in last_user["content"], "chat_view miniatury odkazují na /gradio_api/file= URL pro zobrazení")
+        check("chat-attached-gallery" in last_user["content"], "chat_view contains the chat-attached-gallery thumbnail gallery")
+        check("chat-msg-thumb" in last_user["content"], "chat_view contains chat-msg-thumb thumbnails")
+        check("/gradio_api/file=" in last_user["content"], "chat_view thumbnails reference displayable /gradio_api/file= URLs")
     finally:
         webapp.state.session = orig_sess
         webapp.state.agent.session = orig_sess
@@ -2422,5 +2422,5 @@ if __name__ == "__main__":
     test_thinking_and_communication()
     test_harness_enhancements()
     test_clickable_skills_and_clipboard_images()
-    print(f"\n{'=' * 40}\nVÝSLEDEK: {PASS} ✓ / {FAIL} ✗")
+    print(f"\n{'=' * 40}\nRESULT: {PASS} ✓ / {FAIL} ✗")
     sys.exit(1 if FAIL else 0)

@@ -1,4 +1,4 @@
-"""Per-task journal změn souborů s persistentním rollbackem."""
+"""Per-task file-change journal with persistent rollback."""
 from __future__ import annotations
 
 import hashlib

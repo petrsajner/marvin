@@ -1,15 +1,15 @@
-"""Trvala pamet modelu: globalni, pro pracovni rezim a projektova.
+"""Persistent model memory: global, work-mode and project layers.
 
-Soubory:
-  global:      {app}/memory/GLOBAL.md
-  development: {app}/memory/MEMORY.md (puvodni globalni coding pamet)
+Files:
+  global: {app}/memory/GLOBAL.md
+  development: {app}/memory/MEMORY.md (the original coding memory)
   other modes: {app}/memory/modes/<work_mode>.md
-  project:     {workspace}/QWEN_MEMORY.md
+  project: {workspace}/QWEN_MEMORY.md
 
-Vsechny tri aktivni vrstvy se vkladaji cele do system promptu pri startu ulohy
-a po kompresi. Model je muze cist a doplnovat pres memory nastroje.
-"""
+All three active layers are injected into the system prompt at task start and after compression. The model can read and update them through memory tools."""
 from __future__ import annotations
+
+from .i18n import locale_data
 
 from pathlib import Path
 
@@ -70,8 +70,8 @@ class MemoryStore:
             return
         try:
             text = path.read_text(encoding="utf-8")
-            legacy = "# 🧠 Globální paměť (platí pro všechny projekty)"
-            if text.startswith(legacy):
+            legacy = locale_data("legacy_memory_heading", "")
+            if legacy and text.startswith(legacy):
                 text = text.replace(legacy, "# Work mode memory: Development", 1)
                 text = text.replace('scope="global"', 'scope="mode"', 1)
                 path.write_text(text, encoding="utf-8")
@@ -109,39 +109,39 @@ class MemoryStore:
 
     def read(self, scope: str) -> str:
         if scope not in ("global", "mode", "project"):
-            return f"ERROR: Neznámá vrstva paměti: {scope}"
+            return f"ERROR: Unknown memory scope: {scope}"
         path = self._path_for(scope)
         if path is None:
-            return "ERROR: Není nastavený projekt; projektová paměť není aktivní."
+            return "ERROR: No project is selected; project memory is inactive."
         if not path.exists():
-            return "(prázdné)"
+            return "(empty)"
         try:
             return path.read_text(encoding="utf-8")
         except OSError as exc:
-            return f"ERROR: nelze číst {path}: {exc}"
+            return f"ERROR: cannot read {path}: {exc}"
 
     def append(self, fact: str, scope: str) -> str:
         fact = (fact or "").strip()
         if not fact:
-            return "ERROR: prázdný fakt - není co uložit."
+            return "ERROR: The fact is empty; there is nothing to save."
         if scope not in ("global", "mode", "project"):
-            return f"ERROR: Neznámá vrstva paměti: {scope}"
+            return f"ERROR: Unknown memory scope: {scope}"
         path = self._path_for(scope)
         if path is None:
-            return "ERROR: Není nastavený projekt; projektovou paměť nelze použít."
+            return "ERROR: No project is selected; project memory is unavailable."
         if scope == "project":
             self.ensure_project()
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             with open(path, "a", encoding="utf-8") as handle:
                 handle.write(f"- {fact}\n")
-            labels = {"global": "globální", "mode": "režimové", "project": "projektové"}
-            return f"OK: uloženo do {labels[scope]} paměti: {fact[:80]}"
+            labels = {"global": "global", "mode": "work-mode", "project": "project"}
+            return f"OK: saved to {labels[scope]} memory: {fact[:80]}"
         except OSError as exc:
             return f"ERROR: nelze zapsat {path}: {exc}"
 
     def context_block(self) -> str:
-        """Vsechny tri aktivni vrstvy pameti, bez umeleho zkracovani."""
+        """All three active memory scopes, without artificial truncation."""
         label = WORK_MODES[self.work_mode].label
         parts = [
             "## PERSISTENT MEMORY",

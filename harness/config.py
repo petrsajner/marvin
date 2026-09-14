@@ -1,4 +1,4 @@
-"""Načítání a zpřístupnění konfigurace (config.yaml + defaulty)."""
+"""Configuration loading and access: config.yaml merged with defaults."""
 from __future__ import annotations
 
 import copy
@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
+from .i18n import locale_data, translate
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -20,18 +22,14 @@ BUILTIN_MODELS: dict[str, dict[str, Any]] = {
         "kv_cache": "f16",
         "kv_cache_profiles": {
             "f16": {"label": "16-bit - more precise, context 128k",
-                    "label_cs": "16 bit - přesnější, kontext 128k",
                     "ctx_size": 131072, "min_vram_gb": 30},
             "q8_0": {"label": "8-bit - larger context 256k",
-                     "label_cs": "8 bit - větší kontext 256k",
                      "ctx_size": 262144, "min_vram_gb": 30},
             "q8_0_compact": {"cache_type": "q8_0",
                              "label": "8-bit - compact for 24 GB, context 96k",
-                             "label_cs": "8 bit - kompaktní pro 24 GB, kontext 96k",
                              "ctx_size": 98304, "min_vram_gb": 23},
             "f16_compact": {"cache_type": "f16",
                             "label": "16-bit - compact for 24 GB, context 64k",
-                            "label_cs": "16 bit - kompaktní pro 24 GB, kontext 64k",
                             "ctx_size": 65536, "min_vram_gb": 24},
         },
         "server_args": ["-fa", "on"],
@@ -46,28 +44,22 @@ BUILTIN_MODELS: dict[str, dict[str, Any]] = {
         "kv_cache": "q8_0",
         "kv_cache_profiles": {
             "q8_0": {"label": "8-bit - context 48k (17 GB+)",
-                     "label_cs": "8 bit - kontext 48k (17 GB+)",
                      "ctx_size": 49152, "min_vram_gb": 17},
             "q8_0_32k": {"cache_type": "q8_0",
                          "label": "8-bit - context 32k (16 GB safe)",
-                         "label_cs": "8 bit - kontext 32k (16 GB bezpečné)",
                          "ctx_size": 32768, "min_vram_gb": 15.5,
                          "server_args": ["-b", "1024", "-ub", "128", "--no-mmproj-offload"]},
             "q8_0_128k": {"cache_type": "q8_0",
                           "label": "8-bit - context 128k (24 GB)",
-                          "label_cs": "8 bit - kontext 128k (24 GB)",
                           "ctx_size": 131072, "min_vram_gb": 20},
             "f16_96k": {"cache_type": "f16",
                         "label": "16-bit - context 96k (24 GB, max precision)",
-                        "label_cs": "16 bit - kontext 96k (24 GB, max přesnost)",
                         "ctx_size": 98304, "min_vram_gb": 23},
             "q8_0_256k": {"cache_type": "q8_0",
                           "label": "8-bit - context 256k (32 GB)",
-                          "label_cs": "8 bit - kontext 256k (32 GB)",
                           "ctx_size": 262144, "min_vram_gb": 26},
             "f16_192k": {"cache_type": "f16",
                          "label": "16-bit - context 192k (32 GB, borderline)",
-                         "label_cs": "16 bit - kontext 192k (32 GB, hraniční)",
                          "ctx_size": 196608, "min_vram_gb": 31},
         },
         "server_args": ["-fa", "on"],
@@ -82,14 +74,11 @@ BUILTIN_MODELS: dict[str, dict[str, Any]] = {
         "kv_cache": "q8_0",
         "kv_cache_profiles": {
             "f16": {"label": "16-bit - more precise, context 96k",
-                    "label_cs": "16 bit - přesnější, kontext 96k",
                     "ctx_size": 98304, "min_vram_gb": 27},
             "q8_0": {"label": "8-bit - larger context 192k",
-                     "label_cs": "8 bit - větší kontext 192k",
                     "ctx_size": 196608, "min_vram_gb": 30},
             "q8_0_compact": {"cache_type": "q8_0", "ctx_size": 65536, "min_vram_gb": 23.75,
                              "label": "8-bit - compact for 24 GB, context 64k",
-                             "label_cs": "8 bit - kompaktní pro 24 GB, kontext 64k",
                              "server_args": ["-b", "1024", "-ub", "128", "--no-mmproj-offload"]},
         },
         "server_args": ["-fa", "on"],
@@ -106,7 +95,6 @@ BUILTIN_MODELS: dict[str, dict[str, Any]] = {
         "kv_cache": "q8_0",
         "kv_cache_profiles": {
             "q8_0": {"label": "8-bit - solid, context 128k",
-                     "label_cs": "8 bit - pevné, kontext 128k",
                      "ctx_size": 131072, "min_vram_gb": 30},
         },
         "server_args": ["-fa", "on"],
@@ -138,28 +126,24 @@ BUILTIN_MODELS: dict[str, dict[str, Any]] = {
                     "q8_0_128k": {
                             "cache_type": "q8_0",
                             "label": "8-bit - context 128k",
-                            "label_cs": "8 bit - kontext 128k",
                             "ctx_size": 131072,
                             "min_vram_gb": 27
                     },
                     "q8_0_256k": {
                             "cache_type": "q8_0",
                             "label": "8-bit - context 256k",
-                            "label_cs": "8 bit - kontext 256k",
                             "ctx_size": 262144,
                             "min_vram_gb": 28
                     },
                     "q8_0_512k": {
                             "cache_type": "q8_0",
                             "label": "8-bit - context 512k",
-                            "label_cs": "8 bit - kontext 512k",
                             "ctx_size": 524288,
                             "min_vram_gb": 29.5
                     },
                     "q8_0_256k_spill": {
                             "cache_type": "q8_0",
                             "label": "8-bit - context 256k, MoE overflow to RAM (24 GB)",
-                            "label_cs": "8 bit - kontext 256k, MoE přeteče do RAM (24 GB)",
                             "ctx_size": 262144,
                             "min_vram_gb": 23,
                             "server_args": [
@@ -170,7 +154,6 @@ BUILTIN_MODELS: dict[str, dict[str, Any]] = {
                     "q8_0_512k_spill": {
                             "cache_type": "q8_0",
                             "label": "8-bit - context 512k, MoE overflow to RAM (24 GB)",
-                            "label_cs": "8 bit - kontext 512k, MoE přeteče do RAM (24 GB)",
                             "ctx_size": 524288,
                             "min_vram_gb": 23,
                             "server_args": [
@@ -207,21 +190,18 @@ BUILTIN_MODELS: dict[str, dict[str, Any]] = {
                     "q8_0_128k": {
                             "cache_type": "q8_0",
                             "label": "8-bit - context 128k (full GPU, borderline)",
-                            "label_cs": "8 bit - kontext 128k (plně GPU, hraniční)",
                             "ctx_size": 131072,
                             "min_vram_gb": 31.5
                     },
                     "q8_0_256k": {
                             "cache_type": "q8_0",
                             "label": "8-bit - context 256k (full GPU, borderline)",
-                            "label_cs": "8 bit - kontext 256k (plně GPU, hraniční)",
                             "ctx_size": 262144,
                             "min_vram_gb": 31.5
                     },
                     "q8_0_256k_spill": {
                             "cache_type": "q8_0",
                             "label": "8-bit - context 256k, MoE overflow to RAM (more headroom)",
-                            "label_cs": "8 bit - kontext 256k, MoE přeteče do RAM (větší rezerva)",
                             "ctx_size": 262144,
                             "min_vram_gb": 29.5,
                             "server_args": [
@@ -232,7 +212,6 @@ BUILTIN_MODELS: dict[str, dict[str, Any]] = {
                     "q8_0_512k_spill": {
                             "cache_type": "q8_0",
                             "label": "8-bit - context 512k, MoE overflow to RAM",
-                            "label_cs": "8 bit - kontext 512k, MoE přeteče do RAM",
                             "ctx_size": 524288,
                             "min_vram_gb": 26,
                             "server_args": [
@@ -343,22 +322,14 @@ def _migrate_builtin_models(user: dict[str, Any]) -> None:
             model.pop("server_args", None)
 
 
-# staré české labely z configů před verzí 1.3.0 (angličtina se stala základem)
-_LEGACY_KV_LABELS = {
-    "16 bit - přesnější, kontext 128k": "16-bit - more precise, context 128k",
-    "8 bit - větší kontext 256k": "8-bit - larger context 256k",
-    "16 bit - přesnější, kontext 96k": "16-bit - more precise, context 96k",
-    "8 bit - větší kontext 192k": "8-bit - larger context 192k",
-    "8 bit - pevné, kontext 128k": "8-bit - solid, context 128k",
-}
+# Legacy Czech labels from releases before English became the default in 1.3.0.
+_LEGACY_KV_LABELS = locale_data("legacy_profile_labels", {})
 
 
 def _migrate_kv_labels(user: dict[str, Any]) -> None:
-    """Přelož legacy české KV labely na anglické `label` + českou `label_cs`.
+    """Migrate legacy profile labels to English keys and optional UI translations.
 
-    Instalátor při upgrade zachová starý config.yaml (onlyifdoesntexist) -
-    bez téhle migrace by anglické UI zobrazovalo české volby KV cache.
-    """
+    Upgrades preserve config.yaml, so old labels must be normalized in memory rather than rewriting the user's file."""
     models = user.get("models")
     if not isinstance(models, dict):
         return
@@ -395,8 +366,9 @@ def _migrate_memory_profiles(user: dict[str, Any]) -> None:
         profile = model.get("kv_cache_profiles", {}).get(profile_key, {})
         current = builtin["kv_cache_profiles"][profile_key]
         if profile.get("min_vram_gb") == old_min and profile.get("ctx_size") == current["ctx_size"]:
-            for field in ("min_vram_gb", "label", "label_cs"):
+            for field in ("min_vram_gb", "label"):
                 profile[field] = current[field]
+            profile.pop("label_cs", None)
             if "server_args" not in profile and "server_args" in current:
                 profile["server_args"] = list(current["server_args"])
     model = user.get("models", {}).get("nemotron_q4", {})
@@ -405,22 +377,22 @@ def _migrate_memory_profiles(user: dict[str, Any]) -> None:
 
 
 class Config:
-    """Konfigurace s helpery pro cesty a modely."""
+    """Configuration with path and model helpers."""
 
     def __init__(self, data: dict[str, Any], root: Path = ROOT):
         self.data = data
         self.root = root
 
-    # -- cesty -------------------------------------------------------------
+    # -- paths -------------------------------------------------------------
     def path(self, dotted: str) -> Path:
-        """Vrátí absolutní cestu z paths.* (relativní řeší od kořenu projektu)."""
+        """Resolve a paths.* setting to an absolute path relative to the project root."""
         node: Any = self.data
         for part in dotted.split("."):
             node = node[part]
         p = Path(str(node))
         return p if p.is_absolute() else (self.root / p)
 
-    # -- modely ------------------------------------------------------------
+    # -- models ------------------------------------------------------------
     def model_key(self) -> str:
         key = self.data.get("default_model", "q4")
         return key if key in self.data.get("models", {}) else next(iter(self.data["models"]), "q4")
@@ -437,7 +409,7 @@ class Config:
         return model_ready(self.path("paths.models_dir"), self.model(key))
 
     def mmproj_file(self, key: str | None = None) -> Path | None:
-        """Cesta k vision projektoru; None pro text-only modely (bez mmproj v configu)."""
+        """Path to the vision projector; None for text-only models without mmproj."""
         mmproj = self.model(key).get("mmproj")
         if not mmproj:
             return None
@@ -448,7 +420,9 @@ class Config:
         return str(model.get("mmproj_repo") or model["repo"])
 
     def kv_cache_profiles(self, key: str | None = None) -> dict[str, dict[str, Any]]:
-        return dict(self.model(key).get("kv_cache_profiles") or {})
+        profiles = self.model(key).get("kv_cache_profiles") or {}
+        return {name: {**profile, "label_cs": profile.get("label_cs") or translate(str(profile.get("label", name)), "cs")}
+                for name, profile in profiles.items()}
 
     def kv_cache_mode(self, key: str | None = None) -> str:
         model = self.model(key)
@@ -468,7 +442,7 @@ class Config:
 
     def kv_cache_server_args(self, key: str | None = None) -> list[str]:
         mode = self.kv_cache_mode(key)
-        # profil může mít vlastní cache_type (napr. kompaktni varianty q8_0_compact)
+        # Compact profiles can override the actual cache_type independently of their key.
         cache_type = str(self.kv_cache_profiles(key).get(mode, {}).get("cache_type") or mode)
         return ["--cache-type-k", cache_type, "--cache-type-v", cache_type]
 
@@ -479,7 +453,7 @@ class Config:
         return f"http://{s['host']}:{s['port']}"
 
     def llama_server_exe(self) -> Path | None:
-        """Najde llama-server.exe v runtime/llama (i vnořený, např. ve verzi CUDA)."""
+        """Find llama-server.exe under runtime/llama, including nested CUDA directories."""
         llama_dir = self.path("paths.llama_dir")
         if not llama_dir.exists():
             return None
@@ -494,7 +468,7 @@ class Config:
         model_sampling = self.model().get("sampling", {}).get(key, {})
         return _deep_merge(sampling, model_sampling)
 
-    # -- zkratky -----------------------------------------------------------
+    # -- convenience accessors ---------------------------------------------
     @property
     def agent(self) -> dict:
         return self.data["agent"]

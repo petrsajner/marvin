@@ -1,4 +1,4 @@
-"""LLM klient - OpenAI-kompatibilní API llama-serveru (streaming, tool calling, reasoning)."""
+"""Streaming OpenAI-compatible llama-server client with tools and reasoning support."""
 from __future__ import annotations
 
 import json
@@ -31,7 +31,7 @@ SENTENCE_END_RE = re.compile(r"[.!?…](?:[\"'»”\)\]]*)\s*$")
 
 
 def _template_kwargs(cfg: Config) -> dict:
-    """Thinking on/off + hloubka uvažování (reasoning_effort) přes chat template."""
+    """Configure thinking and reasoning effort through chat-template parameters."""
     if not cfg.data.get("thinking", True):
         return {"chat_template_kwargs": {"enable_thinking": False}}
     if not cfg.model().get("supports_reasoning_effort", True):
@@ -140,15 +140,15 @@ class LLMClient:
     def __init__(self, cfg: Config):
         self.cfg = cfg
         import httpx
-        # read=300s: max mezera mezi bajty (prompt eval 96k ctx trvá ~80s bez výstupu);
-        # místo výchozích 600s celkových - zaseknutý stream umře dřív
+        # The read timeout bounds gaps between bytes; large prompts can take over 80 seconds.
+        # A stalled stream therefore fails sooner than the old 600-second overall timeout.
         self.client = OpenAI(
             base_url=cfg.base_url + "/v1", api_key="local",
             max_retries=0,
             timeout=httpx.Timeout(connect=10.0, read=float(cfg.model().get("read_timeout", 300)),
                                   write=30.0, pool=30.0),
         )
-        self.model_name = "local-model"  # llama-server akceptuje cokoliv
+        self.model_name = "local-model"  # llama-server accepts any API key
         self.on_prompt_progress = None
         self.on_generation_started = None
 
@@ -161,7 +161,7 @@ class LLMClient:
                on_tool_delta: Callable[[str, str], None] | None = None,
                on_prompt_progress: Callable[[dict], None] | None = None,
                should_stop: Callable[[], bool] | None = None) -> AssistantResult:
-        """Streamující volání; vrací složený výsledek (text + tool_calls)."""
+        """Stream a model response and return the assembled text and tool calls."""
         on_prompt_progress = on_prompt_progress or getattr(self, "on_prompt_progress", None)
         s = dict(sampling or self.cfg.sampling())
         extra_body = _template_kwargs(self.cfg)
@@ -171,7 +171,7 @@ class LLMClient:
             extra_body["chat_template_kwargs"] = {"enable_thinking": bool(thinking)}
         if "top_k" in s:
             extra_body["top_k"] = s.pop("top_k")
-        if "min_p" in s:  # OpenAI SDK min_p nezna - llama-server pres extra_body (Nemotron)
+        if "min_p" in s:  # Pass min_p through extra_body for llama-server (Nemotron); it is not an SDK parameter
             extra_body["min_p"] = s.pop("min_p")
         params: dict[str, Any] = {
             "model": self.model_name,
@@ -275,7 +275,7 @@ class LLMClient:
                 delta = chunk.choices[0].delta
                 if delta is None:
                     continue
-                # reasoning (llama.cpp posílá reasoning_content, případně reasoning)
+                # llama.cpp returns reasoning_content, or reasoning in some versions.
                 r = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
                 if not generation_started and (r or delta.content or delta.tool_calls):
                     generation_started = True
@@ -307,7 +307,7 @@ class LLMClient:
                         if on_tool_delta and (tc.function.name or tc.function.arguments):
                             on_tool_delta(tc.function.name or "", tc.function.arguments or "")
 
-            # Flush parsing buffer na konci streamu
+            # Flush the parsing buffer at the end of the stream
             ftp, frp = parser.flush()
             if ftp:
                 text_parts.extend(ftp)
@@ -339,15 +339,14 @@ class LLMClient:
     def ask(self, messages: list[dict], tools: list[dict] | None = None,
             sampling: dict | None = None,
             thinking: bool | None = None) -> AssistantResult:
-        """Ne-streamující volání (jednodušší, pro krátké požadavky).
+        """Make a non-streaming call for short requests.
 
-        thinking=None → podle cfg; False → vynuceně vypnutý thinking (sumarizace).
-        """
+        thinking=None follows configuration; False explicitly disables thinking for operations such as summarization."""
         s = dict(sampling or self.cfg.sampling())
         extra_body: dict[str, Any] = {}
         if "top_k" in s:
             extra_body["top_k"] = s.pop("top_k")
-        if "min_p" in s:  # OpenAI SDK min_p nezna - llama-server pres extra_body (Nemotron)
+        if "min_p" in s:  # Pass min_p through extra_body for llama-server (Nemotron); it is not an SDK parameter
             extra_body["min_p"] = s.pop("min_p")
         if thinking is not None:
             extra_body["chat_template_kwargs"] = {"enable_thinking": bool(thinking)}
@@ -391,17 +390,17 @@ class LLMClient:
 
 
 def parse_tool_arguments(raw: str) -> dict:
-    """Bezpečné parsování argumentů tool callu (model občas pošle nevalidní JSON)."""
+    """Parse tool arguments defensively because model-generated JSON may be malformed."""
     if not raw or not raw.strip():
         return {}
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        # fallback: zkusit najít první {...} blok
+        # Fallback: locate the first JSON object block.
         start, end = raw.find("{"), raw.rfind("}")
         if 0 <= start < end:
             try:
                 return json.loads(raw[start:end + 1])
             except json.JSONDecodeError:
                 pass
-        raise ValueError(f"Nepodařilo se parsovat argumenty tool callu: {raw[:200]!r}")
+        raise ValueError(f"Could not parse tool-call arguments: {raw[:200]!r}")

@@ -1,4 +1,5 @@
-# Paměť pracovního režimu: Výzkum
+# Work-mode memory: Research
 
-<!-- Fakta, pravidla a preference platné pro výzkum napříč projekty.
-     Pro zápis použij save_memory se scope="mode". Piš stručně, jeden fakt na řádek. -->
+<!-- Facts, rules and preferences for research across projects.
+     Use save_memory with scope="mode". Keep one concise fact per line.
+     Edits become visible to the model when the next task starts. -->

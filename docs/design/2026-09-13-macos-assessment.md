@@ -1,38 +1,38 @@
-# Marvin na macOS: technické posouzení
+# Marvin on macOS: technical assessment
 
-13. 9. 2026, zdrojový stav 1.8.0. Toto je posouzení rozsahu, nikoliv zahájení implementace nebo potvrzení kompatibility modelů na Macu.
+13 September 2026, source version 1.8.0. This is a scope assessment, not implementation approval or a claim of Mac compatibility.
 
-## Jeden produkt se dvěma platformními vrstvami
+## One product with two platform layers
 
-React/TypeScript UI, FastAPI, ApplicationService, jedna sekvenční agentní smyčka, historie, projekty, komprese kontextu a většina dokumentových nástrojů mohou zůstat společné. Není důvod vytvářet dlouhodobě oddělený fork produktu.
+React/TypeScript, FastAPI, ApplicationService, the sequential agent loop, history, projects, context compression and most document tools can remain shared. A permanent product fork is unnecessary.
 
-Současný kód ale není připravený pouze na překompilování. Launcher používá Win32 a WebView2; správa procesů na více místech předává Windows creation flags; otevírání souborů používá `os.startfile`; detekce GPU stojí na `nvidia-smi`; runtime a privátní Python se hledají podle Windows adresářů a přípon. Tyto části je potřeba oddělit od aplikační logiky.
+The current application cannot simply be recompiled: its launcher uses Win32/WebView2, process management passes Windows creation flags, file opening uses `os.startfile`, GPU detection uses `nvidia-smi`, and runtime/Python discovery assumes Windows paths and extensions. These operations need a platform layer separate from application logic.
 
-## Runtime a modely
+## Runtime and models
 
-První port bych založil na llama.cpp ARM64 + Metal. Zachová se HTTP rozhraní, chat templates a formát GGUF. Modelové soubory se tedy nemusí měnit jen kvůli změně systému. Každá architektura, kvantizace, vision projektor a KV typ však potřebuje vlastní ověření na Metal. Podpora CUDA sama o sobě kompatibilitu s Metal nedokazuje. [llama.cpp Metal](https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md#metal-build).
+Start with llama.cpp ARM64 and Metal, retaining the HTTP API, chat templates and GGUF format. A different operating system does not inherently require different model files. Every architecture, quantization, vision projector and KV type must nevertheless be qualified on Metal; CUDA support is insufficient evidence. [llama.cpp Metal](https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md#metal-build).
 
-MLX by bylo možné zkoumat jako další backend, ale pro první port není nezbytné zavádět jiné serverové API a další modelový formát.
+MLX could be investigated later, but a second API and model format are unnecessary for the first port.
 
-## Paměť a výkon
+## Memory and performance
 
-Apple Silicon má paměť sdílenou CPU a GPU. Dnešních 64 GB systémové RAM plus 32 GB VRAM nelze zaměnit za Mac s 64 GB sjednocené paměti. Mac potřebuje jeden rozpočet pro váhy, KV, pracovní buffery a systém, včetně limitů GPU a paměťového tlaku. [Apple: unified memory](https://developer.apple.com/documentation/metal/mtldevice/hasunifiedmemory).
+Apple Silicon shares memory between CPU and GPU. A Windows machine with 64 GB RAM plus 32 GB VRAM is not equivalent to a Mac with 64 GB unified memory. The Mac needs one budget for weights, KV, working buffers and the operating system, respecting GPU limits and memory pressure. [Apple unified memory](https://developer.apple.com/documentation/metal/mtldevice/hasunifiedmemory).
 
-Znovu se musí určit vhodné modely a kvantizace, KV okna, batch sizes, CPU vlákna, režim načítání a cache. Windows volby Flash-Next `load-mode none`, `no-host` a P-core masky se nesmějí převzít bez měření. Naměřených 27 tok/s a čas dlouhého prefillu na RTX 5090 nejsou odhadem rychlosti na Macu.
+Model/quantization choices, context sizes, batches, CPU threads, loading modes and caches all need new measurements. Do not copy the Windows Flash-Next `load-mode none`, `no-host` or P-core masks blindly. The measured RTX 5090 throughput of 27 tokens/s and long prefill time do not predict Mac performance.
 
-## Desktop a distribuce
+## Desktop and distribution
 
-pywebview má macOS variantu přes Cocoa/WebKit, takže hlavní React UI může zůstat stejné. Potřebovali bychom vlastní ARM64 Python a lock závislostí, macOS launcher, `.app` balíček a samostatné sestavení/distribuci. Modely a proměnlivá data patří mimo podepsaný aplikační balíček, například do Application Support. [pywebview](https://pywebview.flowrl.com/guide/installation.html#macos), [Apple: podpis a notarizace](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution?language=objc).
+pywebview supports Cocoa/WebKit, allowing the React UI to remain shared. Required work includes a private ARM64 Python runtime, a platform dependency lock, launcher, `.app` bundle and separate build/distribution pipeline. Models and mutable data belong outside the signed application, for example in Application Support. [pywebview](https://pywebview.flowrl.com/guide/installation.html#macos), [Apple signing and notarization](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution?language=objc).
 
-Pro režim Počítač je třeba upravit snímání obrazovky, ovládání oken, klávesy a oprávnění. macOS řídí přístup k ovládání počítače přes Accessibility a ke snímání obrazovky samostatně. [Accessibility](https://support.apple.com/guide/mac-help/allow-accessibility-apps-to-access-your-mac-mh43185/mac), [screen recording](https://support.apple.com/en-euro/guide/mac-help/mchld6aa7d23/mac).
+Computer mode needs platform-specific screen capture, window control, keyboard handling and permissions. macOS separates Accessibility control permission from screen recording permission. [Accessibility](https://support.apple.com/guide/mac-help/allow-accessibility-apps-to-access-your-mac-mh43185/mac), [screen recording](https://support.apple.com/en-euro/guide/mac-help/mchld6aa7d23/mac).
 
-Datové formáty historie a projektů mohou zůstat společné; absolutní cesty a platformní části offline zálohy vyžadují přenosové úpravy. Windows Python/DLL záloha není macOS instalační balíček.
+History and project formats can remain common; absolute paths and platform-specific offline backup contents need portability handling. A Windows Python/DLL backup is not a macOS installer.
 
-## Doporučený postup
+## Proposed sequence, if authorized later
 
-1. Oddělit platformní operace a sestavovací manifesty; zachovat regresní testy Windows.
-2. Na skutečném Apple Silicon Macu ověřit jeden existující model, chat, tools, vision, STOP a dlouhý kontext.
-3. Připravit paměťové profily a desktopový balíček.
-4. Ověřit režim Počítač a celý výběr podporovaných modelů.
+1. Isolate platform operations and build manifests while retaining Windows regression tests.
+2. On a real Apple Silicon Mac, qualify one existing model with chat, tools, vision, STOP and long context.
+3. Establish memory profiles and a desktop package.
+4. Qualify Computer mode and the supported model catalog.
 
-Hlavním dlouhodobým nákladem je druhá kvalifikační a distribuční matice. Přesný rozsah ani termín nelze spolehlivě určit bez prvního běhu na konkrétním Macu a stanovení minimální podporované paměti.
+The main continuing cost is a second qualification and distribution matrix. A reliable estimate requires a first run on a specific Mac and an agreed minimum memory specification. This work remains deferred.

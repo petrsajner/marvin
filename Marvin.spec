@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('installer/version.txt', '.')]
+datas = [('installer/version.txt', '.'), ('harness/locales', 'harness/locales')]
 binaries = []
 hiddenimports = ['clr']
 tmp_ret = collect_all('webview')

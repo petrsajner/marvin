@@ -1,75 +1,76 @@
-# Marvin 1.8.1 — prodlevy mezi kroky Flash-Next
+# Marvin 1.8.1: delays between Flash-Next steps
 
-Ověřeno 13. 9. 2026 na RTX 5090 32 GiB, Core Ultra 7 265K (8 P + 12 E) a 64 GiB RAM. Předchozí vydání: `9d8bf49`, Marvin 1.8.0.
+Measured 13 September 2026 on RTX 5090 32 GiB, Core Ultra 7 265K (8 P + 12 E) and 64 GiB RAM. Baseline: `9d8bf49`, Marvin 1.8.0. These are historical measurements; current memory changes are described in [memory profiles](../design/memory-profiles.md).
 
-## Příčina a hranice opravy
+## Cause and limits
 
-V běžícím výzkumu ukazoval llama-server přibližně 23–27 generovaných tokenů/s. Zpracování nových podkladů bylo přibližně 85–130 tokenů/s. Například 7 796 nových tokenů způsobilo 66 sekund načítání, přestože předchozích 13 047 tokenů server převzal z cache. Později znovu použil přes 49 tisíc tokenů; cache tedy nebyla globálně vypnutá.
+The running research task generated about 23–27 tokens/s and processed new input at about 85–130 tokens/s. For example, 7,796 new tokens took 66 seconds despite reusing 13,047 cached tokens. A later request reused over 49k tokens, so caching was not globally disabled.
 
-Současný 256k Q8 profil umísťuje expertní části 34 ze 48 vrstev do CPU/RAM. VRAM je téměř plná, i když GPU většinu času nepočítá. Samotné procento vytížení GPU není důkaz, že lze přidáním vláken nebo zvýšením jejího příkonu dosáhnout vyššího výkonu. Předchozí porovnání osmi P jader proti všem 20 jádrům při zpracování vstupu vyšlo lépe pro osm P jader. Toto vydání plánování hardwaru nemění.
+The then-current 256k Q8 plan placed experts from 34 of 48 layers on CPU/RAM. VRAM was nearly full despite low GPU compute utilization. Utilization alone does not imply that more threads or GPU power would help. Earlier prefill comparison favored eight P cores over all 20 physical cores.
 
-Samostatný profil byl vzorkován až po prvním vygenerovaném reasoning tokenu: všech osm P jader mělo 95,2–100 %, proces spotřebovával přibližně 7,7 CPU jádra, GPU 25–26 % a 142 W při 29 865 MiB obsazené VRAM. Krátké generování dosáhlo 29,04 tok/s s xhigh. Procesní čítač čtení hlásil 0 MiB/s; celkové fyzické čtení systému 13–23 MiB/s nelze připsat jen modelu. Výsledek podporuje závěr o omezení CPU částí výpočtu a její obsluhou paměti; neizoluje přesný podíl výpočtu proti latenci/propustnosti RAM. Jde o krátký diagnostický vzorek, nikoliv příslib stejné rychlosti nad plným kontextem.
+A diagnostic sampled only after the first reasoning token: all eight P cores showed 95.2–100%, the process consumed about 7.7 CPU cores, and GPU utilization was 25–26% at 142 W with 29,865 MiB VRAM used. Short generation measured 29.04 tokens/s with xhigh. Process read counters showed 0 MiB/s; total system physical reads of 13–23 MiB/s could not be attributed solely to the model. The sample supports CPU/memory-service limitations but does not isolate computation from RAM latency/bandwidth or promise full-context throughput.
 
-Oddělený pokus se 20 decode vlákny a maskou všech 20 jader (prefill stále 8 P) ukončil stávající paměťový hlídač po poklesu dostupné RAM pod 2 GiB. Nevzniklo platné měření rychlosti, a proto z něj nelze tvrdit, že je decode na 20 jádrech rychlejší či pomalejší. Přesný zdroj dodatečné paměťové potřeby nebyl izolovaně profilován. Nastavení produkční aplikace se nezměnilo; zůstává bezpečně ověřená varianta osmi P jader. Evidence: `decode-all-cores/outcome.json` a log serveru.
+A separate 20-thread decode test, retaining eight P cores for prefill, hit the then-current 2 GiB free-RAM guard. It produced no valid speed comparison. The additional memory demand was not independently profiled, and production remained on eight P cores. Evidence: `decode-all-cores/outcome.json` and server log.
 
-Druhý problém se týkal úloh s proměnlivým kontextem projektu/plánu: harness připojil aktuální snapshot před odpověď, ale v dalším kroku jej odstranil a přesunul až na konec. Tím zneplatnil prefix před právě vygenerovanou odpovědí a reasoningem. U kontrolovaného výzkumu bez projektu a připnutých souborů tato druhá příčina nebyla hlavním zdrojem čekání.
+A second defect affected changing project/plan context: the harness appended a snapshot before one response, then removed and moved it to the end on the next step, invalidating the prefix preceding the generated answer/reasoning. It was not the primary delay in the observed projectless research task without pins.
 
-## Změny
+## Changes
 
-- Změny kontextu se při skutečném požadavku zapíší jako interní zpráva. Zůstávají před odpovědí, ke které patří. Porovnávají se samostatně projekt, instrukce, rozhodnutí, plán a připnuté soubory: změna jednoho kroku plánu tak znovu neposílá dlouhý nezměněný dokument. Nejnovější hodnota nahrazuje danou sekci, prázdná ji ruší. UI interní záznamy nezobrazuje jako uživatelské zprávy, netvoří nové hranice úloh a náhled požadavku nic nezapisuje. Historii nadále spravuje běžná komprese a undo/retry.
-- Transport předává nativní `prompt_progress` z llama.cpp. **Načítám kontext / Reading context** ukazuje postup nového textu bez započtení cache do procent a samostatně počet znovu použitých tokenů. Zobrazení fáze funguje i pro pomocné plánování, syntézu a kompresi. Čas se počítá pro aktuální fázi; STOP zůstává dostupný.
-- `web_fetch` umí `query` pro doslovné hledání pasáže (alternativy přes `|`), `start` pro čtení další části a `refresh` pro nové stažení. Stejný zdroj během úlohy znovu nestahuje. Celý načtený zdroj se nadále ukládá do výzkumné evidence podle dosavadního limitu; výřez jej nenahrazuje. Nejde o automatické zahazování informací podle jejich důvěryhodnosti.
-- Váhy Q3_K_XL, Q8 KV, požadovaný 256k kontext, xhigh, zachování reasoningu, upstream b10935 i verze závislostí zůstávají stejné. IQ3 nebylo staženo ani aktivováno.
+- Actual context changes are persisted as internal messages before the response they belong to. Project, instructions, decisions, plan and pinned files are compared independently, avoiding retransmission of a large unchanged document when one plan item changes. Latest values replace a section; empty values clear it. Internal records are hidden from user messages, create no new task boundaries and are not written by request previews. Normal compression and undo/retry still manage history.
+- Native llama.cpp `prompt_progress` drives Reading context. Percentages cover new input separately from cached tokens, including helper planning, synthesis and compression. Timers are phase-specific and STOP remains available.
+- `web_fetch` supports literal passage `query` (alternatives separated by `|`), `start` pagination and explicit `refresh`. A source is not repeatedly downloaded within a task. Full fetched text remains in research evidence up to its existing limit; a returned excerpt does not replace the stored source or filter it by credibility.
+- Q3_K_XL weights, Q8 KV, requested 256k context, xhigh, reasoning preservation, b10935 and dependency versions were unchanged. IQ3 was neither downloaded nor enabled.
 
-## Naměřené porovnání
+## Comparisons
 
-`tests/check_prompt_performance.py` spouští jeden izolovaný server na portu 8081, odmítá souběh s jiným modelovým serverem a svůj proces v závěru zastaví. Výsledky jsou v `runtime/validation/performance-1.8.1/` (po úklidu uvnitř lokálního archivu).
+`tests/check_prompt_performance.py` owns one isolated server on port 8081, rejects concurrent model servers, and stops its process in cleanup. Historical output `runtime/validation/performance-1.8.1/` is now in the local archive.
 
-| Test následného kroku | Původní chování | Zachovaný prefix |
+| Follow-up test | Old behavior | Preserved prefix |
 |---|---:|---:|
-| První výstup, měření 1 | 5,543 s | 1,030 s |
-| První výstup, měření 2 | 5,886 s | 1,016 s |
-| Převzato z cache | 68 tokenů | 606 tokenů |
-| Znovu zpracováno | 560 tokenů | 44 tokenů |
+| First output, measurement 1 | 5.543 s | 1.030 s |
+| First output, measurement 2 | 5.886 s | 1.016 s |
+| Cached tokens | 68 | 606 |
+| Reprocessed tokens | 560 | 44 |
 
-Pořadí bylo ABBA. V obou variantách byl první výstup omezen na stejných 512 tokenů, sampling shodný a effort `low` pouze pro tento syntetický test. Jde o měření prodlevy při zachování historie, ne o srovnání inteligence nebo rychlosti celých uživatelských úloh. Čtyři srovnání prefixu v `flash-abba/results.json` jsou dokončená; následný pokus o výpis číselného údaje ve stejném skriptu narazil na příliš nízký limit pro reasoning a byl odděleně opakován.
+Order was ABBA, with identical sampling and 512-token output limits; effort `low` applied only to the synthetic comparison. This measures latency, not intelligence or whole-task performance. All four prefix comparisons in `flash-abba/results.json` completed. A later numeric-answer attempt exhausted an insufficient reasoning budget and was repeated separately.
 
-| Čtení stejného seznamu profesí | Celý zdroj | Cílená pasáž |
+| Same occupation-list query | Whole source | Targeted passage |
 |---|---:|---:|
-| Tokeny zdroje | 6 710 | 310 |
-| První výstup | 53,037 s | 4,138 s |
-| Vrácený ANZSCO kód | 261211 | 261211 |
+| Source tokens | 6,710 | 310 |
+| First output | 53.037 s | 4.138 s |
+| ANZSCO code returned | 261211 | 261211 |
 
-Tento druhý test v `source-compare/results.json` má `complete=true`. Pro prostý výpis kódu bylo v obou větvích vypnuté přemýšlení; nastavení instalované aplikace se nezměnilo. Výřez byl vybrán pomocí konkrétního dotazu. Neprokazuje, že lze celý široký výzkum nahradit jednou pasáží. Nové dlouhé podklady a první načtení historie po restartu zůstávají nákladné.
+`source-compare/results.json` records `complete=true`. Thinking was off in both branches for this simple extraction; installed settings were unchanged. A specific query selected the excerpt. This does not prove that one passage can replace broad research. New long evidence and the first history read after restart remain costly.
 
-## IQ3 proti současnému Q3
+## IQ3 versus the chosen Q3
 
-Pro tento checkpoint nabízí Unsloth `UD-IQ3_XXS` a `UD-Q3_K_XL`. Nejde o dva různé trénované modely. Publikované měření kvantizace:
+The checkpoint has Unsloth `UD-IQ3_XXS` and `UD-Q3_K_XL` variants, not two separately trained models. Published quantization analysis:
 
-| Varianta | Váhy bez projektoru | Top-1 shoda s referencí | Průměrná KLD |
+| Variant | Weights excluding projector | Top-1 agreement | Mean KLD |
 |---|---:|---:|---:|
-| UD-Q3_K_XL | 90,0 GB | 88,315 % | 0,106504 |
-| UD-IQ3_XXS | 82,0 GB | 85,414 % | 0,165120 |
+| UD-Q3_K_XL | 90.0 GB | 88.315% | 0.106504 |
+| UD-IQ3_XXS | 82.0 GB | 85.414% | 0.165120 |
 
-Top-1 shoda není procento inteligence a KLD není přímé skóre agentních úloh. Výsledek však ukazuje vyšší odchylku menšího IQ3 od referenční distribuce. Úspora přibližně 9 % vah sama o sobě nedokazuje zrychlení: rozhodují i kvantizační kernely a rozdělení expertů mezi RAM a VRAM. Vzhledem k prioritě vlastníka zachovat hloubku odpovědí zůstává doporučením současné Q3; místní rychlost ani kvalita IQ3 nebyly měřeny. [Unsloth: quantization analysis](https://unsloth.ai/docs/models/qwen3.8-next#quantization-analysis), [soubory checkpointu](https://huggingface.co/unsloth/Qwen3.8-Flash-Next-GGUF/tree/main).
+Top-1 agreement is not a percentage of intelligence, and KLD is not an agent benchmark. The smaller IQ3 deviates further from the reference distribution. Approximately 9% weight savings do not prove faster execution: kernels and expert placement matter. Given the owner's priority of answer depth, Q3 remained recommended. Local IQ3 speed/quality were not measured. [Unsloth analysis](https://unsloth.ai/docs/models/qwen3.8-next#quantization-analysis), [checkpoint files](https://huggingface.co/unsloth/Qwen3.8-Flash-Next-GGUF/tree/main).
 
-Nativní opětovné použití prefixu a formát průběhu jsou popsány v [dokumentaci přesného použitého buildu llama.cpp](https://github.com/ggml-org/llama.cpp/blob/8e330954adb6e86c329c9d7e338f01f93ffe4b88/tools/server/README.md). Přesnost ani velikost modelu nebyla kvůli opravě změněna.
+[Exact llama.cpp build documentation](https://github.com/ggml-org/llama.cpp/blob/8e330954adb6e86c329c9d7e338f01f93ffe4b88/tools/server/README.md) describes prefix reuse and progress events.
 
-## Dokončená distribuce a instalace
+## Release verification
 
-- Prošlo 366 základních kontrol a 56 servisních/runtime testů, včetně zachování prefixu, nezdvojování připnutých dokumentů, obnovení historie, nativního průběhu, STOP a čtení cílených pasáží. V nainstalovaném prostředí prošlo stejných 56 servisních testů.
-- Kompilované UI bylo skutečně otevřeno s izolovaným deterministickým modelem: zobrazilo 50 % nového vstupu a 10k tokenů z cache. STOP vrátil úlohu do stavu umožňujícího pokračování. Upravené stránky obou PDF manuálů byly vyrenderované a vizuálně ověřené (CS strana 11, EN strana 15).
-- Aktualizace skutečné instalace na 1.8.1 i příprava privátního prostředí skončily kódem 0. Při aktualizaci se všech 699 kontrolovaných souborů uživatelských dat shodovalo s předchozím stavem. Konečné instalované Python zdroje se shodují se zdroji distribuce. Zachováno je Flash-Next, xhigh a 256k Q8.
-- Nainstalovaný `Marvin.exe --smoke` spustil UI i vybraný model, poté oba správně ukončil a uvolnil VRAM; návratový kód 0.
-- Distribuční ZIP má sedm položek; jejich CRC i SHA-256 byly ověřeny. Obnova závislostí do čistého dočasného prostředí a spuštění API prošly. Nejde o ověření na čisté Windows VM.
-- Existující offline balíček byl aktualizován výměnou instalátoru, manuálů, návodů a manifestu; 73 nezměněných položek včetně vah a prostředí zůstalo se stejnou velikostí, časem změny a kontrolním součtem manifestu. Modely ani prostředí nebyly znovu kopírovány či přebalovány. Aktuální složka je `Marvin-Offline-Backup-1.8.1/` a její novou cestu zná i instalovaná aplikace.
+366 core checks and 56 service/runtime tests passed, including prefix retention, pin deduplication, history recovery, native progress, STOP and targeted excerpts. All 56 also passed in the installed environment.
 
-| Aktuální soubor v `dist/` | Bajty | SHA-256 |
+The compiled UI was opened with an isolated deterministic model, displaying 50% new-input progress and 10k cached tokens. STOP left a resumable task. Updated PDF pages were rendered and checked (CS page 11, EN page 15).
+
+The real 1.8.1 upgrade and private-environment preparation exited 0. All 699 checked user-data files matched the prior state, and installed Python sources matched distribution. Flash-Next, xhigh and 256k Q8 remained selected. Installed `Marvin.exe --smoke` started UI/model, stopped both and freed VRAM, exiting 0.
+
+All seven distribution-ZIP entries passed CRC/SHA-256. Offline dependency restoration into a clean temporary environment and API startup passed; no clean Windows VM is claimed. The offline update replaced installer/manuals/guides/manifest while 73 unchanged entries retained size, mtime and hash. Weights and environment were not repacked. The then-current folder was `Marvin-Offline-Backup-1.8.1/`, registered with the installed app.
+
+| Historical file in `dist/` | Bytes | SHA-256 |
 |---|---:|---|
-| `Marvin-Setup-1.8.1-Minimal.exe` | 52 346 422 | `c686c0b5f4dde718f986a372f38b24fa08c22b7d808335ee9888628b1006eeab` |
-| `Marvin-Setup-1.8.1-Full.exe` | 727 131 861 | `1d15613b71dd36607c6973b3a9107f86c7fcf2435840f50f5a00a00ccdbc9864` |
-| `Marvin-1.8.1-Windows-x64.zip` | 778 627 972 | `0d50e2ed009f4bb926a2de9d68fdd9034e6d8319cc73c85662f9d8e9a431eff3` |
+| `Marvin-Setup-1.8.1-Minimal.exe` | 52,346,422 | `c686c0b5f4dde718f986a372f38b24fa08c22b7d808335ee9888628b1006eeab` |
+| `Marvin-Setup-1.8.1-Full.exe` | 727,131,861 | `1d15613b71dd36607c6973b3a9107f86c7fcf2435840f50f5a00a00ccdbc9864` |
+| `Marvin-1.8.1-Windows-x64.zip` | 778,627,972 | `0d50e2ed009f4bb926a2de9d68fdd9034e6d8319cc73c85662f9d8e9a431eff3` |
 
-SHA manifestu offline balíčku: `64f9edf4dfd6bb395476aa16322dde3b45ca7c0710e68f6242259212d484b010`.
+Offline manifest SHA-256: `64f9edf4dfd6bb395476aa16322dde3b45ca7c0710e68f6242259212d484b010`.
 
-Lokální důkazy jsou sloučené v `runtime/archive/verification-1.8.1.zip` (103 souborů, ověřené CRC i SHA každého souboru, SHA archivu `4af2481d648dd995ff1853735c5e856a18a1ec6d55240f43eb2c39572e157318`). Obsahuje soukromou zálohu dat a není součástí Gitu ani distribuce. Reprodukovatelné mezivýsledky sestavení a rozbalených testů jsou označené pro ruční smazání v `runtime/KE-SMAZANI/after-1.8.1/`. Aktuální modely a aktivní závislosti zůstaly zachované.
+`runtime/archive/verification-1.8.1.zip` holds 103 files with verified per-file CRC/SHA, archive SHA `4af2481d648dd995ff1853735c5e856a18a1ec6d55240f43eb2c39572e157318`. Private backups keep it out of Git/distribution. Reproducible build/test leftovers were marked for manual removal under `runtime/KE-SMAZANI/after-1.8.1/`; active models and dependencies were retained.

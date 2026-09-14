@@ -1,7 +1,6 @@
-"""Terminálové UI pro Qwen3.8-27B harness.
+"""Terminal compatibility UI for the local harness.
 
-Spuštění:  .venv/Scripts/python tui.py
-"""
+Run with the project's Python interpreter: tui.py."""
 from __future__ import annotations
 
 import sys
@@ -11,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-# jazyk UI před module-level texty (BANNER/HELP)
+# Select the UI language before initializing module-level banner and help text.
 from harness.i18n import detect_language, set_language, t
 set_language(detect_language(ROOT) or "en")
 
@@ -58,7 +57,7 @@ class TUIApp:
         self.autonomy = self.cfg.agent.get("autonomy", "supervised")
         self.thinking = bool(self.cfg.data.get("thinking", True))
         self.reasoning_effort = self.cfg.data.get("reasoning_effort", "xhigh")
-        self.auto_approve = False  # "a" v potvrzení = schvalovat vše do konce úlohy
+        self.auto_approve = False  # Confirmation choice 'a' approves subsequent actions in this task.
         self.session: Session | None = None
         self.agent: Agent | None = None
         self.llm = LLMClient(self.cfg)
@@ -98,7 +97,7 @@ class TUIApp:
         self.session.meta["work_mode"] = self.work_mode
         self.session._save_meta()
         self._rebuild_agent()
-        # aktualizuj system prompt v session
+        # Refresh the session system prompt
         if self.session.messages and self.session.messages[0]["role"] == "system":
             self.session.messages[0]["content"] = build_system_prompt(
                 self.mode, self.cfg, getattr(self.agent, "workspace", None), self.work_mode)
@@ -167,16 +166,16 @@ class TUIApp:
                     console.print(f"\n[bold yellow]⛔ {result.text}[/bold yellow]")
                     return
                 if result.status is Status.NEEDS_CONFIRMATION:
-                    continue  # potvrzeno přes callback v run()
+                    continue  # Approved through the run() callback.
                 if result.status is Status.CONTINUE:
                     continue
-                # FINAL - text už byl streamován
+                # The final response has already been streamed.
                 console.print("\n")
         except KeyboardInterrupt:
             self.abort.set()
             console.print(f"\n[bold yellow]{t('⛔ Interrupted (Ctrl+C)')}[/bold yellow]")
-            # doruč zprávu o přerušení do session, aby model věděl kontext
-            # (user role - Qwen šablona neumí system uprostřed konverzace)
+            # Record the interruption so the model retains the conversation context.
+            # Use a user message because the template does not allow mid-conversation system messages.
             self.session.add("user", "[Interrupted by user]")
 
     # ------------------------------------------------------------------
@@ -191,7 +190,7 @@ class TUIApp:
             ok = servermgmt.ensure(self.cfg, key)
         if ok:
             self.model_key = key
-            self.cfg.data["default_model"] = key  # ctx limit sleduje model
+            self.cfg.data["default_model"] = key  # The context limit follows the selected model
             console.print("[green]" + t("✓ Model {key} is running.", key=key) + "[/green]")
             console.print(self.status_line())
         else:
@@ -222,7 +221,7 @@ class TUIApp:
                     console.print(f"[red]{t('Server failed to start - try /server start later.')}[/red]")
             console.print()
 
-        # vstup: prompt_toolkit (historie, editace), fallback na input() mimo TTY
+        # Input: prompt_toolkit for history/editing; use input() outside a TTY
         try:
             from prompt_toolkit import PromptSession
             from prompt_toolkit.history import FileHistory
@@ -245,7 +244,7 @@ class TUIApp:
             if not line:
                 continue
 
-            # slash příkazy
+            # Slash commands.
             if line.startswith("/"):
                 parts = line.split(maxsplit=2)
                 cmd = parts[0].lower()
@@ -297,7 +296,7 @@ class TUIApp:
                         if arg:
                             try:
                                 p = self.agent.set_workspace(arg)
-                                # aktualizuj system prompt v session
+                                # Refresh the session system prompt
                                 if self.session.messages and self.session.messages[0]["role"] == "system":
                                     self.session.messages[0]["content"] = build_system_prompt(
                                         self.mode, self.cfg, p, self.work_mode)
@@ -365,7 +364,7 @@ class TUIApp:
                 console.print()
                 continue
 
-            # běžná zpráva
+            # Ordinary user message.
             self.handle_turn(line)
             console.print()
 

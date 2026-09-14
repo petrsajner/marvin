@@ -1,4 +1,5 @@
-# Paměť pracovního režimu: Psaní
+# Work-mode memory: Writing
 
-<!-- Fakta, pravidla a preference platné pro psaní napříč projekty.
-     Pro zápis použij save_memory se scope="mode". Piš stručně, jeden fakt na řádek. -->
+<!-- Facts, rules and preferences for writing across projects.
+     Use save_memory with scope="mode". Keep one concise fact per line.
+     Edits become visible to the model when the next task starts. -->

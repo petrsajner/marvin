@@ -1,32 +1,28 @@
-"""Bezpečnostní vrstva - úrovně autonomie a potvrzování akcí.
+"""Action-risk classification and autonomy policies.
 
-Režimy autonomie:
-  supervised - každá WRITE akce (zápis souboru, shell, GUI) vyžaduje potvrzení
-  semi       - potvrzení jen první WRITE akce v rámci úlohy
-  auto       - bez potvrzení (+ vždy pyautogui FAILSAFE)
-"""
+Supervised mode requires confirmation for every WRITE action. Semi mode confirms the first WRITE action in a task. Auto mode runs without confirmation; the pyautogui failsafe remains enabled."""
 from __future__ import annotations
 
 from enum import Enum
 
 
 class Risk(str, Enum):
-    SAFE = "safe"      # čtení, listing, screenshot - nic nemění
-    WRITE = "write"    # mění soubory / systém / GUI
+    SAFE = "safe"      # Read, list or capture a screenshot without modifying state.
+    WRITE = "write"    # Modify files, the system or a graphical application.
 
 
 class SafetyPolicy:
     def __init__(self, autonomy: str = "supervised", max_steps: int = 0, semi_max_steps: int = 0):
         if autonomy not in ("supervised", "semi", "auto"):
-            raise ValueError(f"Neznámý režim autonomie: {autonomy}")
+            raise ValueError(f"Unknown autonomy mode: {autonomy}")
         self.autonomy = autonomy
         self.max_steps = max_steps
         self.semi_max_steps = semi_max_steps
-        self._confirmed_this_task = False  # pro semi režim
+        self._confirmed_this_task = False  # Confirmation state for semi-autonomous mode.
 
     # ------------------------------------------------------------------
     def new_task(self) -> None:
-        """Volat na začátku každé uživatelské úlohy."""
+        """Reset the policy at the start of each user task."""
         self._confirmed_this_task = False
 
     def needs_confirmation(self, risk: Risk) -> bool:

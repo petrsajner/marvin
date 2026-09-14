@@ -1,12 +1,6 @@
-"""Stažení nakonfigurovaných GGUF modelů a jejich vision projektorů.
+"""Download configured GGUF weights and multimodal projectors.
 
-Použití:
-    python scripts/download_models.py                  # default_model + mmproj
-    python scripts/download_models.py --model auto     # modely pro detekovanou GPU
-    python scripts/download_models.py --model all      # všechny modely + projektory
-    python scripts/download_models.py --models q4,q5   # konkrétní modely (install wizard)
-    python scripts/download_models.py --model ornith_q5 # jen Ornith + projektor
-"""
+Use --model auto for detected hardware, --model all for every model, --models q4,q5 for an explicit selection, or --model ornith_q5 for that model and its projector. Without arguments, use the configured default model."""
 from __future__ import annotations
 
 import argparse

@@ -1,3 +1,4 @@
+import { translate } from "../i18n";
 import { memo } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -27,7 +28,7 @@ export const Attachment = memo(
     <div className="attachment">
       <button
         className="thumbnail"
-        aria-label={(cs ? "Zvětšit " : "Enlarge ") + file.name}
+        aria-label={(translate("Enlarge ", cs ? "cs" : "en")) + file.name}
         onClick={open}
       >
         {imageFile(file) ? (
@@ -39,7 +40,7 @@ export const Attachment = memo(
       {remove && (
         <button
           className="remove"
-          aria-label={(cs ? "Odebrat " : "Remove ") + file.name}
+          aria-label={(translate("Remove ", cs ? "cs" : "en")) + file.name}
           onClick={remove}
         >
           <X />
@@ -102,7 +103,7 @@ export const ChatMessage = memo(
         <div className="message-content">
           {m.reasoning && (
             <details>
-              <summary>{cs ? "Přemýšlení" : "Thinking"}</summary>
+              <summary>{translate("Thinking", cs ? "cs" : "en")}</summary>
               <Markdown remarkPlugins={[remarkGfm]}>{m.reasoning}</Markdown>
             </details>
           )}
@@ -147,11 +148,11 @@ export const ChatMessage = memo(
               onClick={() => navigator.clipboard.writeText(m.content || "")}
             >
               <Copy />
-              {cs ? "Kopírovat" : "Copy"}
+              {translate("Copy", cs ? "cs" : "en")}
             </button>
             <button onClick={retry}>
               <RotateCw />
-              {cs ? "Znovu" : "Retry"}
+              {translate("Retry", cs ? "cs" : "en")}
             </button>
           </div>
         )}

@@ -20,7 +20,7 @@ Model weights are downloaded during setup. See the [latest release](https://gith
 ## User manuals
 
 - [English user manual (PDF)](https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Manual-EN.pdf)
-- [Český uživatelský manuál (PDF)](https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Manual-CS.pdf)
+- [Czech user manual (PDF)](https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Manual-CS.pdf)
 
 Both manuals are also installed with the application and can be opened from
 **Settings > Help and manuals**.
@@ -142,7 +142,7 @@ and harness intelligence, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## Installation (one time)
 
 For a Windows installer distribution, see the [English installation guide](docs/distribution/INSTALL-EN.md)
-or [český instalační postup](docs/distribution/INSTALL-CS.md). The release ZIP contains Setup,
+or [Czech installation guide](docs/distribution/INSTALL-CS.md). The release ZIP contains Setup,
 both PDF manuals and SHA-256 checksums. Model weights are downloaded during setup or
 restored from the separate `QwenHarness-Offline-Backup` directory; no personal data
 is included in the distribution.

@@ -1,4 +1,4 @@
-"""Správa dlouhých shell procesů s průběžným výstupem a ukončením."""
+"""Manage bounded shell processes with incremental output and termination."""
 from __future__ import annotations
 
 import collections

@@ -1,17 +1,18 @@
-"""Agent loop - jádro harnesu.
+"""Agent loop: the harness execution core.
 
-Dva způsoby použití:
-  1) TUI:  for ev in agent.run(text): ...          (potvrzování přes callback)
-  2) Web:  r = agent.step() / agent.step(approve=True|False)  (resumable pro UI tlačítka)
+Two interfaces:
+  1) TUI: for ev in agent.run(text): ... (confirmation callback)
+  2) Web: agent.step(approve=True|False) (resumable UI actions)
 
-Stavy kroku (StepResult.status):
-  FINAL               - model odpověděl, úloha hotová
-  CONTINUE            - nástroje vykonány, pokračuj dalším step()
-  NEEDS_CONFIRMATION  - čeká se na schválení akcí (pending_calls)
-  ABORTED             - přerušeno uživatelem nebo explicitním testovacím limitem
-  ERROR               - chyba (API, parsing)
-"""
+StepResult.status values:
+  FINAL: response complete, task finished.
+  CONTINUE: tools executed; call step() again.
+  NEEDS_CONFIRMATION: pending_calls await approval.
+  ABORTED: stopped by the user or an explicit test limit.
+  ERROR: API or parsing failure."""
 from __future__ import annotations
+
+from .i18n import input_pattern
 
 import enum
 import json
@@ -48,15 +49,15 @@ class Status(str, enum.Enum):
 class StepResult:
     status: Status
     text: str = ""
-    pending_calls: list = field(default_factory=list)   # tool_calls čekající na schválení
-    pending_summary: list[str] = field(default_factory=list)  # lidsky čitelný popis akcí
-    tool_trace: list = field(default_factory=list)       # [(name, args, result), ...] z tohoto kroku
+    pending_calls: list = field(default_factory=list)   # Tool calls awaiting approval.
+    pending_summary: list[str] = field(default_factory=list)  # Human-readable action descriptions.
+    tool_trace: list = field(default_factory=list)       # [(name, args, result), ...] from this step
     reasoning: str = ""
 
 
 EventCb = Callable[[str, object], None]  # text/reasoning/tool_delta/tool_start/tool_result
 
-# --- komunikační protokol (vynucený harnessem) ------------------------------
+# Communication protocol enforced by the harness.
 TASK_PROTOCOL_NOTE = (
     "[TASK PROTOCOL - follow for this task] "
     "(1) START: before any tool call, briefly confirm (1-2 sentences, user's language) "
@@ -99,18 +100,19 @@ WRITING_SUMMARY_NOTE = (
 )
 _PROTOCOL_MARKS = ("[TASK PROTOCOL", "[WRITING PROTOCOL", "[PROGRESS UPDATE",
                    "[FINAL SUMMARY", "[WRITING SUMMARY")
-TOOL_STEPS_BEFORE_UPDATE = 4   # tool-kroky bez slov k uživateli → vnutit status
-MIN_TOOLS_FOR_SUMMARY = 3      # úloha s ≥N nástroji musí skončit strukturovaným souhrnem
-COMPRESS_AT = 0.85             # auto-komprese při 85 % kontextu
+TOOL_STEPS_BEFORE_UPDATE = 4   # Request an update after this many tool steps without user-facing text.
+MIN_TOOLS_FOR_SUMMARY = 3      # Tasks using at least this many tools require a structured summary.
+COMPRESS_AT = 0.85             # Compress automatically at 85 percent of the context limit.
 OVERFLOW_RE = re.compile(
     r"exceeds.{0,40}context|context.{0,40}(exceed|full|too (large|long))|"
     r"prompt is too long|maximum context",
     re.IGNORECASE,
 )
+_LOCAL_DOCUMENT_PATTERN = input_pattern("document_operation_pattern")
 DOCUMENT_OPERATION_RE = re.compile(
-    r"(?:ulož|ulozit|uložit|export|vyexport|save|vytvoř|vytvor).{0,80}"
-    r"(?:pdf|docx|markdown|soubor)|"
-    r"(?:pdf|docx|markdown).{0,80}(?:ulož|ulozit|uložit|export|vyexport|save|vytvoř|vytvor)",
+    r"(?:save|export|create).{0,80}(?:pdf|docx|markdown|file)|"
+    r"(?:pdf|docx|markdown).{0,80}(?:save|export|create)"
+    + ("|" + _LOCAL_DOCUMENT_PATTERN if _LOCAL_DOCUMENT_PATTERN else ""),
     re.IGNORECASE,
 )
 COMPLETION_REVIEW_NOTE = (
@@ -177,7 +179,7 @@ class Agent:
         restored_paths = self.ctx.task_plan.load().get("active_paths") or []
         self._active_context_paths: list[Path] = [Path(path) for path in restored_paths]
         self._steps = 0
-        self._pending: list[dict] = []          # tool_calls čekající na potvrzení
+        self._pending: list[dict] = []          # Tool calls awaiting confirmation.
         self._pending_text = ""
         self._tools_used_this_task = 0
         self._tool_steps_since_update = 0
@@ -199,7 +201,7 @@ class Agent:
 
     def set_mode(self, mode: str) -> None:
         if mode not in ("chat", "agent", "computer"):
-            raise ValueError(f"Neznámý režim: {mode}")
+            raise ValueError(f"Unknown mode: {mode}")
         self.mode = mode
         self.work_mode = normalize_work_mode(None, mode)
         self.ctx.work_mode = self.work_mode
@@ -210,17 +212,15 @@ class Agent:
         self.ctx.work_mode = self.work_mode
 
     def set_workspace(self, path: str | Path) -> Path:
-        """Nastaví pracovní adresář (workspace) pro nástroje.
+        """Set the tools' working directory.
 
-        Pokud je zadán soubor, použije jeho nadřazený adresář.
-        Vrací absolutní cestu; při neexistující cestě vyhodí ValueError.
-        """
+        For a file path, use its parent directory. Return the absolute path; raise ValueError if it does not exist."""
         p = Path(str(path).strip().strip('"').strip("'")).expanduser()
         p = p.resolve()
         if p.is_file():
             p = p.parent
         if not p.is_dir():
-            raise ValueError(f"Adresář neexistuje: {p}")
+            raise ValueError(f"Directory does not exist: {p}")
         self.ctx.workspace = p
         self.ctx.project_workspace = p
         self.ctx.changes.set_workspace(p)
@@ -245,11 +245,9 @@ class Agent:
 
     # ------------------------------------------------------------------
     def refresh_system_prompt(self) -> None:
-        """Občerstvi system prompt (režim + workspace + trvalá paměť).
+        """Refresh the system prompt with the work mode, workspace and persistent memory.
 
-        Volá se na začátku úlohy a po kompresi - model si tak vždy "přečte"
-        aktuální globální i projektovou paměť.
-        """
+        Called when a task starts and after compression so the model receives current global and project memory."""
         from harness.prompts import build_system_prompt
         if self.session.messages and self.session.messages[0]["role"] == "system":
             prompt = build_system_prompt(
@@ -334,7 +332,7 @@ class Agent:
         return {"messages": messages, "dynamic": dynamic, "tool_schemas": schemas}
 
     def new_task(self, text: str, images: list[Path] | None = None) -> None:
-        """Zaloguje uživatelský vstup a resetuje počítadla."""
+        """Record user input and reset task counters."""
         self.abort_flag.clear()
         self.ctx._web_pages = {}
         self._steps = 0
@@ -353,14 +351,14 @@ class Agent:
         if self.work_mode == "research" and not DOCUMENT_OPERATION_RE.search(text):
             self.ctx.research.begin(text)
         self._save_task_state("running", label=text)
-        # 🧠 paměť do system promptu (start úlohy)
+        # Inject persistent memory into the system prompt at task start.
         self.refresh_system_prompt()
         if self.tools_enabled:
             note = WRITING_PROTOCOL_NOTE if self.work_mode == "writing" else TASK_PROTOCOL_NOTE
             self.session.add("user", note)
 
     def resume_task(self, label: str) -> None:
-        """Resetuje agentní stav nad již existující poslední user zprávou (retry/fork)."""
+        """Reset agent state over the existing last user message for retry or fork."""
         self.abort_flag.clear()
         self._steps = 0
         self._pending = []
@@ -413,20 +411,20 @@ class Agent:
 
     def _check_abort(self) -> StepResult | None:
         if self.abort_flag.is_set():
-            self._save_task_state("aborted", result="Přerušeno uživatelem.")
-            return StepResult(Status.ABORTED, text="Přerušeno uživatelem.")
+            self._save_task_state("aborted", result="Interrupted by the user.")
+            return StepResult(Status.ABORTED, text="Interrupted by the user.")
         limit = self.safety.step_limit()
         if limit is not None and self._steps >= limit:
-            self._save_task_state("aborted", result="Dosažen limit kroků agenta.")
+            self._save_task_state("aborted", result="Agent step limit reached.")
             return StepResult(Status.ABORTED,
-                              text=f"Dosažen limit {limit} kroků agenta. "
-                                   f"Zvyš limit (/autonomy, config agent.max_steps) nebo zadej úkol znovu.")
+                              text=f"Agent limit of {limit} steps reached. "
+                                   f"Increase the limit (/autonomy, config agent.max_steps) or submit the task again.")
         return None
 
     # ------------------------------------------------------------------
     def _execute_calls(self, calls: list[dict], assistant_text: str = "", reasoning: str = "") -> list[tuple]:
-        """Vykoná tool calls a přidá výsledky do session. Vrátí trace."""
-        # asistentova zpráva s tool_calls (přesně jak ji vrátil model)
+        """Execute tool calls, append their results to the session and return the trace."""
+        # Preserve the assistant tool-call message exactly as returned by the model.
         self.session.add("assistant", assistant_text, tool_calls=calls, reasoning=reasoning)
         prepared = []
         for call in calls:
@@ -480,7 +478,7 @@ class Agent:
             if name in {"write_file", "apply_patch", "move_file", "delete_file", "make_directory", "run_command"}:
                 from harness.file_index import invalidate_project_files
                 invalidate_project_files(self.ctx.workspace)
-        # obrázky vytvořené nástroji (screenshot, view_image) přilož jako user zprávu
+        # Attach images produced by screenshot/view_image tools as a user message.
         if self.ctx.pending_images:
             imgs = list(self.ctx.pending_images)
             self.ctx.pending_images.clear()
@@ -504,10 +502,9 @@ class Agent:
 
     # ------------------------------------------------------------------
     def step(self, approve: bool | None = None) -> StepResult:
-        """Jeden krok agenta (jedno LLM volání + vykonání nástrojů).
+        """Run one agent step: one model call followed by tool execution.
 
-        Neočekávané výjimky zachytí a vrátí jako Status.ERROR (nikdy nevyhazuje).
-        """
+        Catch unexpected exceptions and return Status.ERROR instead of raising them."""
         try:
             return self._step(approve)
         except KeyboardInterrupt:
@@ -529,16 +526,14 @@ class Agent:
             return 32768
 
     def _maybe_compress(self, force: bool = False) -> None:
-        """Auto-komprese kontextu při COMPRESS_AT % limitu (nebo vynuceně po přetečení).
+        """Compress at COMPRESS_AT of the context limit, or after an overflow.
 
-        Ne-destruktivní: historie zůstává pro UI, model vidí souhrn + poslední zprávy.
-        Fallback při selhání sumarizace: posun cutu (hard trim) na 50 % limitu.
-        """
+        The full history remains available to the UI; the model receives a summary and recent messages. If summarization fails, trim the model view toward half the context budget."""
         limit = self._ctx_limit()
         est = self.estimate_context_tokens()
         if not force and est < int(limit * COMPRESS_AT):
             return
-        self.emit("info", f"📦 Kontext ~{est} tok (>85 % z {limit}) - vytvářím souhrn starší konverzace ...")
+        self.emit("info", f"📦 Context ~{est} tokens (>85% of {limit}) - summarizing the earlier conversation ...")
         try:
             from harness.context import summarize_messages
             keep_tokens = int(limit * 0.35)
@@ -547,12 +542,12 @@ class Agent:
                 self.session.trim_to_budget(int(limit * 0.5))
                 new_est = self.estimate_context_tokens()
                 self.refresh_system_prompt()
-                self.emit("info", f"📦 Kontext oříznut: ~{est} → ~{new_est} tokenů")
+                self.emit("info", f"📦 Context trimmed: ~{est} → ~{new_est} tokens")
                 return
             start = self.session.compression["cut"] if self.session.compression else (
                 1 if self.session.messages and self.session.messages[0].get("role") == "system" else 0
             )
-            # Sumarizuj přesně rozsah, který po posunu cutu zmizí z modelova pohledu.
+            # Summarize exactly the range removed from the model view by the new cut.
             if self.session.compression:
                 to_summarize = ([{"role": "user",
                                   "content": "Previous compression summary:\n" + self.session.compression["summary"]}]
@@ -565,17 +560,17 @@ class Agent:
             if not ok:
                 self.session.trim_to_budget(int(limit * 0.5))
             new_est = self.estimate_context_tokens()
-            # 🧠 po kompresi si model znovu "přečte" aktuální paměť
+            # Refresh current persistent memory after compression.
             self.refresh_system_prompt()
-            self.emit("info", f"📦 Kontext komprimován: ~{est} → ~{new_est} tokenů (historie v UI zůstává)")
+            self.emit("info", f"📦 Context compressed: ~{est} → ~{new_est} tokens (the UI retains the full history)")
         except Exception as e:
             if self.abort_flag.is_set():
                 return
             self.session.trim_to_budget(int(limit * 0.5))
-            self.emit("info", f"📦 Sumarizace selhala ({type(e).__name__}: {e}) - aplikován tvrdý trim")
+            self.emit("info", f"📦 Summarization failed ({type(e).__name__}: {e}) - applied a hard trim")
 
     def _step(self, approve: bool | None = None) -> StepResult:
-        # 1) čekající potvrzení
+        # 1) Pending confirmations.
         if self._pending:
             if approve is None:
                 self._save_task_state("waiting_confirmation", pending_calls=self._pending)
@@ -594,7 +589,7 @@ class Agent:
                                              "ask the user or propose an alternative.",
                                      tool_call_id=c["id"], name=c["function"]["name"])
                 self._save_task_state("running")
-                return StepResult(Status.CONTINUE, text="Akce zamítnuta uživatelem.")
+                return StepResult(Status.CONTINUE, text="The user declined the action.")
             calls = self._pending
             self._pending = []
             pending_text = self._pending_text
@@ -604,12 +599,12 @@ class Agent:
             self._save_task_state("running")
             return StepResult(Status.CONTINUE, tool_trace=trace)
 
-        # 2) abort / limit kontrola
+        # 2) Check cancellation and step limits.
         stop = self._check_abort()
         if stop:
             return stop
 
-        # 2b) auto-komprese kontextu (příliš dlouhá konverzace)
+        # 2b) Compress an oversized conversation.
         self._maybe_compress()
         stop = self._check_abort()
         if stop:
@@ -618,7 +613,7 @@ class Agent:
         if self.work_mode == "research":
             run = self.ctx.research.current()
             if run and not run.get("plan"):
-                self.emit("info", "Připravuji plán výzkumu před hledáním...")
+                self.emit("info", "Preparing the research plan before searching...")
                 try:
                     plan = plan_research(
                         self.llm, run.get("question", ""),
@@ -629,13 +624,13 @@ class Agent:
                         "user", "[RESEARCH PLAN - internal, follow systematically]\n"
                         + json.dumps(plan, ensure_ascii=False, indent=2))
                 except GenerationStopped:
-                    self._save_task_state("aborted", result="Zastaveno uživatelem.")
-                    return StepResult(Status.ABORTED, text="Zastaveno uživatelem.")
+                    self._save_task_state("aborted", result="Stopped by the user.")
+                    return StepResult(Status.ABORTED, text="Stopped by the user.")
                 except Exception as exc:
                     self._save_task_state("error", result=f"Research planning failed: {exc}")
-                    return StepResult(Status.ERROR, text=f"Plán výzkumu selhal: {exc}")
+                    return StepResult(Status.ERROR, text=f"Research planning failed: {exc}")
 
-        # 3) LLM volání (memory nástroje má i chat režim)
+        # 3) Model call; discussion mode also has memory tools.
         tools = self.registry.schemas() if self.registry.names() else None
         try:
             res = self.llm.stream(
@@ -650,15 +645,15 @@ class Agent:
         except KeyboardInterrupt:
             raise
         except Exception as e:
-            # 🔄 PŘETEČENÍ KONTEXTU: komprimuj hned a zkus znovu (1× za úlohu)
+            # Context overflow: compress immediately and retry once per task.
             if not self._overflow_retried and OVERFLOW_RE.search(str(e)):
                 self._overflow_retried = True
-                self.emit("info", "⚡ Přetečení kontextu - komprimuji a zkouším znovu ...")
+                self.emit("info", "Context overflow: compressing and retrying...")
                 self._maybe_compress(force=True)
                 return StepResult(Status.CONTINUE,
-                                  text="Kontext přetekl - byl komprimován, zkouším pokračovat.")
-            self._save_task_state("error", result=f"LLM chyba: {type(e).__name__}: {e}")
-            return StepResult(Status.ERROR, text=f"LLM chyba: {type(e).__name__}: {e}")
+                                  text="The context was compressed after an overflow; continuing the task.")
+            self._save_task_state("error", result=f"LLM error: {type(e).__name__}: {e}")
+            return StepResult(Status.ERROR, text=f"LLM error: {type(e).__name__}: {e}")
 
         self._steps += 1
 
@@ -670,8 +665,8 @@ class Agent:
         if res.stopped:
             if (res.content or "").strip():
                 self.session.add("assistant", res.content, reasoning=res.reasoning)
-            self._save_task_state("aborted", result="Zastaveno uživatelem.")
-            return StepResult(Status.ABORTED, text="Zastaveno uživatelem.",
+            self._save_task_state("aborted", result="Stopped by the user.")
+            return StepResult(Status.ABORTED, text="Stopped by the user.",
                               reasoning=res.reasoning)
 
         # 4) tool calls?
@@ -696,7 +691,7 @@ class Agent:
                 if tool is None:
                     risky.append(c)
                     continue
-                # dynamická klasifikace rizika (např. read-only shell příkazy)
+                # Classify risk dynamically, including read-only shell commands.
                 risk = tool.risk
                 risk_for = getattr(tool, "risk_for", None)
                 if risk_for is not None:
@@ -719,7 +714,7 @@ class Agent:
             trace = self._execute_calls(res.tool_calls, res.content or "", reasoning=res.reasoning)
             if loop_warning:
                 self.session.add("user", loop_warning)
-            # 📢 progress nudge: dlouhá série kroků bez slov k uživateli
+            # Request a progress update after a long sequence of silent tool steps.
             self._tools_used_this_task += len(trace)
             self._tool_steps_since_update += 1
             if self._tool_steps_since_update >= TOOL_STEPS_BEFORE_UPDATE:
@@ -729,13 +724,13 @@ class Agent:
             return StepResult(Status.CONTINUE, text=res.content, tool_trace=trace,
                               reasoning=res.reasoning)
 
-        # 5) finální odpověď (+ 📋 vynucení strukturovaného souhrnu)
+        # 5) Final response and structured-summary enforcement.
         if self.work_mode == "research":
             run = self.ctx.research.current()
             if run and run.get("status") == "collecting" and run.get("sources"):
                 if (res.content or "").strip():
                     self.session.add("assistant", res.content, reasoning=res.reasoning)
-                self.emit("info", "Sestavuji závěrečnou syntézu ze všech načtených zdrojů...")
+                self.emit("info", "Preparing the final synthesis from all loaded sources...")
                 try:
                     res.content = synthesize_research(
                         self.llm, run, should_stop=self.abort_flag.is_set,
@@ -746,13 +741,13 @@ class Agent:
                 except GenerationStopped as exc:
                     if exc.text:
                         self.session.add("assistant", exc.text)
-                    self._save_task_state("aborted", result="Zastaveno uživatelem.")
-                    return StepResult(Status.ABORTED, text="Zastaveno uživatelem.")
+                    self._save_task_state("aborted", result="Stopped by the user.")
+                    return StepResult(Status.ABORTED, text="Stopped by the user.")
                 except Exception as exc:
                     self._save_task_state("error", result=str(exc))
                     return StepResult(
                         Status.ERROR,
-                        text=f"Výzkumná syntéza selhala: {type(exc).__name__}: {exc}",
+                        text=f"Research synthesis failed: {type(exc).__name__}: {exc}",
                     )
         if (self.tools_enabled
                 and self.work_mode == "development"
@@ -806,7 +801,7 @@ class Agent:
     def run(self, text: str, images: list[Path] | None = None,
             confirm_cb: Callable[[list[str]], bool] | None = None,
             max_rounds: int | None = None) -> Generator[StepResult, None, None]:
-        """TUI convenience: celá úloha, potvrzování přes confirm_cb."""
+        """TUI convenience iterator for an entire task, using confirm_cb for approvals."""
         self.new_task(text, images)
         rounds = 0
         while max_rounds is None or rounds < max_rounds:
@@ -814,7 +809,7 @@ class Agent:
             result = self.step()
             if result.status is Status.NEEDS_CONFIRMATION:
                 if confirm_cb is None:
-                    approved = True  # bez callbacku neschvaluj nic destruktivního
+                    approved = True  # Do not approve destructive actions without a confirmation callback.
                 else:
                     approved = confirm_cb(result.pending_summary)
                 result = self.step(approve=approved)
@@ -826,24 +821,21 @@ class Agent:
 
 
 def build_registry(mode: str, work_mode: str | None = None) -> ToolRegistry:
-    """Postav registry podle jednotného pracovního režimu.
+    """Build the tool registry for the selected work mode.
 
-    Disk (čtení i zápis souborů) a prohlížení obrázků mají VŠECHNY režimy -
-    výzkum/diskuze potřebují číst zdroje a ukládat výsledky na disk.
-    Coding navíc (repo přehled, Git, shell) jen Vývoj a Počítač.
-    """
+    Every mode can read/write files and view images: research and discussion also need sources and saved results. Repository, Git and shell tools are limited to Development and Computer modes."""
     from harness.tools import browser, code, computer, context, documents, fs, git, history, memory, search, shell, skills, task, vision, web
     selected = normalize_work_mode(work_mode, mode)
     reg = ToolRegistry()
-    memory.register_memory_tools(reg)  # chat má alespoň paměť
+    memory.register_memory_tools(reg)  # Discussion mode includes memory tools.
     history.register_history_tools(reg)
-    web.register_web_tools(reg)        # internet: web_search + web_fetch (všude)
-    search.register_search_tools(reg)  # FTS5 fulltext: search_project (všude)
+    web.register_web_tools(reg)        # Web search and fetching are available in every mode.
+    search.register_search_tools(reg)  # FTS5 project search is available in every mode.
     context.register_context_tools(reg)
     skills.register_skill_tools(reg)
     documents.register_document_tools(reg)
-    fs.register_fs_tools(reg)          # disk: čtení/zápis souborů (všude)
-    vision.register_vision_tools(reg)  # view_image (všude)
+    fs.register_fs_tools(reg)          # File reading and writing are available in every mode.
+    vision.register_vision_tools(reg)  # Image viewing is available in every mode.
     if selected in ("discussion", "research", "writing"):
         if selected == "writing":
             task.register_task_tools(reg)

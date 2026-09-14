@@ -1,4 +1,4 @@
-"""Strukturované Git nástroje pro coding agenta."""
+"""Structured Git tools for development tasks."""
 from __future__ import annotations
 
 import json
