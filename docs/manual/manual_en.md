@@ -188,12 +188,12 @@ Thinking depth also stays beside the prompt because it can change between questi
 
 | Model | Typical role | Weight quantization | KV choices | Practical profiles |
 |---|---|---|---|---|
-| Qwen 3.8 27B Q5 | Main high-quality model | Q5 | F16 or Q8 | F16 96k; Q8 192k |
+| Qwen 3.8 27B Q5 | Main high-quality model | Q5 | F16 or Q8 | F16 96k; Q8 192k; compact Q8 64k for 24 GB |
 | Qwen 3.8 27B Q4 | Faster and largest-context option | Q4 | F16 or Q8 | F16 128k; Q8 256k |
 | Qwen 3.8 27B IQ3_S | Smaller GPUs, with a quality tradeoff | IQ3_S | F16 or Q8 | GPU-dependent Q8 profiles from 32k to 256k |
 | Ornith 1.5 35B-A3B Abliterated Q5 | Very fast optional reasoning MoE | Q5 | Q8 fixed | Q8 128k |
 | Nemotron 3.5 Lightning Q4 | Fast text-only MoE | Q4_K_XL | Q8 | 128k, 256k, 512k; also profiles using system RAM |
-| Nemotron 3.5 Lightning Q5 | Text-only MoE with higher weight precision | Q5_K_XL | Q8 | 32k, 64k, 128k; 256k using system RAM |
+| Nemotron 3.5 Lightning Q5 | Text-only MoE with higher weight precision | Q5_K_XL | Q8 | 128k or 256k on GPU; 256k or 512k using system RAM |
 | Qwen 3.8 Flash-Next Q3 | Large model using GPU and system RAM automatically, with vision | Q3_K_XL | Q8 | 128k, 192k, 256k; requests 256k by default |
 
 The default new-installation profile is Qwen Q5 with Q8 KV and a 192k context. The application remembers the last selected model and each model's KV choice.
@@ -201,15 +201,23 @@ The default new-installation profile is Qwen Q5 with Q8 KV and a 192k context. T
 
 Nemotron is text-only. Qwen, Ornith, and Flash-Next use their own image support. The model list reports file availability; Flash-Next requires every shard and its projector. Qwen also offers compact profiles for smaller cards. The table does not promise that every combination will run on every PC; the selected model's settings show its exact profile choices.
 
+## GPU memory budget and automatic recovery
+
+Normally leave **Settings > Model and device > GPU memory budget** on **Automatic detection**. A manual value limits the memory Marvin may use; it cannot increase the physical card's capacity. Change it when no task is running. Marvin releases the previous model, selects a compatible profile, and restarts the model when required. It remembers the successful model and context for each budget, so returning to Automatic restores that configuration. If a change fails, it attempts to restore the previous working model and settings.
+
+The compact choices include **Qwen IQ3_S / Q8 / 32k for 16 GB** and **Qwen Q5 / Q8 / 64k for 24 GB**. Both retain images, with image processing moved to the CPU to leave more graphics memory available. Images may therefore take longer to process. These capacity limits were tested on an RTX 5090; they do not establish the speed of a physical 16 GB or 24 GB card. The old IQ3 48k profile requires at least 17 GB, and Q5 F16/96k requires at least 27 GB.
+
+If RAM or GPU memory pressure interrupts a task, Marvin attempts a smaller supported profile and continues with the existing history and completed tool results. It does not blindly repeat actions whose outcome is unknown. Stop remains available. If no smaller usable profile remains, the task pauses with a memory explanation; select another model and use **Continue**.
+
 ## Flash-Next settings and realistic waiting times
 
 Flash-Next downloads approximately **90.9 GB** across four files. Subsequent starts use the local copy, and changing KV does not download the weights again. Preparation shows downloading, file verification, and model loading separately. Transfer progress includes percentage and data size.
 
 The default request is **256k Q8**. Marvin uses currently available RAM and VRAM to choose 256k, 192k, or 128k, sets CPU threads and weight placement, and displays the actual profile. It never assigns less than 128k to this model. If memory is insufficient, it explains the problem and attempts to restore the previous working model after a failed switch.
 
-On an RTX 5090 / 64 GB RAM / Core Ultra 7 265K, we measured approximately **27 generated tokens per second**. Processing a new input of 122,397 tokens took **17 minutes 34 seconds**. The following question reused the context and took **1.27 seconds**. Generation speed therefore does not tell you how long a large new document will take to read.
+On an RTX 5090 / 64 GB RAM / Core Ultra 7 265K, short runs measured approximately **27 generated tokens per second**. A later test using varied repository text processed 98,124 prompt tokens in approximately **23 minutes 52 seconds**. The follow-up reused 98,148 cached tokens and returned in **1.38 seconds**. Generation speed therefore does not tell you how long a large new document will take to read; input content and occupied context also affect performance.
 
-The 128k profile passed that long-input test. The 256k profile passed tool, image, agent, and 24k-input tests, but its entire window was not filled. This variant has not yet been measured on physical 16 GB and 24 GB cards. Smaller VRAM requires more free system RAM; installed RAM alone is not enough to predict whether it fits.
+The 128k profile passed that long-input test. The 256k profile previously passed tool, image, agent, and 24k-input tests, but its entire window was not filled. This variant has not yet been measured on physical 16 GB and 24 GB cards. Smaller VRAM requires more free system RAM: representative estimates are about **52 GiB free RAM at 24 GB VRAM** and **60 GiB free RAM at 16 GB VRAM**. These are free-memory requirements, not installed-RAM specifications. A computer with 64 GB installed RAM may therefore be unable to run these profiles. Automatic recovery never reduces Flash-Next below 128k or changes its Q3 weights.
 
 Profile names 128k/192k/256k refer to 131,072 / 196,608 / 262,144 tokens. The numeric indicator may round the same capacity to a value such as 262k.
 

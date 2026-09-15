@@ -2105,13 +2105,14 @@ def test_communication_protocol() -> None:
 def test_user_manuals() -> None:
     print("[user manuals]")
     from pypdf import PdfReader
+    from harness.version import APP_VERSION
 
     expected = {
         "Marvin-Manual-EN.pdf": (
-            15, ("1.8.0", "Flash-Next", "Python 3.12", "Installing from the offline backup", "Work Modes",
+            15, (APP_VERSION, "Flash-Next", "Python 3.12", "Installing from the offline backup", "Work Modes",
                  "User-Facing Tool Reference", "Troubleshooting")),
         "Marvin-Manual-CS.pdf": (
-            10, ("1.8.0", "Flash-Next", "Python 3.12", *locale_data("manual_headings"))),
+            10, (APP_VERSION, "Flash-Next", "Python 3.12", *locale_data("manual_headings"))),
     }
     for filename, (minimum_pages, required_text) in expected.items():
         # Manuals live under output/pdf in development and docs in an installed copy.

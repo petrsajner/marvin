@@ -179,12 +179,12 @@ Myšlení zůstává také u promptu, protože ho můžete měnit mezi otázkami
 
 | Model | Typické použití | Kvantizace | KV | Praktické profily |
 |---|---|---|---|---|
-| Qwen 3.8 27B Q5 | Hlavní kvalitní model | Q5 | F16/Q8 | F16 96k; Q8 192k |
+| Qwen 3.8 27B Q5 | Hlavní kvalitní model | Q5 | F16/Q8 | F16 96k; Q8 192k; kompaktní Q8 64k pro 24 GB |
 | Qwen 3.8 27B Q4 | Rychlost a největší kontext | Q4 | F16/Q8 | F16 128k; Q8 256k |
 | Qwen 3.8 27B IQ3_S | Menší grafické karty, kompromis v kvalitě | IQ3_S | F16/Q8 | Podle GPU: Q8 32k až 256k |
 | Ornith 1.5 35B-A3B Abliterated Q5 | Velmi rychlý volitelný MoE | Q5 | Q8 | 128k |
 | Nemotron 3.5 Lightning Q4 | Rychlý textový MoE | Q4_K_XL | Q8 | 128k, 256k, 512k; také profily s využitím RAM |
-| Nemotron 3.5 Lightning Q5 | Textový MoE s vyšší kvantizací vah | Q5_K_XL | Q8 | 32k, 64k, 128k; 256k s využitím RAM |
+| Nemotron 3.5 Lightning Q5 | Textový MoE s vyšší kvantizací vah | Q5_K_XL | Q8 | 128k nebo 256k na GPU; 256k nebo 512k s využitím RAM |
 | Qwen 3.8 Flash-Next Q3 | Velký model s automatickým využitím GPU a RAM, včetně vision | Q3_K_XL | Q8 | 128k, 192k, 256k; výchozí požadavek 256k |
 
 Výchozí profil nové instalace je Qwen Q5/Q8/192k. Aplikace si pamatuje poslední model a KV volbu každého modelu.
@@ -194,15 +194,23 @@ Q5 používejte pro náročný vývoj, architekturu a finální kvalitu. Q4 je v
 
 Nemotron je pouze textový. Qwen, Ornith a Flash-Next mají vlastní podporu obrazových vstupů. Nabídka modelů ukazuje dostupnost souborů; u Flash-Next musí být kompletní všechny shardy i projektor. Podle karty jsou u Qwenu dostupné také kompaktní profily. Tabulka není příslibem, že každá kombinace poběží na každém počítači; přesný výběr najdete u zvoleného modelu v nastavení.
 
+## Limit paměti GPU a automatická obnova
+
+Pro běžnou práci ponechte **Nastavení > Model a zařízení > Limit paměti GPU** na **Automatická detekce**. Ruční hodnota omezuje paměť dostupnou Marvinovi; nezvětší skutečnou kapacitu karty. Měňte ji, když neběží úloha. Marvin uvolní předchozí model, vybere vhodný profil a podle potřeby model restartuje. Úspěšný model a kontext si pamatuje pro každý limit, takže návrat k automatické detekci obnoví její nastavení. Pokud změna selže, pokusí se vrátit předchozí funkční model i nastavení.
+
+Kompaktní volby zahrnují **Qwen IQ3_S / Q8 / 32k pro 16 GB** a **Qwen Q5 / Q8 / 64k pro 24 GB**. Obě zachovávají obrázky; jejich zpracování přesouvají na CPU, aby zbyla větší rezerva v grafické paměti. Zpracování obrázků proto může být pomalejší. Tyto paměťové limity byly ověřeny na RTX 5090 a neurčují rychlost skutečné 16GB nebo 24GB karty. Původní profil IQ3 s 48k vyžaduje alespoň 17 GB a Q5 F16/96k alespoň 27 GB.
+
+Pokud nedostatek RAM nebo grafické paměti přeruší úlohu, Marvin se pokusí použít menší podporovaný profil a pokračovat se zachovanou historií a výsledky dokončených nástrojů. Akce s neznámým výsledkem neopakuje naslepo. Stop zůstává dostupný. Pokud už žádný menší použitelný profil nezbývá, úloha se zastaví s vysvětlením nedostatku paměti; můžete vybrat jiný model a použít **Pokračovat**.
+
 ## Flash-Next: nastavení a reálné čekání
 
 Flash-Next stáhne přibližně **90,9 GB** ve čtyřech souborech. Po prvním stažení se používá místní kopie. Změna KV profilu model znovu nestahuje. Během přípravy uvidíte zvlášť stahování, kontrolu souborů a načítání; přenos ukazuje procenta a objem dat.
 
 Výchozí požadavek je **256k Q8**. Aplikace podle aktuálně volné RAM a VRAM vybere 256k, 192k nebo 128k, nastaví CPU a rozdělení vah a zobrazí skutečně použitý profil. Pod 128k tento model nenastavuje. Když paměť nestačí, vysvětlí problém a při neúspěšném přepnutí se pokusí obnovit předchozí funkční model.
 
-Na RTX 5090 / 64 GB RAM / Core Ultra 7 265K jsme naměřili přibližně **27 generovaných tokenů za sekundu**. Úplné zpracování nového vstupu o 122 397 tokenech trvalo **17 minut 34 sekund**. Následující otázka využila uložený kontext a odpověď trvala **1,27 sekundy**. Rychlost psaní odpovědi proto neříká, jak dlouho potrvá načíst rozsáhlý nový dokument.
+Na RTX 5090 / 64 GB RAM / Core Ultra 7 265K krátké běhy dosahovaly přibližně **27 generovaných tokenů za sekundu**. Pozdější test s různorodým textem repozitáře zpracoval 98 124 vstupních tokenů přibližně za **23 minut 52 sekund**. Navazující otázka využila 98 148 tokenů z cache a odpověď trvala **1,38 sekundy**. Rychlost psaní odpovědi proto neříká, jak dlouho potrvá načíst rozsáhlý nový dokument; záleží také na obsahu vstupu a zaplněném kontextu.
 
-128k profil prošel tímto dlouhým testem. 256k prošel testy nástrojů, obrázků, agentní úlohy a vstupu o 24 tisících tokenech; celé 256k okno nebylo naplněno. Na fyzických 16GB a 24GB kartách tato varianta zatím změřená není. Menší VRAM vyžaduje více volné systémové RAM; samotný údaj o celkové RAM nestačí.
+128k profil prošel tímto dlouhým testem. 256k dříve prošel testy nástrojů, obrázků, agentní úlohy a vstupu o 24 tisících tokenech; celé 256k okno nebylo naplněno. Na fyzických 16GB a 24GB kartách tato varianta zatím změřená není. Menší VRAM vyžaduje více volné systémové RAM: orientační odhad je přibližně **52 GiB volné RAM při 24 GB VRAM** a **60 GiB volné RAM při 16 GB VRAM**. Jde o volnou paměť, nikoli celkovou instalovanou kapacitu. Počítač s 64 GB RAM proto tyto profily nemusí zvládnout. Automatická obnova nikdy nesníží Flash-Next pod 128k ani nezmění jeho Q3 váhy.
 
 Profily používají tradiční označení 128k/192k/256k pro 131 072 / 196 608 / 262 144 tokenů. Číselný ukazatel může tutéž kapacitu zaokrouhlit například na 262k.
 

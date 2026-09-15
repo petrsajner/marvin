@@ -111,7 +111,7 @@ def _runtime_sources(root: Path) -> list[tuple[Path, Path, str]]:
 
 def _write_readme(path: Path) -> None:
     path.write_text(
-        "QWEN HARNESS OFFLINE BACKUP\n"
+        "MARVIN OFFLINE BACKUP\n"
         "===========================\n\n"
         "This folder contains local model files, vision projectors, llama.cpp/CUDA\n"
         "runtime files, and a snapshot of the already installed Python packages.\n"

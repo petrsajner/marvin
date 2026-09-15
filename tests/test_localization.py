@@ -1,5 +1,6 @@
 """Localization boundaries, compatibility, safe startup and package coverage."""
 import json
+import copy
 from pathlib import Path
 import re
 import runpy
@@ -11,7 +12,7 @@ from unittest.mock import patch
 
 from harness import i18n
 from harness.agent import DOCUMENT_OPERATION_RE
-from harness.config import load_config
+from harness.config import Config, DEFAULTS
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCALIZED_DOCS = {"docs/manual/manual_cs.md", "docs/distribution/INSTALL-CS.md"}
@@ -74,7 +75,7 @@ class LocalizationTests(unittest.TestCase):
         self.assertTrue(i18n.locale_data("legacy_memory_heading", ""))
 
     def test_every_builtin_profile_has_an_english_label_and_external_translation(self):
-        cfg = load_config()
+        cfg = Config(copy.deepcopy(DEFAULTS))
         for model in cfg.data["models"]:
             for profile in cfg.kv_cache_profiles(model).values():
                 label = profile["label"]
@@ -90,6 +91,7 @@ class LocalizationTests(unittest.TestCase):
             with self.subTest(message=original):
                 self.assertEqual(fields(original), fields(translated))
 
+    @unittest.skipUnless((ROOT / "frontend/src").is_dir(), "Frontend source is not shipped in installed copies")
     def test_frontend_literal_translation_keys_are_in_the_catalog(self):
         pattern = re.compile(r'\b(?:tr|translate)\(\s*("(?:[^"\\]|\\.)*")')
         for path in (ROOT / "frontend/src").rglob("*"):
@@ -98,6 +100,7 @@ class LocalizationTests(unittest.TestCase):
             for literal in pattern.findall(path.read_text(encoding="utf-8")):
                 self.assertIn(json.loads(literal), i18n._CS, str(path.relative_to(ROOT)))
 
+    @unittest.skipUnless((ROOT / "installer/marvin.iss").is_file(), "Build manifests are not shipped in installed copies")
     def test_packaging_includes_catalog_and_installer_resources(self):
         setup = (ROOT / "installer/marvin.iss").read_text(encoding="utf-8")
         self.assertIn(r'harness\locales\*.json', setup)
