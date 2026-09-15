@@ -77,6 +77,14 @@ class ApplicationService:
             previous_profile = self.preferences.get("last_running_kv")
             if previous_profile in previous.kv_cache_profiles(previous_key):
                 previous.set_kv_cache_mode(previous_key, previous_profile)
+            previous_budget = previous.data["hardware"]["vram_gb"]
+            preset_key = "auto" if previous_budget == "auto" else f"{float(previous_budget):g}"
+            saved = self.preferences.get("memory_presets", {}).get(preset_key, {})
+            from harness.hardware import detect_hardware
+            if (saved.get("hardware_fingerprint") == detect_hardware().fingerprint()
+                    and saved.get("model") == previous_key and saved.get("profile") == previous_profile
+                    and saved.get("placement", {}).get("model") == previous_key):
+                previous.data["_recovery_placement"] = copy.deepcopy(saved["placement"])
             self.models.remember_configuration(previous, previous_key)
         if manage_model:
             self.fit_hardware()
@@ -98,6 +106,7 @@ class ApplicationService:
 
     def remember_running_model(self, key, profile):
         with self.lock:
+            from harness.hardware import detect_hardware
             self.preferences["last_running_model"] = key
             self.preferences["last_running_kv"] = profile
             self.preferences["last_running_vram_gb"] = self.models.cfg.data.get("hardware", {}).get("vram_gb", "auto")
@@ -105,6 +114,9 @@ class ApplicationService:
             preset_key = "auto" if budget == "auto" else f"{float(budget):g}"
             self.preferences.setdefault("memory_presets", {})[preset_key] = {
                 "model": key, "profile": profile,
+                "hardware_fingerprint": detect_hardware().fingerprint(),
+                "placement": copy.deepcopy(self.models.cfg.data.get("_active_placement", {})),
+                "recovered_context": self.models.cfg.data.get("_recovered_contexts", {}).get(key),
                 "requested_profile": (self.preferences.get("adaptive_kv_requests", {}).get(key, profile)
                                       if self.models.cfg.model(key).get("adaptive_runtime") else profile)}
             self.save_preferences()
@@ -120,6 +132,15 @@ class ApplicationService:
         data["default_model"] = key
         data.setdefault("hardware", {})["vram_gb"] = self.preferences.get("vram_gb", "auto")
         current = Config(data, self.cfg.root)
+        preset_key = "auto" if self.preferences.get("vram_gb", "auto") == "auto" else f"{float(self.preferences['vram_gb']):g}"
+        preset = self.preferences.get("memory_presets", {}).get(preset_key, {})
+        from harness.hardware import detect_hardware
+        if (preset.get("hardware_fingerprint") == detect_hardware().fingerprint()
+                and preset.get("model") == key and preset.get("profile") == profile):
+            if preset.get("placement", {}).get("model") == key:
+                current.data["_recovery_placement"] = copy.deepcopy(preset["placement"])
+            if preset.get("recovered_context"):
+                current.data.setdefault("_recovered_contexts", {})[key] = preset["recovered_context"]
         return self.models.request(key, restart=restart, kv_profile=profile,
                                    config=current, on_success=self.model_became_ready,
                                    on_failure=lambda restored: self.model_switch_failed(key, restored))
@@ -379,6 +400,12 @@ class ApplicationService:
             return False
         profile = choices[0]
         key = cfg.model_key()
+        from harness.measured_profiles import freeze_placement
+        active = self.models.cfg.data.get("_active_placement", {})
+        if active.get("model") == key:
+            cfg.data["_active_placement"] = copy.deepcopy(active)
+        freeze_placement(cfg, key)
+        cfg.data.setdefault("_recovered_contexts", {})[key] = cfg.kv_cache_profiles(key)[profile]["ctx_size"]
         if live.get("text") or live.get("reasoning"):
             session.add("assistant", live.get("text", ""), reasoning=live.get("reasoning", ""))
         self._seal_interrupted_tools(session)
@@ -398,6 +425,7 @@ class ApplicationService:
         if applied == cfg.kv_cache_mode(key):
             return False
         cfg.set_kv_cache_mode(key, applied)
+        cfg.data["_active_placement"] = copy.deepcopy(self.models.cfg.data.get("_active_placement", {}))
         job["config"] = copy.deepcopy(cfg.data)
         job["settings"].setdefault("kv_cache_modes", {})[key] = applied
         self.store.save_job(job, "running")

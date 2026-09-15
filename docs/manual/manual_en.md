@@ -63,7 +63,7 @@ Download size depends on the selected models. Interrupted downloads can be resum
 
 Select **Qwen 3.8 Flash-Next · Q3** in model settings. Marvin checks available memory before downloading, downloads and verifies every model part including image support, and prepares the model. Transfer progress shows both percentage and data size; it can be stopped and resumed later. Chat, attachments, and tools use the same controls as before.
 
-This model uses Q8 cache and at least 128k context. The application chooses CPU threads and placement in system and graphics memory automatically. If a larger requested context does not fit, it selects a smaller profile down to 128k and displays the actual size. A smaller GPU needs more free system RAM. Processing a long new document can take several minutes; subsequent questions reuse the processed context.
+This model uses Q8 cache and at least 128k context. The application chooses CPU threads and placement in system and graphics memory automatically. If a larger requested context does not fit, it selects a smaller profile down to 128k and displays the actual size. A smaller GPU moves more weights into system RAM; Windows can reclaim memory during startup. Processing a long new document can take several minutes; subsequent questions reuse the processed context.
 
 ## First launch
 
@@ -186,17 +186,23 @@ Thinking depth also stays beside the prompt because it can change between questi
 
 ## Installed model profiles
 
-| Model | Typical role | Weight quantization | KV choices | Practical profiles |
-|---|---|---|---|---|
-| Qwen 3.8 27B Q5 | Main high-quality model | Q5 | F16 or Q8 | F16 96k; Q8 192k; compact Q8 64k for 24 GB |
-| Qwen 3.8 27B Q4 | Faster and largest-context option | Q4 | F16 or Q8 | F16 128k; Q8 256k |
-| Qwen 3.8 27B IQ3_S | Smaller GPUs, with a quality tradeoff | IQ3_S | F16 or Q8 | GPU-dependent Q8 profiles from 32k to 256k |
-| Ornith 1.5 35B-A3B Abliterated Q5 | Very fast optional reasoning MoE | Q5 | Q8 fixed | Q8 128k |
-| Nemotron 3.5 Lightning Q4 | Fast text-only MoE | Q4_K_XL | Q8 | 128k, 256k, 512k; also profiles using system RAM |
-| Nemotron 3.5 Lightning Q5 | Text-only MoE with higher weight precision | Q5_K_XL | Q8 | 128k or 256k on GPU; 256k or 512k using system RAM |
-| Qwen 3.8 Flash-Next Q3 | Large model using GPU and system RAM automatically, with vision | Q3_K_XL | Q8 | 128k, 192k, 256k; requests 256k by default |
+| GPU class | Model | KV precision | Context choices |
+|---|---|---|---|
+| 16 GB | Qwen IQ3 | Q8 | 64k / 48k |
+| 24 GB | Qwen IQ3 | Q8 | 128k / 96k |
+| 24 GB | Qwen Q4 | Q8 | 96k / 64k |
+| 24 GB | Qwen Q5 | Q8 | 96k / 64k |
+| 24 GB | Nemotron Q4 | Q8 | 512k / 256k |
+| 24 GB | Nemotron Q5 | Q8 | 512k / 256k |
+| 32 GB | Qwen Q4 | Q8 | 256k / 192k |
+| 32 GB | Qwen Q4 | F16 | 128k / 96k |
+| 32 GB | Qwen Q5 | Q8 | 192k / 128k |
+| 32 GB | Qwen Q5 | F16 | 128k / 96k |
+| 32 GB | Ornith Q5 | Q8 | 256k / 192k |
+| 32 GB | Nemotron Q4 | Q8 | 512k / 256k |
+| 32 GB | Nemotron Q5 | Q8 | 512k / 256k |
 
-The default new-installation profile is Qwen Q5 with Q8 KV and a 192k context. The application remembers the last selected model and each model's KV choice.
+On 32 GB-class cards, the new-installation default is Qwen Q5 with Q8 KV and 192k context. Smaller cards select an appropriate Q8 profile from the table. F16 is an explicit option only for Qwen Q4/Q5 on 32 GB-class cards. IQ3 is offered on 16/24 GB cards only. Each model and KV precision group offers the two highest relevant context choices.
 
 
 Nemotron is text-only. Qwen, Ornith, and Flash-Next use their own image support. The model list reports file availability; Flash-Next requires every shard and its projector. Qwen also offers compact profiles for smaller cards. The table does not promise that every combination will run on every PC; the selected model's settings show its exact profile choices.
@@ -205,19 +211,19 @@ Nemotron is text-only. Qwen, Ornith, and Flash-Next use their own image support.
 
 Normally leave **Settings > Model and device > GPU memory budget** on **Automatic detection**. A manual value limits the memory Marvin may use; it cannot increase the physical card's capacity. Change it when no task is running. Marvin releases the previous model, selects a compatible profile, and restarts the model when required. It remembers the successful model and context for each budget, so returning to Automatic restores that configuration. If a change fails, it attempts to restore the previous working model and settings.
 
-The compact choices include **Qwen IQ3_S / Q8 / 32k for 16 GB** and **Qwen Q5 / Q8 / 64k for 24 GB**. Both retain images, with image processing moved to the CPU to leave more graphics memory available. Images may therefore take longer to process. These capacity limits were tested on an RTX 5090; they do not establish the speed of a physical 16 GB or 24 GB card. The old IQ3 48k profile requires at least 17 GB, and Q5 F16/96k requires at least 27 GB.
+Qwen IQ3 uses Q8 64k/48k on 16 GB, and Qwen Q5 uses Q8 96k/64k on 24 GB. Both retain vision with CPU image processing. Nemotron Q4/Q5 offer 512k/256k on 24 GB by executing some experts on the CPU. The 32 GB Nemotron Q5 512k profile also executes one expert block on the CPU; 256k uses GPU weights. These placements were measured on an RTX 5090, not physical 16/24 GB cards. Other programs can affect whether the larger choice starts successfully.
 
-If RAM or GPU memory pressure interrupts a task, Marvin attempts a smaller supported profile and continues with the existing history and completed tool results. It does not blindly repeat actions whose outcome is unknown. Stop remains available. If no smaller usable profile remains, the task pauses with a memory explanation; select another model and use **Continue**.
+If an actual allocation failure or sustained critical physical RAM interrupts a task, Marvin retries the next smaller context with the same model, cache precision and weight placement. Completed tool results remain in history. It never alternates Q8 and F16 during recovery. If no smaller supported context remains, the task stops with a memory explanation; select another model and use **Continue**. Successful settings are remembered for each GPU budget.
 
 ## Flash-Next settings and realistic waiting times
 
 Flash-Next downloads approximately **90.9 GB** across four files. Subsequent starts use the local copy, and changing KV does not download the weights again. Preparation shows downloading, file verification, and model loading separately. Transfer progress includes percentage and data size.
 
-The default request is **256k Q8**. Marvin uses currently available RAM and VRAM to choose 256k, 192k, or 128k, sets CPU threads and weight placement, and displays the actual profile. It never assigns less than 128k to this model. If memory is insufficient, it explains the problem and attempts to restore the previous working model after a failed switch.
+Flash-Next offers the highest two feasible choices from **256k, 192k and 128k**, using Q3 weights and Q8 KV. Marvin selects CPU threads and GPU/CPU weight placement automatically. The minimum is 128k. Planning uses installed RAM and measured allocations; low initial free RAM alone does not block a start, because Windows can reclaim memory. Actual loading and sustained physical memory pressure still determine whether a configuration works.
 
-On an RTX 5090 / 64 GB RAM / Core Ultra 7 265K, short runs measured approximately **27 generated tokens per second**. A later test using varied repository text processed 98,124 prompt tokens in approximately **23 minutes 52 seconds**. The follow-up reused 98,148 cached tokens and returned in **1.38 seconds**. Generation speed therefore does not tell you how long a large new document will take to read; input content and occupied context also affect performance.
+With the qualified 256k configuration on RTX 5090 / 64 GB RAM / Core Ultra 7 265K, short generation measured about **24.5 tokens/s**. Reading **253,883 prompt tokens** took about **44 minutes**; the cached follow-up returned in **1.73 seconds**. The long-context model peak was about **29.25 GiB GPU + 41.39 GiB resident RAM**. Generation slowed to about 16 tokens/s with that context occupied. A large first read remains slow; cached follow-ups are much faster.
 
-The 128k profile passed that long-input test. The 256k profile previously passed tool, image, agent, and 24k-input tests, but its entire window was not filled. This variant has not yet been measured on physical 16 GB and 24 GB cards. Smaller VRAM requires more free system RAM: representative estimates are about **52 GiB free RAM at 24 GB VRAM** and **60 GiB free RAM at 16 GB VRAM**. These are free-memory requirements, not installed-RAM specifications. A computer with 64 GB installed RAM may therefore be unable to run these profiles. Automatic recovery never reduces Flash-Next below 128k or changes its Q3 weights.
+The September 15 qualification covered 55 launches, tools, vision where supported, STOP and varied long text. For Flash-Next 256k, smaller-card placement predicts approximately **48.7 GiB model resident RAM at 24 GB GPU**, or **55.9-57.3 GiB at 16 GB GPU**. These estimates are not initial-free-RAM requirements. The 16 GB placement with 64 GB RAM reached critical physical memory during 256k warmup, so that combination is not offered at 256k. The 192k/128k choices still depend on actual startup; they are not promises of physical small-card qualification.
 
 Profile names 128k/192k/256k refer to 131,072 / 196,608 / 262,144 tokens. The numeric indicator may round the same capacity to a value such as 262k.
 
@@ -225,7 +231,7 @@ Profile names 128k/192k/256k refer to 131,072 / 196,608 / 262,144 tokens. The nu
 
 Use Qwen Q5 for serious development, architecture, difficult reasoning, and final-quality writing. Use Qwen Q4 when speed or the full 256k context matters more than the small quality advantage of Q5.
 
-Q5 with Q8 is a strong general default. Change to F16 when maximum KV precision matters and 96k tokens are enough.
+Q5 with Q8 is a strong general default. On 32 GB-class cards, the optional F16 choices are 128k and 96k.
 
 ## Ornith
 

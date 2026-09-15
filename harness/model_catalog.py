@@ -40,12 +40,9 @@ FLASH_NEXT_Q3 = {
     "ctx_size": 262144,
     "kv_cache": "q8_0_256k",
     "kv_cache_profiles": {
-        "q8_0_128k": {"cache_type": "q8_0", "ctx_size": 131072, "min_vram_gb": 12,
-                      "label": "8-bit - context 128k"},
-        "q8_0_192k": {"cache_type": "q8_0", "ctx_size": 196608, "min_vram_gb": 16,
-                      "label": "8-bit - context 192k"},
-        "q8_0_256k": {"cache_type": "q8_0", "ctx_size": 262144, "min_vram_gb": 24,
-                      "label": "8-bit - context 256k"},
+        "q8_0_256k": {"cache_type": "q8_0", "ctx_size": 262144, "label": "Q8 · 256k"},
+        "q8_0_192k": {"cache_type": "q8_0", "ctx_size": 196608, "label": "Q8 · 192k"},
+        "q8_0_128k": {"cache_type": "q8_0", "ctx_size": 131072, "label": "Q8 · 128k"},
     },
     "server_args": ["-fa", "on", "--lazy-mode", "on", "--load-mode", "none", "--no-host"],
     "sampling": {

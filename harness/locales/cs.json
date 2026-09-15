@@ -644,7 +644,17 @@
     "Run project checks": "Spustit kontroly projektu",
     "Plan a task": "Naplánovat úlohu",
     "Review changes": "Zkontrolovat změny",
-    "Stop the task": "Zastavit úlohu"
+    "Stop the task": "Zastavit úlohu",
+    "Q8 · 64k": "Q8 · 64k",
+    "Q8 · 48k": "Q8 · 48k",
+    "Q8 · 128k": "Q8 · 128k",
+    "Q8 · 96k": "Q8 · 96k",
+    "Q8 · 256k": "Q8 · 256k",
+    "Q8 · 192k": "Q8 · 192k",
+    "F16 · 128k": "F16 · 128k",
+    "F16 · 96k": "F16 · 96k",
+    "Q8 · 512k": "Q8 · 512k",
+    "This profile also uses system RAM. A smaller GPU moves more weights into RAM. Windows can reclaim memory while the model starts.": "Tento profil používá i systémovou RAM. Menší GPU přesouvá více vah do RAM. Windows může paměť uvolnit během spouštění modelu."
   },
   "legacy_profile_labels": {
     "16 bit - přesnější, kontext 128k": "16-bit - more precise, context 128k",

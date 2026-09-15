@@ -157,6 +157,9 @@ class ModelSwitchController:
                     if self._cancelled(gen):
                         continue
                     run_cfg.data["default_model"] = target
+                    for field in ("_active_placement", "_recovery_placement", "_recovered_contexts"):
+                        if field in self.cfg.data:
+                            run_cfg.data[field] = copy.deepcopy(self.cfg.data[field])
                     self.cfg = run_cfg
                     self._last_ready = (Config(copy.deepcopy(self.cfg.data), self.cfg.root), target)
                     if on_success is not None:

@@ -29,6 +29,30 @@ def last_failure(cfg: Config) -> dict:
         return {}
 
 
+def record_allocation_failure(cfg, error=""):
+    """Recognize actual allocator failures, including request-time CUDA errors."""
+    try:
+        record = json.loads((cfg.path("paths.runtime_dir") / "model-run.json").read_text(encoding="utf-8"))
+        if record.get("model") != cfg.model_key():
+            return
+        path = cfg.path("paths.runtime_dir") / "llama-server.log"
+        with path.open("rb") as stream:
+            stream.seek(max(record.get("log_offset", 0), path.stat().st_size - 65536))
+            tail = stream.read().decode(errors="replace")
+        message = (str(error) + "\n" + tail).lower()
+        if not any(marker in message for marker in (
+                "out of memory", "cudaerrormemoryallocation", "failed to allocate",
+                "cannot allocate memory", "std::bad_alloc")):
+            return
+        from harness.changes import atomic_write_text
+        atomic_write_text(cfg.path("paths.runtime_dir") / "model-failure.json", json.dumps({
+            "model": record["model"], "context": record["context"], "time": time.time(),
+            "code": "vram_pressure" if "cuda" in message else "ram_pressure",
+            "error": "The model could not allocate memory for this context."}))
+    except (OSError, ValueError):
+        return
+
+
 def health(cfg: Config, timeout: float = 3.0) -> bool:
     try:
         r = requests.get(f"{cfg.base_url}/health", timeout=timeout)
@@ -209,7 +233,8 @@ def _start_locked(cfg: Config, model_key: str | None = None,
             profiles = fitting_profiles(cfg, model_key, budget)
             if not profiles:
                 raise RuntimeError(f"This model has no supported profile for the {budget:g} GiB GPU budget. Choose a smaller model.")
-            selected = max(profiles, key=lambda name: int(profiles[name].get("ctx_size", 0)))
+            selected = max(profiles, key=lambda name: (profiles[name].get("cache_type") == "q8_0",
+                                                       int(profiles[name].get("ctx_size", 0))))
             cfg.set_kv_cache_mode(model_key, selected)
     requested_context = ctx_size or cfg.context_size(model_key)
     (cfg.path("paths.runtime_dir") / "model-failure.json").unlink(missing_ok=True)
@@ -267,18 +292,24 @@ def _start_locked(cfg: Config, model_key: str | None = None,
     argv += [str(x) for x in cfg.model(model_key).get("server_args", [])]
     # Profiles may supply server arguments, such as --n-cpu-moe for a specific GPU budget
     profile = cfg.kv_cache_profiles(model_key).get(cfg.kv_cache_mode(model_key), {})
-    argv += [str(x) for x in profile.get("server_args", [])]
+    frozen = cfg.data.get("_recovery_placement", {})
+    profile_args = frozen.get("server_args", []) if frozen.get("model") == model_key else profile.get("server_args", [])
+    argv += [str(x) for x in profile_args]
+    active_placement = {"model": model_key, "server_args": list(profile_args)}
     if plan:
         argv += list(plan.args)
+        active_placement["cpu_expert_layers"] = plan.cpu_expert_layers
     elif cfg.data.get("hardware", {}).get("vram_gb", "auto") != "auto":
         argv += ["--fit", "off"]
     argv += [str(x) for x in srv.get("extra_args", [])]
+    cfg.data["_active_placement"] = active_placement
 
     if on_phase:
         on_phase("loading")
 
     log_path = cfg.path("paths.runtime_dir") / "llama-server.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_offset = log_path.stat().st_size if log_path.exists() else 0
     logf = open(log_path, "ab", buffering=0)
     logf.write(f"\n===== START {model_key} {time.strftime('%Y-%m-%d %H:%M:%S')} =====\n".encode())
     try:
@@ -290,6 +321,10 @@ def _start_locked(cfg: Config, model_key: str | None = None,
     finally:
         logf.close()
     pid_file(cfg).write_text(f"{model_key}:{proc.pid}", encoding="utf-8")
+    from harness.changes import atomic_write_text
+    atomic_write_text(cfg.path("paths.runtime_dir") / "model-run.json", json.dumps({
+        "model": model_key, "pid": proc.pid, "context": ctx, "placement": active_placement,
+        "log_offset": log_offset, "started": time.time()}))
     loaded = threading.Event()
     memory_failure = []
     requested_budget = cfg.data.get("hardware", {}).get("vram_gb", "auto")
@@ -300,21 +335,16 @@ def _start_locked(cfg: Config, model_key: str | None = None,
         def watch_memory():
             import psutil
             low_samples = 0
-            gpu_samples = 0
-            last_gpu_check = 0.0
             gpu_used = 0
             while proc.poll() is None:
                 available = psutil.virtual_memory().available
-                low_samples = low_samples + 1 if plan and available < 4 * 1024**3 else 0
-                if capacity and time.monotonic() - last_gpu_check >= 2:
-                    last_gpu_check = time.monotonic()
-                    current = detect_hardware(fresh=True)
-                    gpu_used = current.vram_total - current.vram_available
-                    gpu_samples = gpu_samples + 1 if gpu_used > capacity - 256 * 1024**2 else 0
+                # Emergency host protection, not a profile reserve. Allow Windows
+                # to reclaim pages; never fail merely because commit/pagefile grew.
+                low_samples = low_samples + 1 if available < 512 * 1024**2 else 0
                 stop_loading = not loaded.is_set() and cancelled and cancelled()
-                if low_samples >= 2 or gpu_samples >= 2 or stop_loading:
-                    if low_samples >= 2 or gpu_samples >= 2:
-                        code = "ram_pressure" if low_samples >= 2 else "vram_pressure"
+                if low_samples >= 10 or stop_loading:
+                    if low_samples >= 10:
+                        code = "ram_pressure"
                         memory_failure.append("The model needs more system RAM for the current memory profile." if code == "ram_pressure"
                                               else "The selected GPU memory budget is not sufficient for this profile and other running programs.")
                         from harness.changes import atomic_write_text
@@ -331,6 +361,8 @@ def _start_locked(cfg: Config, model_key: str | None = None,
                         pass
                     return
                 time.sleep(1)
+            if not (cancelled and cancelled()):
+                record_allocation_failure(cfg)
         threading.Thread(target=watch_memory, name="model-memory-guard", daemon=True).start()
     print(f"[START] model={model_key}  ctx={ctx}  pid={proc.pid}  -> {cfg.base_url}")
     print(f"        log: {log_path}")
@@ -346,6 +378,8 @@ def _start_locked(cfg: Config, model_key: str | None = None,
         except subprocess.TimeoutExpired:
             raise RuntimeError("The stopped model has not released its memory yet")
         pid_file(cfg).unlink(missing_ok=True)
+        if not (cancelled and cancelled()):
+            record_allocation_failure(cfg)
         if memory_failure:
             raise RuntimeError(memory_failure[0])
         return 1
@@ -394,7 +428,10 @@ def ensure(cfg: Config, model_key: str | None = None, *, cancelled=None, on_phas
         lower = lower_memory_profiles(cfg, key)
         if not lower:
             raise RuntimeError(failure.get("error") or "There is not enough free system RAM")
+        from harness.measured_profiles import freeze_placement
+        freeze_placement(cfg, key)
         cfg.set_kv_cache_mode(key, lower[0])
+        cfg.data.setdefault("_recovered_contexts", {})[key] = cfg.context_size(key)
         cfg.data["_memory_profile_recovered"] = True
         if on_phase:
             on_phase("preparing")

@@ -135,19 +135,19 @@ class WorkspaceTests(unittest.TestCase):
 
     def test_continue_reuses_selected_running_model_and_current_kv(self):
         from unittest.mock import patch
-        for status, old, selected, profile in (
-            ("failed", "flash_next_q3", "q5", "q8_0"),
-            ("stopped", "flash_next_q3", "q4", "q8_0_compact"),
-            ("interrupted", "q5", "q5", "f16"),
-            ("waiting_confirmation", "flash_next_q3", "q3", "q8_0_32k"),
-            ("failed", "flash_next_q3", "flash_next_q3", "q8_0_128k"),
+        for status, old, selected, profile, budget in (
+            ("failed", "flash_next_q3", "q5", "q8_0", "auto"),
+            ("stopped", "flash_next_q3", "q4", "q8_0_compact", 24),
+            ("interrupted", "q5", "q5", "f16", "auto"),
+            ("waiting_confirmation", "flash_next_q3", "q3", "q8_0", 16),
+            ("failed", "flash_next_q3", "flash_next_q3", "q8_0_128k", "auto"),
         ):
             with self.subTest(status=status, model=selected, profile=profile):
                 sid = self.new_chat()
                 rid = "resume-" + status + "-" + selected
                 original = self.interrupted_model_job(sid, rid, old_model=old, status=status)
                 self.client.patch("/api/settings", json={"model": selected,
-                    "kv_cache_modes": {selected: profile}, "vram_gb": "auto",
+                    "kv_cache_modes": {selected: profile}, "vram_gb": budget,
                     "autonomy": "auto", "thinking": "low"}).raise_for_status()
                 self.service.models.cfg = self.service.config_for(self.service.session(sid))
                 self.service.manage_model = True
@@ -169,7 +169,7 @@ class WorkspaceTests(unittest.TestCase):
                     self.assertEqual(agent.cfg.data["reasoning_effort"], "xhigh")
                     self.assertEqual(agent.cfg.agent["autonomy"], "supervised")
                     self.assertEqual(saved["payload"]["settings"]["model"], selected)
-                    self.assertEqual(saved["payload"]["config"]["hardware"]["vram_gb"], "auto")
+                    self.assertEqual(saved["payload"]["config"]["hardware"]["vram_gb"], budget)
                     self.assertNotIn("error", saved["payload"])
                     self.assertEqual(saved["payload"]["id"], original["id"])
                     self.assertEqual(original["config"]["default_model"], old)
@@ -190,7 +190,7 @@ class WorkspaceTests(unittest.TestCase):
             history.append(session.add("user", f"Recent question {number}"))
             history.append(session.add("assistant", f"Recent finding {number}"))
         self.interrupted_model_job(sid, "smaller-context")
-        self.client.patch("/api/settings", json={"model": "q3", "kv_cache_modes": {"q3": "q8_0_32k"}}).raise_for_status()
+        self.client.patch("/api/settings", json={"model": "q3", "kv_cache_modes": {"q3": "q8_0"}, "vram_gb": 16}).raise_for_status()
         with patch("harness.context.summarize_messages", return_value="Retained findings and decisions.") as summarize:
             self.service.resume(sid)
             self.completed("smaller-context")
@@ -198,7 +198,7 @@ class WorkspaceTests(unittest.TestCase):
             self.assertEqual(self.service.store.job("smaller-context")["status"], "complete")
             summarize.assert_called_once()
             self.assertEqual(summarize.call_args.args[0].cfg.model_key(), "q3")
-            self.assertEqual(summarize.call_args.args[0].cfg.context_size(), 32768)
+            self.assertEqual(summarize.call_args.args[0].cfg.context_size(), 49152)
         self.assertIsNotNone(session.compression)
         self.assertTrue(all(any(m.get("id") == original["id"] and m["content"] == original["content"]
                                 for m in session.messages) for original in history))

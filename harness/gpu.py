@@ -1,6 +1,7 @@
 """Detect GPU memory and select compatible model/context profiles.
 
-min_vram_gb describes each profile's capacity requirement, including cache and working margins. hardware.vram_gb can impose a smaller capacity budget but cannot invent memory beyond the detected card."""
+Measured profiles use approved GPU classes, with allocation recorded separately.
+hardware.vram_gb can constrain capacity but cannot invent additional memory."""
 from __future__ import annotations
 
 import subprocess
@@ -70,8 +71,37 @@ def fitting_profiles(cfg, model_key: str, vram_gb: float | None) -> dict[str, di
     profiles = cfg.kv_cache_profiles(model_key)
     if vram_gb is None:
         return profiles
+    if cfg.model(model_key).get("adaptive_runtime"):
+        from dataclasses import replace
+        from harness.hardware import detect_hardware
+        from harness.runtime_plan import choose_plan, GIB
+        from harness.model_catalog import FLASH_NEXT_Q3
+        hw = detect_hardware()
+        # The picker must not count the currently running model as another app.
+        hw = replace(hw, vram_total=int(vram_gb * GIB), vram_available=int(vram_gb * GIB))
+        layout = cfg.model(model_key).get("layout_hint", {}).get("layout", FLASH_NEXT_Q3["layout_hint"]["layout"])
+        result = {}
+        for key, prof in profiles.items():
+            try:
+                choose_plan(hw, layout, prof["ctx_size"])
+                result[key] = prof
+            except RuntimeError:
+                pass
+        return result
+    from harness.measured_profiles import gpu_class
     return {key: prof for key, prof in profiles.items()
-            if profile_min_vram(prof) <= vram_gb}
+            if (prof["gpu_class"] == gpu_class(vram_gb) if "gpu_class" in prof
+                else profile_min_vram(prof) <= vram_gb)}
+
+
+def offered_profiles(cfg, model_key, vram_gb):
+    profiles = fitting_profiles(cfg, model_key, vram_gb)
+    if cfg.model(model_key).get("adaptive_runtime"):
+        ceiling = cfg.data.get("_recovered_contexts", {}).get(model_key, 262144)
+        ordered = sorted(profiles, key=lambda key: profiles[key]["ctx_size"], reverse=True)
+        ordered = [key for key in ordered if profiles[key]["ctx_size"] <= ceiling]
+        return {key: profiles[key] for key in ordered[:2]}
+    return profiles
 
 
 def best_fit(cfg, vram_gb: float | None) -> tuple[str, str] | None:
@@ -85,26 +115,21 @@ def best_fit(cfg, vram_gb: float | None) -> tuple[str, str] | None:
         return cfg.model(key).get("family", "qwen" if key in ("q3", "q4", "q5") else key)
     related = [k for k in cfg.data["models"] if k != default_key and family(k) == family(default_key)]
     ordered = [default_key] + related + [k for k in cfg.data["models"] if k != default_key and k not in related]
-    best: tuple | None = None  # (order, ctx, has_limit, model, profile)
+    best: tuple | None = None  # (order, Q8 preference, context, has_limit, model, profile)
     for order, key in enumerate(ordered):
         for prof_key, prof in fitting_profiles(cfg, key, vram_gb).items():
-            candidate = (-order, int(prof.get("ctx_size", 0)),
+            candidate = (-order, prof.get("cache_type", prof_key) == "q8_0", int(prof.get("ctx_size", 0)),
                          "min_vram_gb" in prof, key, prof_key)
             if best is None or candidate > best:
                 best = candidate
     if best is None:
         return None
-    return best[3], best[4]
+    return best[4], best[5]
 
 
 def fits(cfg, model_key: str, profile_key: str, vram_gb: float | None) -> bool:
-    """Check profile compatibility; unknown capacity or a legacy profile is allowed."""
-    if vram_gb is None:
-        return True
-    profile = cfg.kv_cache_profiles(model_key).get(profile_key)
-    if profile is None:
-        return True
-    return profile_min_vram(profile) <= vram_gb
+    """Check profile compatibility; unknown capacity retains known profiles."""
+    return profile_key in fitting_profiles(cfg, model_key, vram_gb)
 
 
 def lower_memory_profiles(cfg, model_key=None):
@@ -114,13 +139,13 @@ def lower_memory_profiles(cfg, model_key=None):
     current = profiles.get(current_key, {})
     context = cfg.context_size(key)
     minimum = 131072 if cfg.model(key).get("adaptive_runtime") else 0
-    current_gpu = profile_min_vram(current)
+    precision = current.get("cache_type", current_key)
     candidates = []
     for name, profile in profiles.items():
         size = int(profile.get("ctx_size", 0))
         gpu = profile_min_vram(profile)
-        if (name != current_key and minimum <= size <= context and gpu <= current_gpu
-                and (size < context or gpu < current_gpu)):
+        if (minimum <= size < context and profile.get("cache_type", name) == precision
+                and profile.get("gpu_class") == current.get("gpu_class")):
             candidates.append((size, gpu, name))
     return [name for _, _, name in sorted(candidates, reverse=True)]
 
@@ -132,4 +157,4 @@ def download_keys(cfg, vram_gb: float | None) -> list[str]:
     if vram_gb is None:
         return keys
     fitting = [k for k in keys if fitting_profiles(cfg, k, vram_gb)]
-    return fitting or keys
+    return fitting

@@ -191,7 +191,7 @@ class RuntimePlanTests(unittest.TestCase):
             data["default_model"] = "flash_next_q3"
             cfg = Config(data, Path(temporary))
             with patch("harness.servermgmt.health", return_value=False), \
-                 patch("harness.runtime_plan.detect_hardware", return_value=self.hardware(ram=12)), \
+                 patch("harness.runtime_plan.detect_hardware", return_value=self.hardware(ram=12, total_ram=16)), \
                  patch("harness.model_files.download_pinned_model") as download:
                 with self.assertRaisesRegex(RuntimeError, "system memory"):
                     servermgmt.start(cfg)
@@ -207,9 +207,9 @@ class RuntimePlanTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "complete model"):
                 inspect_layout(Path(temporary), spec)
 
-    def hardware(self, total=32, free=30, ram=56):
+    def hardware(self, total=32, free=30, ram=56, total_ram=64):
         return Hardware("hybrid", 20, 20, tuple(range(8)), tuple(range(20)),
-                        64 * GIB, ram * GIB, "GPU", "id", "driver", total * GIB, free * GIB)
+                        total_ram * GIB, ram * GIB, "GPU", "id", "driver", total * GIB, free * GIB)
 
     def layout(self):
         return {"common_bytes": 3 * GIB, "projector_bytes": GIB,
@@ -233,7 +233,7 @@ class RuntimePlanTests(unittest.TestCase):
 
     def test_insufficient_ram_and_sub_128k_are_rejected(self):
         with self.assertRaisesRegex(RuntimeError, "system memory"):
-            choose_plan(self.hardware(ram=12), self.layout(), 131072)
+            choose_plan(self.hardware(ram=12, total_ram=16), self.layout(), 131072)
         with self.assertRaises(ValueError):
             choose_plan(self.hardware(), self.layout(), 32768)
 

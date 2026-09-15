@@ -1,138 +1,13 @@
-# ============================================================
-# Local Qwen3.8-27B harness configuration
-# RTX 5090 32GB | llama.cpp backend
-# ============================================================
-
+# Built-in models and measured profiles are maintained in harness/config.py and
+# harness/measured_profiles.py. Add custom model keys under models if needed.
 server:
   host: 127.0.0.1
   port: 8080
-  n_gpu_layers: 999        # all layers on the GPU
-  # Extra llama-server arguments (list of strings)
+  n_gpu_layers: 999
   extra_args: []
-
-# Models: GGUF quantizations from Hugging Face
-# Selected: unsloth UD (Unsloth Dynamic) quantizations for quality and size
-models:
-  q4:
-    alias: "Qwen3.8-27B Q4_K_M (16.5 GB, fast)"
-    status_label: "Qwen 3.8 27B · Q4"
-    repo: "unsloth/Qwen3.8-27B-GGUF"
-    file: "Qwen3.8-27B-UD-Q4_K_M.gguf"
-    mmproj: "mmproj-F16.gguf"
-    ctx_size: 131072
-    kv_cache: "f16"
-    kv_cache_profiles:
-      f16: {label: "16-bit - more precise, context 128k", ctx_size: 131072, min_vram_gb: 30}
-      q8_0: {label: "8-bit - larger context 256k", ctx_size: 262144, min_vram_gb: 30}
-      q8_0_compact: {cache_type: q8_0, label: "8-bit - compact for 24 GB, context 96k", ctx_size: 98304, min_vram_gb: 23}
-      f16_compact: {cache_type: f16, label: "16-bit - compact for 24 GB, context 64k", ctx_size: 65536, min_vram_gb: 24}
-    server_args: ["-fa", "on"]
-  q3:
-    alias: "Qwen3.8-27B IQ3_S (12.0 GB, borderline quality - for 16 GB GPUs)"
-    status_label: "Qwen 3.8 27B · IQ3_S"
-    repo: "unsloth/Qwen3.8-27B-GGUF"
-    file: "Qwen3.8-27B-UD-IQ3_S.gguf"
-    mmproj: "mmproj-F16.gguf"
-    ctx_size: 49152
-    kv_cache: "q8_0"
-    kv_cache_profiles:
-      q8_0: {label: "8-bit - context 48k (17 GB+)", ctx_size: 49152, min_vram_gb: 17}
-      q8_0_32k: {cache_type: q8_0, label: "8-bit - context 32k (16 GB safe)", ctx_size: 32768, min_vram_gb: 15.5, server_args: ["-b", "1024", "-ub", "128", "--no-mmproj-offload"]}
-      q8_0_128k: {cache_type: q8_0, label: "8-bit - context 128k (24 GB)", ctx_size: 131072, min_vram_gb: 20}
-      f16_96k: {cache_type: f16, label: "16-bit - context 96k (24 GB, max precision)", ctx_size: 98304, min_vram_gb: 23}
-      q8_0_256k: {cache_type: q8_0, label: "8-bit - context 256k (32 GB)", ctx_size: 262144, min_vram_gb: 26}
-      f16_192k: {cache_type: f16, label: "16-bit - context 192k (32 GB, borderline)", ctx_size: 196608, min_vram_gb: 31}
-    server_args: ["-fa", "on"]
-  q5:
-    alias: "Qwen3.8-27B Q5_K_M (19.8 GB, high quality)"
-    status_label: "Qwen 3.8 27B · Q5"
-    repo: "unsloth/Qwen3.8-27B-GGUF"
-    file: "Qwen3.8-27B-UD-Q5_K_M.gguf"
-    mmproj: "mmproj-F16.gguf"
-    ctx_size: 98304
-    kv_cache: "q8_0"
-    kv_cache_profiles:
-      f16: {label: "16-bit - more precise, context 96k", ctx_size: 98304, min_vram_gb: 27}
-      q8_0: {label: "8-bit - larger context 192k", ctx_size: 196608, min_vram_gb: 30}
-      q8_0_compact: {cache_type: q8_0, label: "8-bit - compact for 24 GB, context 64k", ctx_size: 65536, min_vram_gb: 23.75, server_args: ["-b", "1024", "-ub", "128", "--no-mmproj-offload"]}
-    server_args: ["-fa", "on"]
-  ornith_q5:
-    alias: "Ornith 1.5 35B-A3B Abliterated Q5 (23.0 GB, reasoning, context 128k)"
-    status_label: "Ornith 1.5 35B-A3B · Abliterated Q5"
-    family: "ornith"
-    repo: "alztrk/Ornith-1.5-35B-A3B-Abliterated-GGUF"
-    file: "Ornith-1.5-35B-Abliterated-Dynamic-Q5_K_M.gguf"
-    mmproj_repo: "ornith-ai/Ornith-1.5-35B-A3B-GGUF"
-    mmproj: "mmproj-Ornith-1.5-35B-BF16.gguf"
-    ctx_size: 131072       # validated on RTX 5090 including vision, about 2.8 GiB headroom
-    kv_cache: "q8_0"
-    kv_cache_profiles:
-      q8_0: {label: "8-bit - solid, context 128k", ctx_size: 131072, min_vram_gb: 30}
-    server_args: ["-fa", "on"]
-    supports_reasoning_effort: false
-    sampling:
-      thinking:
-        temperature: 0.6
-        top_p: 0.95
-        top_k: 20
-        presence_penalty: 0.0
-
-  nemotron_q4:
-    alias: "Nemotron 3.5 Lightning 30B-A3B Q4_K_XL (25.5 GB, hybrid MoE, ~210 tok/s)"
-    status_label: "Nemotron 3.5 Lightning · Q4_XL"
-    family: "nemotron"
-    repo: "unsloth/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-GGUF"
-    file: "NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q4_K_XL.gguf"
-    ctx_size: 524288
-    kv_cache: "q8_0_512k"
-    kv_cache_profiles:
-      # measured on RTX 5090 (Q8 cache, desktop VRAM about 2.4 GB)
-      q8_0_128k: {cache_type: q8_0, label: "8-bit - context 128k", ctx_size: 131072, min_vram_gb: 27}
-      q8_0_256k: {cache_type: q8_0, label: "8-bit - context 256k", ctx_size: 262144, min_vram_gb: 28}
-      q8_0_512k: {cache_type: q8_0, label: "8-bit - context 512k", ctx_size: 524288, min_vram_gb: 29.5}
-      q8_0_256k_spill: {cache_type: q8_0, label: "8-bit - context 256k, MoE overflow to RAM (24 GB)", ctx_size: 262144, min_vram_gb: 23, server_args: ["--n-cpu-moe", "14"]}
-      q8_0_512k_spill: {cache_type: q8_0, label: "8-bit - context 512k, MoE overflow to RAM (24 GB)", ctx_size: 524288, min_vram_gb: 23, server_args: ["--n-cpu-moe", "18"]}
-    server_args: ["-fa", "on"]
-    supports_reasoning_effort: false
-    sampling:
-      thinking:
-        temperature: 0.6
-        top_p: 0.95
-        min_p: 0.01
-      non_thinking:
-        temperature: 0.2
-  nemotron_q5:
-    alias: "Nemotron 3.5 Lightning 30B-A3B Q5_K_XL (30.4 GB, hybrid MoE, top quality)"
-    status_label: "Nemotron 3.5 Lightning · Q5_KXL"
-    family: "nemotron"
-    repo: "unsloth/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-GGUF"
-    file: "NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q5_K_XL.gguf"
-    ctx_size: 131072
-    kv_cache: "q8_0_128k"
-    kv_cache_profiles:
-      q8_0_128k: {cache_type: q8_0, label: "8-bit - context 128k (full GPU, borderline)", ctx_size: 131072, min_vram_gb: 31.5}
-      q8_0_256k: {cache_type: q8_0, label: "8-bit - context 256k (full GPU, borderline)", ctx_size: 262144, min_vram_gb: 31.5}
-      q8_0_256k_spill: {cache_type: q8_0, label: "8-bit - context 256k, MoE overflow to RAM (more headroom)", ctx_size: 262144, min_vram_gb: 29.5, server_args: ["--n-cpu-moe", "8"]}
-      q8_0_512k_spill: {cache_type: q8_0, label: "8-bit - context 512k, MoE overflow to RAM", ctx_size: 524288, min_vram_gb: 26, server_args: ["--n-cpu-moe", "16"]}
-    server_args: ["-fa", "on"]
-    supports_reasoning_effort: false
-    sampling:
-      thinking:
-        temperature: 0.6
-        top_p: 0.95
-        min_p: 0.01
-      non_thinking:
-        temperature: 0.2
-
-# GPU capacity: auto uses nvidia-smi; a number caps the usable VRAM budget.
-# Startup and setup select a compatible model/context profile using min_vram_gb.
-# Setup downloads only models compatible with the selected capacity.
 hardware:
   vram_gb: auto
-
-default_model: q5           # primary profile; default Q8 KV provides a 192k context
-
-# Sampling from the Qwen3.8-27B model card
+default_model: q5
 sampling:
   thinking:
     temperature: 1.0
@@ -141,57 +16,44 @@ sampling:
     presence_penalty: 0.0
   non_thinking:
     temperature: 0.7
-    top_p: 0.80
+    top_p: 0.8
     top_k: 20
     presence_penalty: 1.5
-thinking: true             # enable model reasoning
-reasoning_effort: xhigh    # reasoning depth: xhigh | medium | low (only with thinking: true)
-work_mode: development     # discussion | research | writing | development | computer
-
-# Agent
+thinking: true
+reasoning_effort: xhigh
+work_mode: development
 agent:
-  mode: agent              # chat | agent | computer
-  autonomy: supervised     # supervised | semi | auto
-  max_steps: 0             # 0 = unlimited tool-call rounds
-  semi_max_steps: 0        # 0 = unlimited in semi mode as well
-  shell_timeout: 60        # seconds for run_command
-  workspace: null          # null = the directory where the harness was started
-
-# Computer use
+  mode: agent
+  autonomy: supervised
+  max_steps: 0
+  semi_max_steps: 0
+  shell_timeout: 60
+  workspace: null
 computer:
-  screenshot_max_edge: 1920   # downscale screenshots for the model to reduce token use
+  screenshot_max_edge: 1920
   screenshot_grayscale: false
-  failsafe: true              # pyautogui FAILSAFE: move the pointer to the top-left corner to stop immediately
-  pause_between_actions: 0.15 # seconds between GUI actions
-
-# Persistent memory: global + active work mode + project
+  failsafe: true
+  pause_between_actions: 0.15
 memory:
   directory: memory
   global_filename: GLOBAL.md
   modes_directory: modes
-  development_filename: MEMORY.md  # original global development memory
+  development_filename: MEMORY.md
   project_filename: QWEN_MEMORY.md
-
-# Optional SKILL.md workflows: metadata is always available, contents load on demand.
 skills:
   directory: skills
   user_directory: user-skills
   project_directory: .qwen-skills
-
-# Web UI and model internet access (read-only GET)
 web:
   host: 127.0.0.1
   port: 7860
-  # model web tools (web_search / web_fetch)
   enabled: true
-  backend: google     # google / auto / bing (ddgs library backend)
-  timeout: 10         # seconds per request
-  max_chars: 12000    # maximum web_fetch text length
-  research_source_max_chars: 200000  # technical limit for stored text from a single source
-  document_max_bytes: 50000000       # maximum remote PDF/DOCX size
-  search_results: 5   # default search result count
-
-# Paths (relative to the project root unless absolute)
+  backend: google
+  timeout: 10
+  max_chars: 12000
+  research_source_max_chars: 200000
+  document_max_bytes: 50000000
+  search_results: 5
 paths:
   runtime_dir: runtime
   llama_dir: runtime/llama

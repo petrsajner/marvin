@@ -12,8 +12,11 @@ from harness.hardware import Hardware, detect_hardware, mask
 from harness.model_files import local_model_dir, model_ready, signature
 
 GIB = 1024**3
-PLANNER_VERSION = 3
-RAM_SAFETY_RESERVE = 4 * GIB
+PLANNER_VERSION = 4
+# Residual allocations measured with b10935, Q3 weights and microbatch 256.
+# Provenance: docs/design/measurements/2026-09-15.json, flash-final-*-cpu32.
+GPU_WORKSPACE_BYTES = round(2.4552589058876038 * GIB)
+HOST_WORKSPACE_GIB = {131072: 3.91606640625, 196608: 3.97206640625, 262144: 6.78706640625}
 
 
 @dataclass(frozen=True)
@@ -30,7 +33,8 @@ class RuntimePlan:
     required_available_ram_bytes: int = 0
 
 
-def choose_plan(hardware: Hardware, layout: dict, context: int, *, vram_limit=None) -> RuntimePlan:
+def choose_plan(hardware: Hardware, layout: dict, context: int, *, vram_limit=None,
+                cpu_expert_layers=None) -> RuntimePlan:
     if context not in (131072, 196608, 262144):
         raise ValueError("Flash-Next requires a supported context of at least 128k")
     if hardware.vram_total <= 0:
@@ -46,50 +50,57 @@ def choose_plan(hardware: Hardware, layout: dict, context: int, *, vram_limit=No
         other_usage = max(0, hardware.vram_total - hardware.vram_available)
         capacity = min(capacity, int(vram_limit * GIB))
         available = min(available, max(0, capacity - other_usage))
-    gpu_reserve = max(1536 * 1024**2, int(capacity * .06))
-    # Q8 attention + indexer. Extra workspace covers recurrent state, prefill and vision.
+    if capacity < 15 * GIB:
+        raise RuntimeError("Flash-Next requires a supported GPU memory profile (16 GB or larger).")
+    # Q8 attention + indexer, plus the measured recurrent/compute/vision residual.
     kv = int(12 * (2 * 2 * 256 + 128) * context * 34 / 32)
-    common = layout["common_bytes"] + layout["projector_bytes"] + kv + 2 * GIB
+    common = layout["common_bytes"] + layout["projector_bytes"] + kv + GPU_WORKSPACE_BYTES
     expert_bytes = layout["expert_layer_bytes"]
     if len(expert_bytes) != 48:
         raise ValueError("Unsupported expert-layer layout")
     cpu_layers = None
     gpu_bytes = 0
-    for count in range(len(expert_bytes) + 1):
+    # CPU31 spilled into shared GPU memory in the 32 GB qualification. The
+    # measured CPU32/39/46 placements are starting bounds, not generic reserves.
+    floor = 32 if capacity <= 32 * GIB else 0
+    if capacity < 31 * GIB:
+        floor = 39 if capacity >= 23 * GIB else 46
+    counts = [cpu_expert_layers] if cpu_expert_layers is not None else range(floor, len(expert_bytes) + 1)
+    for count in counts:
+        if not 0 <= count <= len(expert_bytes):
+            raise ValueError("Invalid CPU expert placement")
         predicted = common + sum(expert_bytes[count:])
-        if predicted <= available - gpu_reserve:
+        if predicted <= available:
             cpu_layers, gpu_bytes = count, predicted
             break
     if cpu_layers is None:
         raise RuntimeError(f"Flash-Next needs more free GPU memory for {context // 1024}k context. "
                            f"The selected GPU budget has {available / GIB:.1f} GiB free.")
-    # Prefer resident CPU experts for long prefill. Lazy PLE may use reclaimable pages,
-    # but it is not assumed to have a zero working set. Keep host staging/cache headroom.
-    # PLE lookups, CPU workspaces and retained prompt states grow after loading.
-    # Reserve them separately from the minimum RAM left for Windows and the UI.
-    working_ram = (6 + 2 * ((context - 131072) // 65536)) * GIB
+    # Working-set estimates are not initial-free-RAM requirements. Windows can
+    # reclaim mapped pages and page out inactive applications before/while loading.
+    working_ram = round(HOST_WORKSPACE_GIB[context] * GIB)
     host_bytes = sum(expert_bytes[:cpu_layers]) + working_ram
-    required_ram = host_bytes + RAM_SAFETY_RESERVE
-    if required_ram > hardware.ram_available:
-        raise RuntimeError(f"Not enough free system memory (RAM) for Flash-Next at this GPU budget: "
-                           f"{required_ram / GIB:.1f} GiB required, "
-                           f"{hardware.ram_available / GIB:.1f} GiB available. "
-                           "Reducing GPU memory moves more model weights into RAM. "
-                           "Use a larger GPU budget, free RAM, or choose a smaller model.")
+    if host_bytes > hardware.ram_total:
+        raise RuntimeError(f"Not enough installed system memory for this Flash-Next placement: "
+                           f"estimated model working set {host_bytes / GIB:.1f} GiB, "
+                           f"installed {hardware.ram_total / GIB:.1f} GiB.")
+    if capacity < 23 * GIB and hardware.ram_total <= 64 * GIB and context == 262144:
+        raise RuntimeError("Flash-Next 256k with a 16 GB GPU and 64 GB RAM reached critical physical "
+                           "memory in qualification. Try the next smaller context.")
     p_cpus = hardware.performance_cpus
     physical = hardware.physical_cpus
     batch_cpus = p_cpus or physical
     threads = min(len(p_cpus) or hardware.physical_cores, 16)
     batch_threads = min(len(batch_cpus) or hardware.physical_cores, 32)
     args = ["--n-cpu-moe", str(cpu_layers), "-t", str(max(1, threads)),
-            "-tb", str(max(1, batch_threads)), "-b", "1024", "-ub", "128",
+            "-tb", str(max(1, batch_threads)), "-b", "1024", "-ub", "256",
             "--fit", "off", "--cache-ram", "256"]
     if p_cpus:
         args += ["--cpu-mask", mask(p_cpus[:threads]), "--cpu-strict", "1"]
     if batch_cpus:
         args += ["--cpu-mask-batch", mask(batch_cpus[:batch_threads]), "--cpu-strict-batch", "1"]
     return RuntimePlan(context, cpu_layers, threads, batch_threads, gpu_bytes, host_bytes,
-                       hardware.fingerprint(), tuple(args), capacity, required_ram)
+                       hardware.fingerprint(), tuple(args), capacity, 0)
 
 
 def inspect_layout(models_dir: Path, spec: dict) -> dict:
@@ -125,8 +136,10 @@ def plan_for(cfg, key=None, context=None, *, hardware=None) -> RuntimePlan | Non
     plan = None
     for candidate in candidates:
         try:
+            frozen = cfg.data.get("_recovery_placement", {})
             plan = choose_plan(hw, layout, candidate,
-                               vram_limit=cfg.data.get("hardware", {}).get("vram_gb"))
+                               vram_limit=cfg.data.get("hardware", {}).get("vram_gb"),
+                               cpu_expert_layers=frozen.get("cpu_expert_layers") if frozen.get("model") == key else None)
             break
         except RuntimeError as exc:
             failure = exc

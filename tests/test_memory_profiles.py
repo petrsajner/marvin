@@ -55,15 +55,15 @@ class MemoryProfileTests(unittest.TestCase):
             self.assertEqual(physical.cpu_expert_layers, limited.cpu_expert_layers)
             self.assertEqual(physical.estimated_gpu_bytes, limited.estimated_gpu_bytes)
             self.assertEqual(limited.vram_budget_bytes, cap * GIB)
-            self.assertGreater(limited.required_available_ram_bytes, limited.estimated_host_bytes)
+            self.assertEqual(limited.required_available_ram_bytes, 0)
 
     def test_old_installed_config_gets_corrected_profiles_without_file_rewrite(self):
         path = self.root / "config.yaml"
         source = "models:\n  q5:\n    kv_cache_profiles:\n      f16: {ctx_size: 98304, min_vram_gb: 24}\n  q3:\n    kv_cache_profiles:\n      q8_0: {ctx_size: 49152, min_vram_gb: 15}\n"
         path.write_text(source)
         cfg = load_config(path)
-        self.assertEqual(cfg.kv_cache_profiles("q5")["f16"]["min_vram_gb"], 27)
-        self.assertEqual(cfg.kv_cache_profiles("q3")["q8_0"]["min_vram_gb"], 17)
+        self.assertEqual(cfg.kv_cache_profiles("q5")["f16"]["min_vram_gb"], 25.441)
+        self.assertEqual(cfg.kv_cache_profiles("q3")["q8_0"]["min_vram_gb"], 13.008)
         self.assertIn("q8_0_compact", cfg.kv_cache_profiles("q5"))
         self.assertEqual(path.read_text(), source)
 
@@ -94,8 +94,7 @@ class MemoryProfileTests(unittest.TestCase):
                 self.assertEqual(request.call_args.args[0], "q3")
                 self.assertEqual(request.call_args.kwargs["config"].data["hardware"]["vram_gb"], 16)
                 state = client.get("/api/state").json()
-                q5 = next(m for m in state["models"] if m["id"] == "q5")
-                self.assertTrue(all(not p["fits_gpu_budget"] for p in q5["profiles"]))
+                self.assertNotIn("q5", [m["id"] for m in state["models"]])
                 self.assertEqual(client.patch("/api/settings", json={"vram_gb": "invalid"}).status_code, 400)
                 self.assertEqual(self.app.preferences["vram_gb"], 16)
         finally:
@@ -188,6 +187,83 @@ class MemoryProfileTests(unittest.TestCase):
         with patch.object(servermgmt, "health", return_value=False), patch.object(servermgmt, "start", side_effect=start):
             self.assertTrue(servermgmt.ensure(self.cfg, "flash_next_q3"))
         self.assertEqual(contexts, [262144, 196608])
+
+    def test_approved_menu_is_exact_for_each_card_class(self):
+        expected = {
+            16: {"q3": {"q8_0": [64, 48]}},
+            24: {"q3": {"q8_0": [128, 96]}, "q4": {"q8_0": [96, 64]},
+                 "q5": {"q8_0": [96, 64]}, "nemotron_q4": {"q8_0": [512, 256]},
+                 "nemotron_q5": {"q8_0": [512, 256]}},
+            32: {"q4": {"q8_0": [256, 192], "f16": [128, 96]},
+                 "q5": {"q8_0": [192, 128], "f16": [128, 96]},
+                 "ornith_q5": {"q8_0": [256, 192]},
+                 "nemotron_q4": {"q8_0": [512, 256]}, "nemotron_q5": {"q8_0": [512, 256]}},
+        }
+        for capacity, table in expected.items():
+            actual = {}
+            for key in self.cfg.data["models"]:
+                if self.cfg.model(key).get("adaptive_runtime"):
+                    continue
+                for profile in gpu.offered_profiles(self.cfg, key, capacity - .16).values():
+                    actual.setdefault(key, {}).setdefault(profile["cache_type"], []).append(profile["ctx_size"] // 1024)
+            for groups in actual.values():
+                for contexts in groups.values():
+                    contexts.sort(reverse=True)
+            self.assertEqual(actual, table)
+        self.assertFalse(gpu.offered_profiles(self.cfg, "q3", 96))
+
+    def test_fallback_keeps_precision_class_and_placement(self):
+        from harness.measured_profiles import freeze_placement
+        for key, model in self.cfg.data["models"].items():
+            for name, values in self.cfg.kv_cache_profiles(key).items():
+                self.cfg.data.pop("_recovery_placement", None)
+                self.cfg.data["default_model"] = key
+                self.cfg.set_kv_cache_mode(key, name)
+                for lower in gpu.lower_memory_profiles(self.cfg):
+                    target = self.cfg.kv_cache_profiles(key)[lower]
+                    self.assertEqual(target.get("cache_type"), values.get("cache_type"))
+                    self.assertEqual(target.get("gpu_class"), values.get("gpu_class"))
+                    self.assertLess(target["ctx_size"], values["ctx_size"])
+                freeze_placement(self.cfg)
+                self.assertEqual(self.cfg.data["_recovery_placement"]["server_args"], values.get("server_args", []))
+        self.cfg.data.pop("_recovery_placement", None)
+        self.cfg.data["default_model"] = "nemotron_q5"
+        self.cfg.set_kv_cache_mode("nemotron_q5", "q8_0_512k_spill")
+        freeze_placement(self.cfg)
+        self.cfg.set_kv_cache_mode("nemotron_q5", "q8_0_256k_spill")
+        self.assertIn("21", self.cfg.data["_recovery_placement"]["server_args"])
+
+    def test_flash_reclaims_ram_and_freezes_experts_during_recovery(self):
+        from dataclasses import replace
+        from harness.hardware import Hardware
+        from harness.model_catalog import FLASH_NEXT_Q3
+        layout = FLASH_NEXT_Q3["layout_hint"]["layout"]
+        hw = Hardware("hybrid", 20, 20, tuple(range(8)), tuple(range(20)),
+                      64 * GIB, 2 * GIB, "GPU", "id", "driver", int(31.84 * GIB), int(29.4 * GIB))
+        large = choose_plan(hw, layout, 262144)
+        small = choose_plan(hw, layout, 196608, cpu_expert_layers=large.cpu_expert_layers)
+        self.assertEqual(large.cpu_expert_layers, 32)
+        self.assertEqual(small.cpu_expert_layers, 32)
+        self.assertAlmostEqual(large.estimated_gpu_bytes / GIB, 29.250, places=3)
+        self.assertAlmostEqual(large.estimated_host_bytes / GIB, 41.394, places=3)
+        self.assertLess(small.estimated_gpu_bytes, large.estimated_gpu_bytes)
+        self.assertIn("256", large.args)
+        with self.assertRaises(RuntimeError):
+            choose_plan(replace(hw, ram_total=16 * GIB), layout, 131072)
+        with self.assertRaisesRegex(RuntimeError, "qualification"):
+            choose_plan(replace(hw, vram_total=16 * GIB, vram_available=14 * GIB), layout, 262144)
+
+    def test_allocator_detection_ignores_old_launch_logs(self):
+        directory = self.cfg.path("paths.runtime_dir")
+        log = directory / "llama-server.log"
+        old = b"CUDA out of memory\n"
+        log.write_bytes(old + b"New launch succeeded\n")
+        (directory / "model-run.json").write_text(json.dumps({
+            "model": self.cfg.model_key(), "context": 196608, "log_offset": len(old)}))
+        servermgmt.record_allocation_failure(self.cfg, "Connection reset")
+        self.assertFalse(servermgmt.last_failure(self.cfg))
+        servermgmt.record_allocation_failure(self.cfg, "CUDA error: out of memory")
+        self.assertEqual(servermgmt.last_failure(self.cfg)["code"], "vram_pressure")
 
 
 if __name__ == "__main__":

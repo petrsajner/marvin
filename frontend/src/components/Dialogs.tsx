@@ -347,7 +347,7 @@ export function DialogView(props: any) {
                   </select>
                 </label>
                 <p>{tr("Changing the budget restarts the model automatically when no task is running. A compatible context or smaller model is selected when needed.")}</p>
-                {app.models.find((m: any) => m.id === app.preferences.model)?.uses_system_ram && <p>{tr("Flash-Next also uses system RAM. A smaller GPU budget needs more free RAM; GPU capacity alone does not determine compatibility.")}</p>}
+                {app.models.find((m: any) => m.id === app.preferences.model)?.uses_system_ram && <p>{tr("This profile also uses system RAM. A smaller GPU moves more weights into RAM. Windows can reclaim memory while the model starts.")}</p>}
                 <p>
                   VRAM: {runtime.vram || "—"} · Python {runtime.python || "—"}
                   {app.memory && <> · {tr("Free RAM")}: {app.memory.ram_available_gb} / {app.memory.ram_total_gb} GiB</>}

@@ -1,6 +1,6 @@
 # English source and optional Czech localization
 
-Source update after the published 1.8.2 build, 15 September 2026. No installers or release assets were rebuilt for this change. The published tag, version number, offline set and installed application remain separate from these source changes.
+Source update after the original 1.8.2 build, 15 September 2026. The initial source-only phase did not rebuild installers. These changes have since been packaged, installed and added to the refreshed offline set under the same version; see [release verification](../distribution/MEMORY-LOCALIZATION-1.8.2.md). The checks below record the earlier source-only phase.
 
 ## Boundaries
 

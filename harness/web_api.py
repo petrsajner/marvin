@@ -58,11 +58,29 @@ def create_app(cfg=None, *, service=None):
     def state(session_id: str | None = None):
         with service.lock:
             import psutil
-            from harness.gpu import effective_vram_gb, fits, vram_total_gb
+            from harness.gpu import effective_vram_gb, offered_profiles, vram_total_gb
             memory = psutil.virtual_memory()
             selected_cfg = Config(copy.deepcopy(cfg.data), cfg.root)
             selected_cfg.data.setdefault("hardware", {})["vram_gb"] = service.preferences.get("vram_gb", "auto")
             budget = effective_vram_gb(selected_cfg)
+            preset_key = "auto" if service.preferences.get("vram_gb", "auto") == "auto" else f"{float(service.preferences['vram_gb']):g}"
+            preset = service.preferences.get("memory_presets", {}).get(preset_key, {})
+            from harness.hardware import detect_hardware
+            if (preset.get("hardware_fingerprint") == detect_hardware().fingerprint()
+                    and preset.get("recovered_context") and preset.get("model") in cfg.data["models"]):
+                selected_cfg.data.setdefault("_recovered_contexts", {})[preset["model"]] = preset["recovered_context"]
+            model_options = []
+            for key, model in cfg.data["models"].items():
+                profiles = offered_profiles(selected_cfg, key, budget)
+                if not profiles:
+                    continue
+                current = service.preferences.get("kv_cache_modes", {}).get(key, cfg.kv_cache_mode(key))
+                model_options.append({"id": key, "name": model.get("status_label") or model["alias"],
+                    "vision": bool(model.get("mmproj")), "installed": cfg.model_ready(key),
+                    "uses_system_ram": bool(model.get("adaptive_runtime") or any(
+                        "--n-cpu-moe" in p.get("server_args", []) for p in profiles.values())),
+                    "profiles": [{"id": p, **spec, "fits_gpu_budget": True} for p, spec in profiles.items()],
+                    "profile": current if current in profiles else next(iter(profiles))})
             sessions = Session.list_sessions(cfg, limit=100000)
             selected = session_id or service.preferences.get("session_id")
             if not selected or (selected not in service.sessions and not any(item["id"] == selected for item in sessions)):
@@ -77,13 +95,7 @@ def create_app(cfg=None, *, service=None):
                            "ram_available_gb": round(memory.available / 1024**3, 1)},
                 "session_id": selected, "sessions": sessions, "projects": Projects(cfg).list_all(),
                 "modes": [{"id": key, "label": value.label} for key, value in WORK_MODES.items()],
-                "models": [{"id": key, "name": model.get("status_label") or model["alias"],
-                            "vision": bool(model.get("mmproj")), "installed": cfg.model_ready(key),
-                            "uses_system_ram": bool(model.get("adaptive_runtime")),
-                            "profiles": [{"id": p, **spec, "fits_gpu_budget": fits(cfg, key, p, budget)}
-                                         for p, spec in cfg.kv_cache_profiles(key).items()],
-                            "profile": service.preferences.get("kv_cache_modes", {}).get(key, cfg.kv_cache_mode(key))}
-                           for key, model in cfg.data["models"].items()],
+                "models": model_options,
                 "active": {k: service.active[k] for k in ("id", "session_id", "text")} if service.active else None,
                 "queue": service.store.jobs(), "queue_paused": service.queue_paused,
                 "commands": COMMANDS, "sequence": service.store.sequence()}

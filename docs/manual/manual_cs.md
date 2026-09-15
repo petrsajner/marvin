@@ -63,7 +63,7 @@ Objem stahování závisí na zvolených modelech. Přerušené stahování lze 
 
 V nastavení modelu vyberte **Qwen 3.8 Flash-Next · Q3**. Marvin před stahováním zkontroluje paměť počítače, stáhne a ověří všechny části modelu včetně podpory obrázků a připraví spuštění. Během přenosu ukazuje procenta a objem dat; přenos lze zastavit a později obnovit. Ovládání chatu, příloh a nástrojů zůstává stejné.
 
-Tento model používá Q8 cache a alespoň 128k kontext. Počet jader a rozdělení dat mezi systémovou a grafickou paměť aplikace volí sama. Pokud větší zvolený kontext nemá dost paměti, použije nižší profil, nejméně 128k, a zobrazí skutečnou velikost. Karta s menší VRAM potřebuje více volné systémové RAM. Dlouhý nový dokument se může zpracovávat několik minut; navazující otázky využívají již zpracovaný kontext.
+Tento model používá Q8 cache a alespoň 128k kontext. Počet jader a rozdělení dat mezi systémovou a grafickou paměť aplikace volí sama. Pokud větší zvolený kontext nemá dost paměti, použije nižší profil, nejméně 128k, a zobrazí skutečnou velikost. Menší GPU přesouvá více vah do systémové RAM; Windows může během startu paměť uvolnit. Dlouhý nový dokument se může zpracovávat několik minut; navazující otázky využívají již zpracovaný kontext.
 
 ## První spuštění
 
@@ -177,17 +177,23 @@ Myšlení zůstává také u promptu, protože ho můžete měnit mezi otázkami
 
 # 4. Modely, KV cache, kontext a thinking
 
-| Model | Typické použití | Kvantizace | KV | Praktické profily |
-|---|---|---|---|---|
-| Qwen 3.8 27B Q5 | Hlavní kvalitní model | Q5 | F16/Q8 | F16 96k; Q8 192k; kompaktní Q8 64k pro 24 GB |
-| Qwen 3.8 27B Q4 | Rychlost a největší kontext | Q4 | F16/Q8 | F16 128k; Q8 256k |
-| Qwen 3.8 27B IQ3_S | Menší grafické karty, kompromis v kvalitě | IQ3_S | F16/Q8 | Podle GPU: Q8 32k až 256k |
-| Ornith 1.5 35B-A3B Abliterated Q5 | Velmi rychlý volitelný MoE | Q5 | Q8 | 128k |
-| Nemotron 3.5 Lightning Q4 | Rychlý textový MoE | Q4_K_XL | Q8 | 128k, 256k, 512k; také profily s využitím RAM |
-| Nemotron 3.5 Lightning Q5 | Textový MoE s vyšší kvantizací vah | Q5_K_XL | Q8 | 128k nebo 256k na GPU; 256k nebo 512k s využitím RAM |
-| Qwen 3.8 Flash-Next Q3 | Velký model s automatickým využitím GPU a RAM, včetně vision | Q3_K_XL | Q8 | 128k, 192k, 256k; výchozí požadavek 256k |
+| Třída GPU | Model | Přesnost KV | Dostupné kontexty |
+|---|---|---|---|
+| 16 GB | Qwen IQ3 | Q8 | 64k / 48k |
+| 24 GB | Qwen IQ3 | Q8 | 128k / 96k |
+| 24 GB | Qwen Q4 | Q8 | 96k / 64k |
+| 24 GB | Qwen Q5 | Q8 | 96k / 64k |
+| 24 GB | Nemotron Q4 | Q8 | 512k / 256k |
+| 24 GB | Nemotron Q5 | Q8 | 512k / 256k |
+| 32 GB | Qwen Q4 | Q8 | 256k / 192k |
+| 32 GB | Qwen Q4 | F16 | 128k / 96k |
+| 32 GB | Qwen Q5 | Q8 | 192k / 128k |
+| 32 GB | Qwen Q5 | F16 | 128k / 96k |
+| 32 GB | Ornith Q5 | Q8 | 256k / 192k |
+| 32 GB | Nemotron Q4 | Q8 | 512k / 256k |
+| 32 GB | Nemotron Q5 | Q8 | 512k / 256k |
 
-Výchozí profil nové instalace je Qwen Q5/Q8/192k. Aplikace si pamatuje poslední model a KV volbu každého modelu.
+Na kartách třídy 32 GB je výchozí Qwen Q5 s Q8 KV a kontextem 192k. Menší karty dostanou odpovídající Q8 profil podle tabulky. F16 je volitelně pouze pro Qwen Q4/Q5 na 32GB kartách. IQ3 se nabízí pouze na 16/24GB kartách. Každá kombinace modelu a přesnosti KV nabízí dvě nejvyšší odpovídající velikosti kontextu.
 
 Q5 používejte pro náročný vývoj, architekturu a finální kvalitu. Q4 je vhodný pro vyšší rychlost nebo kontext 256k. Ornith je extrémně rychlý, ale při reálném vývoji může být slabší než dense Qwen.
 
@@ -198,19 +204,19 @@ Nemotron je pouze textový. Qwen, Ornith a Flash-Next mají vlastní podporu obr
 
 Pro běžnou práci ponechte **Nastavení > Model a zařízení > Limit paměti GPU** na **Automatická detekce**. Ruční hodnota omezuje paměť dostupnou Marvinovi; nezvětší skutečnou kapacitu karty. Měňte ji, když neběží úloha. Marvin uvolní předchozí model, vybere vhodný profil a podle potřeby model restartuje. Úspěšný model a kontext si pamatuje pro každý limit, takže návrat k automatické detekci obnoví její nastavení. Pokud změna selže, pokusí se vrátit předchozí funkční model i nastavení.
 
-Kompaktní volby zahrnují **Qwen IQ3_S / Q8 / 32k pro 16 GB** a **Qwen Q5 / Q8 / 64k pro 24 GB**. Obě zachovávají obrázky; jejich zpracování přesouvají na CPU, aby zbyla větší rezerva v grafické paměti. Zpracování obrázků proto může být pomalejší. Tyto paměťové limity byly ověřeny na RTX 5090 a neurčují rychlost skutečné 16GB nebo 24GB karty. Původní profil IQ3 s 48k vyžaduje alespoň 17 GB a Q5 F16/96k alespoň 27 GB.
+Qwen IQ3 používá na 16 GB Q8 64k/48k, Qwen Q5 na 24 GB Q8 96k/64k. Oba zachovávají vision se zpracováním obrázků na CPU. Nemotron Q4/Q5 nabízí na 24 GB 512k/256k s částí expertů na CPU. Také Nemotron Q5 na 32 GB při 512k používá jeden blok expertů na CPU; při 256k jsou váhy na GPU. Tato rozložení byla změřena na RTX 5090, nikoli na fyzických 16/24GB kartách. Jiné programy mohou ovlivnit, zda se větší volba úspěšně spustí.
 
-Pokud nedostatek RAM nebo grafické paměti přeruší úlohu, Marvin se pokusí použít menší podporovaný profil a pokračovat se zachovanou historií a výsledky dokončených nástrojů. Akce s neznámým výsledkem neopakuje naslepo. Stop zůstává dostupný. Pokud už žádný menší použitelný profil nezbývá, úloha se zastaví s vysvětlením nedostatku paměti; můžete vybrat jiný model a použít **Pokračovat**.
+Pokud skutečná chyba alokace nebo trvající kritický nedostatek fyzické RAM přeruší úlohu, Marvin zkusí nejbližší menší kontext se stejným modelem, přesností cache i rozložením vah. Výsledky dokončených nástrojů zůstanou v historii. Obnova nepřepíná mezi Q8 a F16. Pokud už menší podporovaný kontext nezbývá, úloha se zastaví s vysvětlením; můžete vybrat jiný model a použít **Pokračovat**. Úspěšné nastavení se pamatuje pro každý limit GPU.
 
 ## Flash-Next: nastavení a reálné čekání
 
 Flash-Next stáhne přibližně **90,9 GB** ve čtyřech souborech. Po prvním stažení se používá místní kopie. Změna KV profilu model znovu nestahuje. Během přípravy uvidíte zvlášť stahování, kontrolu souborů a načítání; přenos ukazuje procenta a objem dat.
 
-Výchozí požadavek je **256k Q8**. Aplikace podle aktuálně volné RAM a VRAM vybere 256k, 192k nebo 128k, nastaví CPU a rozdělení vah a zobrazí skutečně použitý profil. Pod 128k tento model nenastavuje. Když paměť nestačí, vysvětlí problém a při neúspěšném přepnutí se pokusí obnovit předchozí funkční model.
+Flash-Next nabízí dvě nejvyšší dostupné volby z **256k, 192k a 128k**, s vahami Q3 a KV Q8. Počet vláken CPU a rozložení vah volí Marvin automaticky. Minimum je 128k. Plánování používá instalovanou RAM a naměřené alokace; nízká počáteční volná RAM sama o sobě start nezablokuje, protože Windows umí paměť uvolnit. O funkčnosti rozhoduje i skutečný průběh načítání a trvající kritický nedostatek fyzické paměti.
 
-Na RTX 5090 / 64 GB RAM / Core Ultra 7 265K krátké běhy dosahovaly přibližně **27 generovaných tokenů za sekundu**. Pozdější test s různorodým textem repozitáře zpracoval 98 124 vstupních tokenů přibližně za **23 minut 52 sekund**. Navazující otázka využila 98 148 tokenů z cache a odpověď trvala **1,38 sekundy**. Rychlost psaní odpovědi proto neříká, jak dlouho potrvá načíst rozsáhlý nový dokument; záleží také na obsahu vstupu a zaplněném kontextu.
+Ověřené nastavení 256k na RTX 5090 / 64 GB RAM / Core Ultra 7 265K dosáhlo při krátké odpovědi asi **24,5 tokenu/s**. Načtení **253 883 vstupních tokenů** trvalo přibližně **44 minut**; navazující odpověď s využitím cache **1,73 sekundy**. Model při dlouhém kontextu zabral ve špičce asi **29,25 GiB GPU + 41,39 GiB rezidentní RAM**. Generování se zaplněným kontextem kleslo přibližně na 16 tokenů/s. První čtení velkého vstupu zůstává pomalé; navazující dotazy jsou výrazně rychlejší.
 
-128k profil prošel tímto dlouhým testem. 256k dříve prošel testy nástrojů, obrázků, agentní úlohy a vstupu o 24 tisících tokenech; celé 256k okno nebylo naplněno. Na fyzických 16GB a 24GB kartách tato varianta zatím změřená není. Menší VRAM vyžaduje více volné systémové RAM: orientační odhad je přibližně **52 GiB volné RAM při 24 GB VRAM** a **60 GiB volné RAM při 16 GB VRAM**. Jde o volnou paměť, nikoli celkovou instalovanou kapacitu. Počítač s 64 GB RAM proto tyto profily nemusí zvládnout. Automatická obnova nikdy nesníží Flash-Next pod 128k ani nezmění jeho Q3 váhy.
+Měření z 15. září zahrnuje 55 spuštění, nástroje, vision u podporovaných modelů, Stop a různorodé dlouhé vstupy. Pro Flash-Next 256k vychází odhad při 24GB GPU na asi **48,7 GiB rezidentní RAM modelu**, při 16GB GPU na **55,9-57,3 GiB**. Nejde o požadavek na počáteční volnou RAM. Rozložení pro 16GB GPU s 64 GB RAM dosáhlo při zahřívání 256k kritického nedostatku fyzické paměti, proto se tato kombinace na 256k nenabízí. Volby 192k/128k závisejí na skutečném startu; nejde o potvrzení funkčnosti na fyzických menších kartách.
 
 Profily používají tradiční označení 128k/192k/256k pro 131 072 / 196 608 / 262 144 tokenů. Číselný ukazatel může tutéž kapacitu zaokrouhlit například na 262k.
 

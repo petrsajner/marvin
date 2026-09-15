@@ -254,7 +254,8 @@ class LLMClient:
                     res.stopped = stop_started is not None
                     break
                 if kind == "error":
-                    from harness.servermgmt import last_failure
+                    from harness.servermgmt import last_failure, record_allocation_failure
+                    record_allocation_failure(self.cfg, chunk)
                     failure = last_failure(self.cfg)
                     if failure.get("model") == self.cfg.model_key() and failure.get("error"):
                         raise RuntimeError(failure["error"]) from chunk

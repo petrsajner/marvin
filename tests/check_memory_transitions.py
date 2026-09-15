@@ -70,7 +70,7 @@ def main():
         with TestClient(create_app(cfg, service=service)) as client:
             ready("q5")
             sid = client.post("/api/sessions", json={"work_mode": "discussion"}).json()["session_id"]
-            for index, (budget, model, profile) in enumerate(((24, "q5", "q8_0_compact"), (16, "q3", "q8_0_32k"), ("auto", "q5", "q8_0"))):
+            for index, (budget, model, profile) in enumerate(((24, "q5", "q8_0_96k"), (16, "q3", "q8_0_64k"), ("auto", "q5", "q8_0"))):
                 started = time.monotonic()
                 client.patch("/api/settings", json={"vram_gb": budget}).raise_for_status()
                 ready(model)
@@ -92,7 +92,7 @@ def main():
             client.post(f"/api/sessions/{sid}/submit", json={"text": "Reply with exactly MEMORY-RECOVERED.", "request_id": "recovery"}).raise_for_status()
             complete("recovery")
             assert injection["count"] == 1
-            assert service.models.cfg.kv_cache_mode("q5") == "f16"
+            assert service.models.cfg.kv_cache_mode("q5") == "q8_0_128k"
             assert "MEMORY-RECOVERED" in service.session(sid).messages[-1].get("content", "")
             assert len([m for m in service.session(sid).messages if m.get("role") == "user" and m.get("content") == "Reply with exactly MEMORY-RECOVERED."]) == 1
             report["injected_pressure_recovered"] = True

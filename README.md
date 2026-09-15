@@ -54,7 +54,7 @@ These are product decisions, not postponed roadmap items.
 - 🖼️ **Image analysis** — native vision (mmproj), including screenshots
 - 🖱️ **Computer control** — screenshot → clicking, typing, keys (pyautogui + mss)
 - 🔀 **Switchable models** — Qwen IQ3/Q4/Q5, Flash-Next Q3, Ornith Q5 and Nemotron Q4/Q5
-- 🎚️ **KV cache precision** — Qwen F16 for accuracy, or Q8 for double the context;
+- 🎚️ **KV cache precision** — Q8 by default, with optional F16 on 32 GB-class cards;
   Ornith fixed at Q8
 - 🧠 **Thinking on/off** — model reasoning mode (switchable at runtime)
 - 🛡️ **Three autonomy levels** — supervised / semi / auto (switchable anytime);
@@ -177,7 +177,7 @@ threads and expert placement automatically. Download progress is visible and can
 be interrupted and resumed. Chat, images and agent tools use the existing UI.
 
 Flash-Next uses Q8 KV cache with a minimum 128k context. Larger profiles require
-enough available memory; the application can reduce the requested profile to 128k.
+a compatible measured placement; Windows may reclaim RAM during startup. Recovery changes only context, down to 128k.
 A smaller GPU also needs more system RAM for this model. This differs from the
 smaller Qwen models that primarily run in VRAM.
 
@@ -435,3 +435,7 @@ sessions/         development conversation history (gitignored)
   complex setup) — for computer-use on Windows, native llama.cpp is the most stable path
 - The MTP (multi-token prediction) module can be added as a draft model via
   `server.extra_args`
+
+## Measured model profiles (1.9.0)
+
+The [approved profile table and 55-case qualification](docs/design/profile-remeasurement-2026-09-15.md) includes reusable JSON/CSV measurements, exact arguments, long-input coverage and smaller-card limitations. [Memory selection and recovery](docs/design/memory-profiles.md) documents the current behavior. Q8 is the default; F16 is optional only for Qwen Q4/Q5 on 32 GB-class GPUs.

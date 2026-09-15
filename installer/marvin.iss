@@ -10,7 +10,7 @@
 ; Override the version from the command line: ISCC /DMyAppVersion=x.y.z
 ; (installer\release.bat uses installer\version.txt)
 #ifndef MyAppVersion
-#define MyAppVersion "1.8.2"
+#define MyAppVersion "1.9.0"
 #endif
 
 #define MyAppName "Marvin"
@@ -160,6 +160,7 @@ var
   ModelKeys: array[0..6] of String;
   ModelNames: array[0..6] of String;
   ModelMinVram: array[0..6] of Double;
+  ModelRowKeys: array[0..6] of String;
   ModelFiles: array[0..6] of String;
 
 procedure FillModelTable;
@@ -171,20 +172,20 @@ begin
   ModelKeys[4] := 'nemotron_q4';
   ModelKeys[5] := 'nemotron_q5';
   ModelKeys[6] := 'flash_next_q3';
-  ModelNames[0] := 'Qwen3.8-27B IQ3_S  (12.0 GB download)  -  16 GB GPUs, compact 32k profile';
+  ModelNames[0] := 'Qwen3.8-27B IQ3_S  (12.0 GB download)  -  16/24 GB GPUs, Q8 64k/48k on 16 GB';
   ModelNames[1] := 'Qwen3.8-27B Q4_K_M  (16.5 GB download)  -  24 GB+ GPUs';
   ModelNames[2] := 'Qwen3.8-27B Q5_K_M  (19.8 GB download)  -  24 GB+ GPUs';
   ModelNames[3] := 'Ornith 1.5 35B-A3B Q5 Abliterated  (23.0 GB download)  -  32 GB GPUs';
   ModelNames[4] := 'Nemotron 3.5 Lightning 30B-A3B Q4_K_XL  (25.5 GB download)  -  24 GB+ GPUs';
-  ModelNames[5] := 'Nemotron 3.5 Lightning 30B-A3B Q5_K_XL  (30.4 GB download)  -  32 GB GPUs';
+  ModelNames[5] := 'Nemotron 3.5 Lightning 30B-A3B Q5_K_XL  (30.4 GB download)  -  24 GB+ GPUs, CPU experts on 24 GB';
   ModelNames[6] := 'Qwen3.8-Flash-Next Q3  (90.9 GB download)  -  GPU + system RAM, automatic configuration';
-  ModelMinVram[0] := 15.5;
+  ModelMinVram[0] := 15.0;
   ModelMinVram[1] := 23.0;
-  ModelMinVram[2] := 23.75;
-  ModelMinVram[3] := 30.0;
+  ModelMinVram[2] := 23.0;
+  ModelMinVram[3] := 31.0;
   ModelMinVram[4] := 23.0;
-  ModelMinVram[5] := 29.5;
-  ModelMinVram[6] := 12.0;
+  ModelMinVram[5] := 23.0;
+  ModelMinVram[6] := 15.0;
   ModelFiles[0] := 'Qwen3.8-27B-UD-IQ3_S.gguf';
   ModelFiles[1] := 'Qwen3.8-27B-UD-Q4_K_M.gguf';
   ModelFiles[2] := 'Qwen3.8-27B-UD-Q5_K_M.gguf';
@@ -237,7 +238,11 @@ begin
       Checked := Fits and FileExists(ModelsDir + '\' + ModelFiles[I])
     else
       Checked := Fits and (I <> 6);
-    ModelList.AddCheckBox(ModelNames[I], '', 0, Checked, Fits, False, False, TObject(I));
+    if not ((I = 0) and (Vram >= 31.0)) then
+    begin
+      ModelRowKeys[ModelList.Items.Count] := ModelKeys[I];
+      ModelList.AddCheckBox(ModelNames[I], '', 0, Checked, Fits, False, False, TObject(I));
+    end;
   end;
 end;
 
@@ -338,7 +343,7 @@ begin
         if ModelList.Checked[I] and ModelList.ItemEnabled[I] then
         begin
           if Selection <> '' then Selection := Selection + ',';
-          Selection := Selection + ModelKeys[I];
+          Selection := Selection + ModelRowKeys[I];
         end;
     if Selection <> '' then
       SaveStringToFile(ExpandConstant('{app}\runtime\model-selection.txt'), Selection, False);

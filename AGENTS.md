@@ -22,6 +22,14 @@ expanding into these non-goals.
 
 ## Source language and localization
 
+- Reuse the approved September 15, 2026 model measurements in
+  `docs/design/profile-remeasurement-2026-09-15.md` and `docs/design/measurements/`.
+  `harness/measured_profiles.py` is the built-in profile authority. Do not infer
+  model minima from total desktop VRAM or initial free RAM, add blanket reserves,
+  change KV precision during recovery, or repeat the complete benchmark matrix
+  without a relevant weights/runtime/allocation change. Recovery keeps the same
+  model, cache precision and weight placement and only lowers context.
+
 - Write code, identifiers, comments, docstrings, model/tool prompts, test fixtures,
   scripts and contributor documentation in English.
 - English is the default UI language. Keep optional Czech UI text and legacy

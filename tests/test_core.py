@@ -66,8 +66,8 @@ def test_config() -> None:
           "Ornith uses sampling settings from its own model card")
     check(cfg.mmproj_repo() == "ornith-ai/Ornith-1.5-35B-A3B-GGUF",
           "The Ornith vision projector can come from a separate repository")
-    check(cfg.context_size() == 131072 and cfg.kv_cache_mode() == "q8_0",
-          "Ornith uses the validated 128k context and Q8 KV")
+    check(cfg.context_size() == 262144 and cfg.kv_cache_mode() == "q8_0_256k",
+          "Ornith uses the validated 256k context and Q8 KV")
     legacy_file = Path(tempfile.mkdtemp()) / "legacy.yaml"
     try:
         legacy_file.write_text(
@@ -79,15 +79,15 @@ def test_config() -> None:
             "agent:\n  max_steps: 40\n  semi_max_steps: 15\n",
             encoding="utf-8")
         migrated = load_config(legacy_file)
-        check(migrated.context_size("q4") == 131072
+        check(migrated.context_size("q4") == 262144
               and migrated.context_size("q5") == 196608
-              and migrated.kv_cache_mode("q4") == "f16"
+              and migrated.kv_cache_mode("q4") == "q8_0"
               and migrated.kv_cache_mode("q5") == "q8_0",
-              "Legacy configuration adopts Q5/Q8 defaults without changing Q4")
-        legacy_q4 = migrated.data["models"]["q4"]["kv_cache_profiles"]
-        check(legacy_q4["f16"]["label"] == "16-bit - more precise, context 128k"
-              and legacy_q4["f16"].get("label_cs") == translate("16-bit - more precise, context 128k", "cs")
-              and legacy_q4["q8_0"]["label"] == "8-bit - larger context 256k",
+              "Legacy configuration adopts measured Q8 defaults for Qwen")
+        legacy_q4 = migrated.kv_cache_profiles("q4")
+        check(legacy_q4["f16"]["label"] == "F16 · 128k"
+              and legacy_q4["f16"].get("label_cs") == translate("F16 · 128k", "cs")
+              and legacy_q4["q8_0"]["label"] == "Q8 · 256k",
               "Legacy localized KV labels migrate to English labels plus UI translations")
         migrated.set_kv_cache_mode("q4", "q8_0")
         check(migrated.context_size("q4") == 262144
@@ -119,8 +119,8 @@ def test_config() -> None:
     version_files = [p for p in _version_candidates() if p.exists()]
     installer_version = (version_files[0].read_text(encoding="utf-8").strip()
                          if version_files else "")
-    check(bool(installer_version) and APP_VERSION == installer_version and APP_VERSION == "1.8.2",
-          "The visible application version matches installer version 1.8.2")
+    check(bool(installer_version) and APP_VERSION == installer_version and APP_VERSION == "1.9.0",
+          "The visible application version matches installer version 1.9.0")
     invariants = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     check(all(item in invariants for item in (
         "Language servers or an LSP runtime/distribution layer",
@@ -439,31 +439,30 @@ def test_gpu_autofit() -> None:
     cfg.data["hardware"] = {"vram_gb": 24}
     check(effective_vram_gb(cfg) == 24.0, "hardware.vram_gb constrains detected capacity")
     check(fits(cfg, "q4", "q8_0_compact", 24.0), "The compact profile fits a 24 GB capacity budget")
-    check(fits(cfg, "q4", "f16_compact", 24.0), "A compact F16 profile exists for 24 GB cards")
+    check(not fits(cfg, "q4", "f16_compact", 24.0), "No F16 profile is offered for 24 GB cards")
     check(not fits(cfg, "q5", "q8_0", 24.0), "Q5 with a 192k context does not fit 24 GB")
     choice = best_fit(cfg, 24.0)
-    check(choice == ("q5", "q8_0_compact") or choice == ("q4", "q8_0_compact"),
+    check(choice == ("q5", "q8_0_96k"),
           f"auto-fit for 24 GB selects a feasible combination ({choice})")
     check(set(fitting_profiles(cfg, "ornith_q5", 24.0)) == set(),
           "Ornith has no supported 24 GB profile")
-    check(set(download_keys(cfg, 24.0)) == {"q3", "q4", "q5", "nemotron_q4"},
+    check(set(download_keys(cfg, 24.0)) == {"q3", "q4", "q5", "nemotron_q4", "nemotron_q5"},
           "Setup selects compatible 24 GB models, including Nemotron Q4 with CPU experts")
     check(set(download_keys(cfg, 16.0)) == {"q3"},
           "Setup selects IQ3_S for 16 GB cards")
-    check(best_fit(cfg, 16.0) == ("q3", "q8_0_32k"),
-          "auto-fit for 16 GB selects the validated IQ3_S / 32k profile")
+    check(best_fit(cfg, 16.0) == ("q3", "q8_0_64k"),
+          "auto-fit for 16 GB selects the measured IQ3_S / 64k profile")
     q3_profiles = cfg.kv_cache_profiles("q3")
-    check(set(q3_profiles) == {"q8_0", "q8_0_32k", "q8_0_128k", "f16_96k",
-                               "q8_0_256k", "f16_192k"},
-          "Q3 has profiles for 16, 24 and 32 GB cards")
+    check(set(q3_profiles) == {"q8_0", "q8_0_64k", "q8_0_128k", "q8_0_96k"},
+          "IQ3 has only the approved 16 and 24 GB profiles")
     check(all("min_vram_gb" in p for p in q3_profiles.values()),
           "Every Q3 profile specifies min_vram_gb")
-    check(set(download_keys(cfg, 32.0)) == {"q3", "q4", "q5", "ornith_q5",
+    check(set(download_keys(cfg, 32.0)) == {"q4", "q5", "ornith_q5",
                                             "nemotron_q4", "nemotron_q5"},
           "Setup selects all standard models on a 32 GB card")
     # Nemotron: measured profiles, RAM spill, text-only (no projector)
     nq4 = cfg.kv_cache_profiles("nemotron_q4")
-    check(nq4["q8_0_512k_spill"].get("server_args") == ["--n-cpu-moe", "18"],
+    check(nq4["q8_0_512k_spill"].get("server_args") == ["--fit", "off", "--n-cpu-moe", "14"],
           "Nemotron spill profiles include --n-cpu-moe")
     check(cfg.mmproj_file("nemotron_q4") is None and cfg.mmproj_file("q5") is not None,
           "Nemotron is text-only; Qwen has a multimodal projector")

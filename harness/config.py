@@ -11,232 +11,62 @@ from .i18n import locale_data, translate
 
 ROOT = Path(__file__).resolve().parent.parent
 
-BUILTIN_MODELS: dict[str, dict[str, Any]] = {
-    "q4": {
-        "alias": "Qwen3.8-27B Q4_K_M (16.5 GB, fast)",
-        "status_label": "Qwen 3.8 27B · Q4",
-        "repo": "unsloth/Qwen3.8-27B-GGUF",
-        "file": "Qwen3.8-27B-UD-Q4_K_M.gguf",
-        "mmproj": "mmproj-F16.gguf",
-        "ctx_size": 131072,
-        "kv_cache": "f16",
-        "kv_cache_profiles": {
-            "f16": {"label": "16-bit - more precise, context 128k",
-                    "ctx_size": 131072, "min_vram_gb": 30},
-            "q8_0": {"label": "8-bit - larger context 256k",
-                     "ctx_size": 262144, "min_vram_gb": 30},
-            "q8_0_compact": {"cache_type": "q8_0",
-                             "label": "8-bit - compact for 24 GB, context 96k",
-                             "ctx_size": 98304, "min_vram_gb": 23},
-            "f16_compact": {"cache_type": "f16",
-                            "label": "16-bit - compact for 24 GB, context 64k",
-                            "ctx_size": 65536, "min_vram_gb": 24},
-        },
-        "server_args": ["-fa", "on"],
-    },
-    "q3": {
-        "alias": "Qwen3.8-27B IQ3_S (12.0 GB, borderline quality - for 16 GB GPUs)",
-        "status_label": "Qwen 3.8 27B · IQ3_S",
-        "repo": "unsloth/Qwen3.8-27B-GGUF",
-        "file": "Qwen3.8-27B-UD-IQ3_S.gguf",
-        "mmproj": "mmproj-F16.gguf",
-        "ctx_size": 49152,
-        "kv_cache": "q8_0",
-        "kv_cache_profiles": {
-            "q8_0": {"label": "8-bit - context 48k (17 GB+)",
-                     "ctx_size": 49152, "min_vram_gb": 17},
-            "q8_0_32k": {"cache_type": "q8_0",
-                         "label": "8-bit - context 32k (16 GB safe)",
-                         "ctx_size": 32768, "min_vram_gb": 15.5,
-                         "server_args": ["-b", "1024", "-ub", "128", "--no-mmproj-offload"]},
-            "q8_0_128k": {"cache_type": "q8_0",
-                          "label": "8-bit - context 128k (24 GB)",
-                          "ctx_size": 131072, "min_vram_gb": 20},
-            "f16_96k": {"cache_type": "f16",
-                        "label": "16-bit - context 96k (24 GB, max precision)",
-                        "ctx_size": 98304, "min_vram_gb": 23},
-            "q8_0_256k": {"cache_type": "q8_0",
-                          "label": "8-bit - context 256k (32 GB)",
-                          "ctx_size": 262144, "min_vram_gb": 26},
-            "f16_192k": {"cache_type": "f16",
-                         "label": "16-bit - context 192k (32 GB, borderline)",
-                         "ctx_size": 196608, "min_vram_gb": 31},
-        },
-        "server_args": ["-fa", "on"],
-    },
-    "q5": {
-        "alias": "Qwen3.8-27B Q5_K_M (19.8 GB, high quality)",
-        "status_label": "Qwen 3.8 27B · Q5",
-        "repo": "unsloth/Qwen3.8-27B-GGUF",
-        "file": "Qwen3.8-27B-UD-Q5_K_M.gguf",
-        "mmproj": "mmproj-F16.gguf",
-        "ctx_size": 98304,
-        "kv_cache": "q8_0",
-        "kv_cache_profiles": {
-            "f16": {"label": "16-bit - more precise, context 96k",
-                    "ctx_size": 98304, "min_vram_gb": 27},
-            "q8_0": {"label": "8-bit - larger context 192k",
-                    "ctx_size": 196608, "min_vram_gb": 30},
-            "q8_0_compact": {"cache_type": "q8_0", "ctx_size": 65536, "min_vram_gb": 23.75,
-                             "label": "8-bit - compact for 24 GB, context 64k",
-                             "server_args": ["-b", "1024", "-ub", "128", "--no-mmproj-offload"]},
-        },
-        "server_args": ["-fa", "on"],
-    },
-    "ornith_q5": {
-        "alias": "Ornith 1.5 35B-A3B Abliterated Q5 (23.0 GB, reasoning, context 128k)",
-        "status_label": "Ornith 1.5 35B-A3B · Abliterated Q5",
-        "family": "ornith",
-        "repo": "alztrk/Ornith-1.5-35B-A3B-Abliterated-GGUF",
-        "file": "Ornith-1.5-35B-Abliterated-Dynamic-Q5_K_M.gguf",
-        "mmproj_repo": "ornith-ai/Ornith-1.5-35B-A3B-GGUF",
-        "mmproj": "mmproj-Ornith-1.5-35B-BF16.gguf",
-        "ctx_size": 131072,
-        "kv_cache": "q8_0",
-        "kv_cache_profiles": {
-            "q8_0": {"label": "8-bit - solid, context 128k",
-                     "ctx_size": 131072, "min_vram_gb": 30},
-        },
-        "server_args": ["-fa", "on"],
-        "sampling": {
-            "thinking": {
-                "temperature": 0.6,
-                "top_p": 0.95,
-                "top_k": 20,
-                "presence_penalty": 0.0,
-            },
-            "non_thinking": {
-                "temperature": 0.7,
-                "top_p": 0.80,
-                "top_k": 20,
-                "presence_penalty": 1.5,
-            },
-        },
-        "supports_reasoning_effort": False,
-    },
-    "nemotron_q4": {
-            "alias": "Nemotron 3.5 Lightning 30B-A3B Q4_K_XL (25.5 GB, hybrid MoE, ~210 tok/s)",
-            "status_label": "Nemotron 3.5 Lightning · Q4_XL",
-            "family": "nemotron",
-            "repo": "unsloth/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-GGUF",
-            "file": "NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q4_K_XL.gguf",
-            "ctx_size": 524288,
-            "kv_cache": "q8_0_512k",
-            "kv_cache_profiles": {
-                    "q8_0_128k": {
-                            "cache_type": "q8_0",
-                            "label": "8-bit - context 128k",
-                            "ctx_size": 131072,
-                            "min_vram_gb": 27
-                    },
-                    "q8_0_256k": {
-                            "cache_type": "q8_0",
-                            "label": "8-bit - context 256k",
-                            "ctx_size": 262144,
-                            "min_vram_gb": 28
-                    },
-                    "q8_0_512k": {
-                            "cache_type": "q8_0",
-                            "label": "8-bit - context 512k",
-                            "ctx_size": 524288,
-                            "min_vram_gb": 29.5
-                    },
-                    "q8_0_256k_spill": {
-                            "cache_type": "q8_0",
-                            "label": "8-bit - context 256k, MoE overflow to RAM (24 GB)",
-                            "ctx_size": 262144,
-                            "min_vram_gb": 23,
-                            "server_args": [
-                                    "--n-cpu-moe",
-                                    "14"
-                            ]
-                    },
-                    "q8_0_512k_spill": {
-                            "cache_type": "q8_0",
-                            "label": "8-bit - context 512k, MoE overflow to RAM (24 GB)",
-                            "ctx_size": 524288,
-                            "min_vram_gb": 23,
-                            "server_args": [
-                                    "--n-cpu-moe",
-                                    "18"
-                            ]
-                    }
-            },
-            "server_args": [
-                    "-fa",
-                    "on"
-            ],
-            "supports_reasoning_effort": False,
-            "sampling": {
-                    "thinking": {
-                            "temperature": 0.6,
-                            "top_p": 0.95,
-                            "min_p": 0.01
-                    },
-                    "non_thinking": {
-                            "temperature": 0.2
-                    }
-            }
-    },
-    "nemotron_q5": {
-            "alias": "Nemotron 3.5 Lightning 30B-A3B Q5_K_XL (30.4 GB, hybrid MoE, top quality)",
-            "status_label": "Nemotron 3.5 Lightning · Q5_KXL",
-            "family": "nemotron",
-            "repo": "unsloth/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-GGUF",
-            "file": "NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q5_K_XL.gguf",
-            "ctx_size": 131072,
-            "kv_cache": "q8_0_128k",
-            "kv_cache_profiles": {
-                    "q8_0_128k": {
-                            "cache_type": "q8_0",
-                            "label": "8-bit - context 128k (full GPU, borderline)",
-                            "ctx_size": 131072,
-                            "min_vram_gb": 31.5
-                    },
-                    "q8_0_256k": {
-                            "cache_type": "q8_0",
-                            "label": "8-bit - context 256k (full GPU, borderline)",
-                            "ctx_size": 262144,
-                            "min_vram_gb": 31.5
-                    },
-                    "q8_0_256k_spill": {
-                            "cache_type": "q8_0",
-                            "label": "8-bit - context 256k, MoE overflow to RAM (more headroom)",
-                            "ctx_size": 262144,
-                            "min_vram_gb": 29.5,
-                            "server_args": [
-                                    "--n-cpu-moe",
-                                    "8"
-                            ]
-                    },
-                    "q8_0_512k_spill": {
-                            "cache_type": "q8_0",
-                            "label": "8-bit - context 512k, MoE overflow to RAM",
-                            "ctx_size": 524288,
-                            "min_vram_gb": 26,
-                            "server_args": [
-                                    "--n-cpu-moe",
-                                    "16"
-                            ]
-                    }
-            },
-            "server_args": [
-                    "-fa",
-                    "on"
-            ],
-            "supports_reasoning_effort": False,
-            "sampling": {
-                    "thinking": {
-                            "temperature": 0.6,
-                            "top_p": 0.95,
-                            "min_p": 0.01
-                    },
-                    "non_thinking": {
-                            "temperature": 0.2
-                    }
-            }
-    },
-}
+BUILTIN_MODELS: dict[str, dict[str, Any]] = {'q4': {'alias': 'Qwen3.8-27B Q4_K_M (16.5 GB, fast)',
+        'status_label': 'Qwen 3.8 27B · Q4',
+        'repo': 'unsloth/Qwen3.8-27B-GGUF',
+        'file': 'Qwen3.8-27B-UD-Q4_K_M.gguf',
+        'mmproj': 'mmproj-F16.gguf',
+        'server_args': ['-fa', 'on']},
+ 'q3': {'alias': 'Qwen3.8-27B IQ3_S (12.0 GB, borderline quality - for 16 GB GPUs)',
+        'status_label': 'Qwen 3.8 27B · IQ3_S',
+        'repo': 'unsloth/Qwen3.8-27B-GGUF',
+        'file': 'Qwen3.8-27B-UD-IQ3_S.gguf',
+        'mmproj': 'mmproj-F16.gguf',
+        'server_args': ['-fa', 'on']},
+ 'q5': {'alias': 'Qwen3.8-27B Q5_K_M (19.8 GB, high quality)',
+        'status_label': 'Qwen 3.8 27B · Q5',
+        'repo': 'unsloth/Qwen3.8-27B-GGUF',
+        'file': 'Qwen3.8-27B-UD-Q5_K_M.gguf',
+        'mmproj': 'mmproj-F16.gguf',
+        'server_args': ['-fa', 'on']},
+ 'ornith_q5': {'alias': 'Ornith 1.5 35B-A3B Abliterated Q5 (23.0 GB, reasoning, context 128k)',
+               'status_label': 'Ornith 1.5 35B-A3B · Abliterated Q5',
+               'family': 'ornith',
+               'repo': 'alztrk/Ornith-1.5-35B-A3B-Abliterated-GGUF',
+               'file': 'Ornith-1.5-35B-Abliterated-Dynamic-Q5_K_M.gguf',
+               'mmproj_repo': 'ornith-ai/Ornith-1.5-35B-A3B-GGUF',
+               'mmproj': 'mmproj-Ornith-1.5-35B-BF16.gguf',
+               'server_args': ['-fa', 'on'],
+               'sampling': {'thinking': {'temperature': 0.6,
+                                         'top_p': 0.95,
+                                         'top_k': 20,
+                                         'presence_penalty': 0.0},
+                            'non_thinking': {'temperature': 0.7,
+                                             'top_p': 0.8,
+                                             'top_k': 20,
+                                             'presence_penalty': 1.5}},
+               'supports_reasoning_effort': False},
+ 'nemotron_q4': {'alias': 'Nemotron 3.5 Lightning 30B-A3B Q4_K_XL (25.5 GB, hybrid MoE, ~210 tok/s)',
+                 'status_label': 'Nemotron 3.5 Lightning · Q4_XL',
+                 'family': 'nemotron',
+                 'repo': 'unsloth/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-GGUF',
+                 'file': 'NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q4_K_XL.gguf',
+                 'server_args': ['-fa', 'on'],
+                 'supports_reasoning_effort': False,
+                 'sampling': {'thinking': {'temperature': 0.6, 'top_p': 0.95, 'min_p': 0.01},
+                              'non_thinking': {'temperature': 0.2}}},
+ 'nemotron_q5': {'alias': 'Nemotron 3.5 Lightning 30B-A3B Q5_K_XL (30.4 GB, hybrid MoE, top quality)',
+                 'status_label': 'Nemotron 3.5 Lightning · Q5_KXL',
+                 'family': 'nemotron',
+                 'repo': 'unsloth/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-GGUF',
+                 'file': 'NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q5_K_XL.gguf',
+                 'server_args': ['-fa', 'on'],
+                 'supports_reasoning_effort': False,
+                 'sampling': {'thinking': {'temperature': 0.6, 'top_p': 0.95, 'min_p': 0.01},
+                              'non_thinking': {'temperature': 0.2}}}}
+
+from harness.measured_profiles import install_profiles
+install_profiles(BUILTIN_MODELS)
 
 from harness.model_catalog import FLASH_NEXT_Q3
 
@@ -356,24 +186,21 @@ def _remove_legacy_agent_limits(user: dict[str, Any]) -> None:
 
 
 def _migrate_memory_profiles(user: dict[str, Any]) -> None:
-    """Replace exact old shipped memory claims without rewriting config.yaml."""
-    for key, profile_key, old_min in (("q3", "q8_0", 15), ("q3", "q8_0_32k", 14), ("q5", "f16", 24),
-                                     ("nemotron_q4", "q8_0_256k_spill", 24), ("nemotron_q4", "q8_0_512k_spill", 24)):
-        model = user.get("models", {}).get(key, {})
-        builtin = BUILTIN_MODELS[key]
+    """Refresh shipped profiles while retaining unrelated custom model definitions.
+
+    The original file stays intact. Built-in IDs are release-owned; custom models
+    should use their own key or checkpoint file to keep independent profiles.
+    """
+    for key, model in user.get("models", {}).items():
+        builtin = BUILTIN_MODELS.get(key)
+        if not isinstance(model, dict) or not builtin:
+            continue
         if model.get("file", builtin["file"]) != builtin["file"]:
             continue
-        profile = model.get("kv_cache_profiles", {}).get(profile_key, {})
-        current = builtin["kv_cache_profiles"][profile_key]
-        if profile.get("min_vram_gb") == old_min and profile.get("ctx_size") == current["ctx_size"]:
-            for field in ("min_vram_gb", "label"):
-                profile[field] = current[field]
-            profile.pop("label_cs", None)
-            if "server_args" not in profile and "server_args" in current:
-                profile["server_args"] = list(current["server_args"])
-    model = user.get("models", {}).get("nemotron_q4", {})
-    if model.get("file", BUILTIN_MODELS["nemotron_q4"]["file"]) == BUILTIN_MODELS["nemotron_q4"]["file"]:
-        model.get("kv_cache_profiles", {}).pop("q8_0_1m", None)
+        model["kv_cache_profiles"] = copy.deepcopy(builtin["kv_cache_profiles"])
+        model["kv_cache"] = builtin["kv_cache"]
+        model["ctx_size"] = builtin["ctx_size"]
+        model["alias"] = builtin["alias"]
 
 
 class Config:
@@ -432,7 +259,7 @@ class Config:
 
     def set_kv_cache_mode(self, key: str, mode: str) -> None:
         if mode not in self.kv_cache_profiles(key):
-            raise ValueError(f"Model '{key}' nepodporuje KV cache '{mode}'")
+            raise ValueError(f"Model '{key}' does not support KV cache '{mode}'")
         self.model(key)["kv_cache"] = mode
 
     def context_size(self, key: str | None = None) -> int:

@@ -22,11 +22,15 @@ The test is a relocated runtime check on the current Windows host, not a clean W
 
 ## Current artifacts and installation evidence
 
-The current 1.8.2 refresh also fixes Continue after a manual model/KV switch. See [resume model selection and regression verification](../distribution/CONTINUE-MODEL-1.8.2.md).
+Version 1.9.0 adopts the [approved measured profiles](memory-profiles.md), refreshed bilingual manuals and context-only recovery. The existing offline set is updated in place and renamed; unchanged weights, runtime and dependency ZIP are retained.
+
+The preceding 1.8.2 same-version refresh packaged recoverable memory budgets and the external Czech localization catalog. Its verification remains available as historical evidence. See [memory/localization release verification](../distribution/MEMORY-LOCALIZATION-1.8.2.md).
+
+That 1.8.2 refresh also fixed Continue after a manual model/KV switch. See [resume model selection and regression verification](../distribution/CONTINUE-MODEL-1.8.2.md).
 
 The refreshed 1.8.2 installers prepare WebView2 automatically. See [desktop runtime distribution and verification](../distribution/WEBVIEW2-1.8.2.md). Build-time payload signatures and runtime checksums are pinned in `installer/webview2.json`; `scripts/download_webview2.py --refresh` explicitly updates that pin.
 
-The Full installation baseline is recorded in [release 1.8.0](../distribution/RELEASE-1.8.0.md), performance changes in [1.8.1](../distribution/PERFORMANCE-1.8.1.md), and the current Minimal upgrade/startup checks in [1.8.2](../distribution/STARTUP-RECOVERY-1.8.2.md). Source build staging under `build/` and `dist/Marvin/` is reproducible and is not an installed runtime. Active development dependencies stay in `.venv` and `frontend/node_modules`; generated staging can be removed after final artifacts have been verified.
+The Full installation baseline is recorded in [release 1.8.0](../distribution/RELEASE-1.8.0.md), performance changes in [1.8.1](../distribution/PERFORMANCE-1.8.1.md), and earlier Minimal upgrade/startup checks in [1.8.2](../distribution/STARTUP-RECOVERY-1.8.2.md). Source build staging under `build/` and `dist/Marvin/` is reproducible and is not an installed runtime. Active development dependencies stay in `.venv` and `frontend/node_modules`; generated staging can be removed after final artifacts have been verified.
 
 ## Public GitHub downloads
 
@@ -35,9 +39,10 @@ Executable installers are attached to GitHub Releases. Git tracks the source, ma
 Keep these public asset names across releases so website links remain stable:
 
 - `Marvin-Setup-Full.exe` and `Marvin-Setup-Minimal.exe`
+- `Marvin-Windows-x64.zip` (both installers, manuals, guides and checksums)
 - `Marvin-Manual-EN.pdf` and `Marvin-Manual-CS.pdf`
 - `Marvin-Workspace.jpg` and `SHA256SUMS.txt`
 
 The public installer links use `/releases/latest/download/<asset-name>`. A version-specific link uses `/releases/download/v<version>/<asset-name>`. Create a draft against the application build commit, upload the verified artifacts, compare GitHub's asset digests with the local SHA-256 values, and publish as the latest release only when all assets are ready. Verify downloads without authentication after publication. The preview uses demonstration content, not personal conversations or diagnostic archives.
 
-The [1.8.2 release manifest](../distribution/release-1.8.2.json) records the application commit, sizes, hashes and public URLs. Documentation-only publication commits may follow the application build commit without changing the installer bytes.
+The [1.9.0 release manifest](../distribution/release-1.9.0.json) records the application commit, sizes, hashes and public URLs. Documentation-only publication commits may follow the application build commit without changing the installer bytes.
