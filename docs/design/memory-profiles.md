@@ -25,7 +25,9 @@ to their plain Q8 counterparts. They generate roughly 2–3× faster through the
 pinned MTP draft model at an extra 1.9–2.8 GiB measured VRAM cost; q4 has
 24 GiB-class variants where that cost fits, q5 does not. F16 groups and IQ3
 ship without variants. Their measurements and qualification are recorded in
-[mtp-profiles](mtp-profiles.md); plain profiles are unchanged.
+[mtp-profiles](mtp-profiles.md); plain profiles are unchanged. Keeping the
+draft in system RAM instead of VRAM was measured 33–40 % slower than plain and
+was rejected for all classes.
 
 An upgrade normalizes shipped profiles in memory, without rewriting config.yaml.
 Existing valid UI choices are retained. Obsolete selections resolve to a current

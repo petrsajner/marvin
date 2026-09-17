@@ -206,6 +206,8 @@ On 32 GB-class cards, the new-installation default is Qwen Q5 with Q8 KV and 192
 
 Qwen Q4/Q5 also offer opt-in **MTP variants** of their Q8 profiles (for example "Q8 · 192k · MTP" next to "Q8 · 192k"). An MTP variant generates about 2–3× faster using a small draft model trained for the same model; answer quality stays the same. It needs about 2–2.9 GB of extra GPU memory, and the 1.4 GB draft model is downloaded and verified automatically on the first start. On 24 GB-class cards only Qwen Q4 has MTP variants. If memory runs out during an MTP session, Marvin first switches to the same context without MTP, then tries the next lower context with MTP, and finally that context without MTP.
 
+While a speculative profile is running, the header shows an **MTP** badge next to the model name. The generation status line under the conversation shows the live token rate (tokens per second) together with the token estimate, so the speed difference between plain and MTP profiles is visible while you work.
+
 Nemotron is text-only. Qwen, Ornith, and Flash-Next use their own image support. The model list reports file availability; Flash-Next requires every shard and its projector. Qwen also offers compact profiles for smaller cards. The table does not promise that every combination will run on every PC; the selected model's settings show its exact profile choices.
 
 ## GPU memory budget and automatic recovery

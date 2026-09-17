@@ -197,6 +197,8 @@ Na kartách třídy 32 GB je výchozí Qwen Q5 s Q8 KV a kontextem 192k. Menší
 
 Qwen Q4/Q5 nabízejí také volitelné **MTP varianty** svých Q8 profilů (například „Q8 · 192k · MTP" vedle „Q8 · 192k"). MTP varianta generuje zhruba 2–3× rychleji pomocí malého draft modelu trénovaného pro stejný model; kvalita odpovědí zůstává stejná. Potřebuje asi 2–2,9 GB dodatečné paměti GPU a 1,4 GB draft model se při prvním spuštění automaticky stáhne a ověří. Na kartách třídy 24 GB mají MTP varianty pouze Qwen Q4. Pokud při běhu MTP relace dojde paměť, Marvin nejprve přepne na stejný kontext bez MTP, poté zkusí nižší kontext s MTP a nakonec bez MTP.
 
+Když běží spekulativní profil, záhlaví zobrazuje odznak **MTP** vedle názvu modelu. Stavový řádek generování pod konverzací ukazuje aktuální rychlost (tokeny za sekundu) spolu s odhadem tokenů, takže rozdíl mezi plain a MTP profily je při práci vidět.
+
 Q5 používejte pro náročný vývoj, architekturu a finální kvalitu. Q4 je vhodný pro vyšší rychlost nebo kontext 256k. Ornith je extrémně rychlý, ale při reálném vývoji může být slabší než dense Qwen.
 
 

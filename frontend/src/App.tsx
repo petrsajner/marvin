@@ -108,6 +108,7 @@ export function App() {
       text: string;
       files: string[];
     } | null>(null),
+    liveRate = useRef<{ run: string; chars: number; at: number; rate: number } | null>(null),
     loadGeneration = useRef(0);
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -209,8 +210,23 @@ export function App() {
       const row = JSON.parse(event.data),
         p = row.payload;
       const current = row.session_id === sidRef.current;
-      if (row.kind === "live" && current)
+      if (row.kind === "live" && current) {
+        // Rolling generation-rate estimate from accumulated characters between
+        // live updates; reset when a new run starts.
+        const chars = (p.text?.length || 0) + (p.reasoning?.length || 0);
+        const at = Date.now();
+        const prev = liveRate.current;
+        if (!prev || prev.run !== p.run_id) {
+          liveRate.current = { run: p.run_id, chars, at, rate: 0 };
+        } else if (at > prev.at + 150) {
+          const inst = chars > prev.chars ? (chars - prev.chars) / 3.6 / ((at - prev.at) / 1000) : 0;
+          prev.rate = inst > 0 ? (prev.rate ? prev.rate * 0.7 + inst * 0.3 : inst) : prev.rate * 0.85;
+          prev.chars = chars;
+          prev.at = at;
+        }
+        p.tok_rate = liveRate.current?.rate || 0;
         setChat((old) => (old ? { ...old, live: p } : old));
+      }
       if (row.kind === "message" && current)
         setChat((old) =>
           old ? { ...old, messages: mergeMessages(old.messages, [p]) } : old,
@@ -546,6 +562,7 @@ export function App() {
               )?.name
             }
           </span>
+          {runtime.profile?.speculative && <span className="amber">MTP</span>}
           <span className="muted">
             {runtime.switch?.status === "starting"
               ? tr("Loading")
@@ -931,6 +948,9 @@ export function App() {
                           ),
                         ) +
                         " tok"}
+                      {live?.tok_rate >= 1 &&
+                        ["thinking", "generating", "answering"].includes(live?.phase) &&
+                        " · ~" + Math.round(live.tok_rate) + " tok/s"}
                     </span>
                     <button
                       onClick={() => {

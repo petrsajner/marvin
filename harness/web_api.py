@@ -388,6 +388,14 @@ def create_app(cfg=None, *, service=None):
             value = {"status": servermgmt.server_state(cfg), "switch": snapshot.__dict__,
                      "model": servermgmt.running_model(cfg), "vram": servermgmt.vram_value(),
                      "python": __import__("platform").python_version(), "version": APP_VERSION}
+            model_key = value["model"]
+            if model_key and model_key in service.models.cfg.data.get("models", {}):
+                mode = service.models.cfg.kv_cache_mode(model_key)
+                prof = service.models.cfg.kv_cache_profiles(model_key).get(mode, {})
+                value["profile"] = {"id": mode, "label": prof.get("label", mode),
+                                    "speculative": prof.get("speculative") == "mtp"}
+            else:
+                value["profile"] = None
         else:
             value = {**runtime_cache["value"], "switch": snapshot.__dict__}
         failure = servermgmt.last_failure(cfg)

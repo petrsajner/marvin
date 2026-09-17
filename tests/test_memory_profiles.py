@@ -297,6 +297,20 @@ class MemoryProfileTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "MTP draft"):
                 servermgmt._mtp_draft_args(self.cfg)
 
+    def test_runtime_reports_running_profile_with_speculative_flag(self):
+        self.app.models.cfg.set_kv_cache_mode("q5", "q8_0_mtp")
+        try:
+            with patch.object(servermgmt, "server_state", return_value="running"), \
+                 patch.object(servermgmt, "running_model", return_value="q5"), \
+                 patch.object(servermgmt, "vram_value", return_value="28.5 GB"):
+                client = TestClient(create_app(self.cfg, service=self.app))
+                profile = client.get("/api/runtime").json()["profile"]
+        finally:
+            self.app.models.cfg.set_kv_cache_mode("q5", "q8_0")
+        self.assertEqual(profile["id"], "q8_0_mtp")
+        self.assertEqual(profile["label"], "Q8 · 192k · MTP")
+        self.assertTrue(profile["speculative"])
+
     def test_fallback_keeps_precision_class_and_placement(self):
         from harness.measured_profiles import freeze_placement
         for key, model in self.cfg.data["models"].items():

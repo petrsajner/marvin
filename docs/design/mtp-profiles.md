@@ -70,3 +70,24 @@ placements were measured on the 5090, as with the plain profiles).
   context without MTP, then the next lower context with MTP, then that context
   without MTP, continuing interleaved. Plain selections never gain MTP during
   recovery. See [memory profiles](memory-profiles.md).
+
+## Draft model in system RAM - measured and rejected (18 September 2026)
+
+Keeping the draft on the CPU (`--spec-draft-device none`) was proposed so the
+24 GiB-class q5 profiles could offer MTP without spending VRAM on the draft.
+It measured strictly slower and was not shipped:
+
+| Case (q5, 24 GiB-class args) | Plain server tok/s | CPU-draft server tok/s |
+|---|---:|---:|
+| 96k, natural-text task | 60.8 | 36.4 |
+| 64k, natural-text task | 61.7 | 41.6 |
+
+The draft still costs about 0.8 GiB VRAM plus 1.7 GiB resident RAM in this
+mode, and one draft forward pass over DDR5 (about 25 ms) exceeds the whole GPU
+target step (about 16 ms), so the GPU waits for the CPU on every speculative
+step. Speculative decoding needs the draft to be much faster than the target;
+a 1.4 GB model on system RAM is not. Functional checks (chat, exact tool-call
+content, vision OCR) still passed 4/4 — the placement is the problem, not
+correctness. Raw records: `runtime/spec-test/results-cpu-draft.jsonl`. The q5
+24 GiB class therefore ships without MTP variants; a materially smaller draft
+model would be needed to revisit this.
