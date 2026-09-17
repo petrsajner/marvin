@@ -654,7 +654,13 @@
     "F16 · 128k": "F16 · 128k",
     "F16 · 96k": "F16 · 96k",
     "Q8 · 512k": "Q8 · 512k",
-    "This profile also uses system RAM. A smaller GPU moves more weights into RAM. Windows can reclaim memory while the model starts.": "Tento profil používá i systémovou RAM. Menší GPU přesouvá více vah do RAM. Windows může paměť uvolnit během spouštění modelu."
+    "This profile also uses system RAM. A smaller GPU moves more weights into RAM. Windows can reclaim memory while the model starts.": "Tento profil používá i systémovou RAM. Menší GPU přesouvá více vah do RAM. Windows může paměť uvolnit během spouštění modelu.",
+    "Q8 · 256k · MTP": "Q8 · 256k · MTP",
+    "Q8 · 192k · MTP": "Q8 · 192k · MTP",
+    "Q8 · 128k · MTP": "Q8 · 128k · MTP",
+    "Q8 · 96k · MTP": "Q8 · 96k · MTP",
+    "Q8 · 64k · MTP": "Q8 · 64k · MTP",
+    "The MTP profile generates faster using the draft model. It needs about 2.6 GB of extra VRAM; the 1.4 GB draft model is downloaded automatically on the first start.": "Profil MTP generuje rychleji pomocí draft modelu. Potřebuje asi 2,6 GB dodatečné VRAM; 1,4 GB draft model se při prvním spuštění stáhne automaticky."
   },
   "legacy_profile_labels": {
     "16 bit - přesnější, kontext 128k": "16-bit - more precise, context 128k",

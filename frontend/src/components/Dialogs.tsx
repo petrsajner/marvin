@@ -315,6 +315,19 @@ export function DialogView(props: any) {
                       ))}
                   </select>
                 </label>
+                {app.models
+                  .find((m: any) => m.id === app.preferences.model)
+                  ?.profiles.find(
+                    (p: any) =>
+                      p.id ===
+                      app.models.find((m: any) => m.id === app.preferences.model)?.profile,
+                  )?.speculative === "mtp" && (
+                  <p>
+                    {tr(
+                      "The MTP profile generates faster using the draft model. It needs about 2.6 GB of extra VRAM; the 1.4 GB draft model is downloaded automatically on the first start.",
+                    )}
+                  </p>
+                )}
                 <p>
                   {tr("Vision")}:{" "}
                   {app.models.find((m: any) => m.id === app.preferences.model)

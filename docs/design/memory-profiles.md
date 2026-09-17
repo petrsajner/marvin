@@ -20,6 +20,13 @@ measured. Nemotron's CPU-expert settings are layer prefixes, not expert counts:
 Q4 24 GB uses 14/12; Q5 24 GB uses 21/18. Q5 32 GB uses 2 for 512k and zero for
 256k. Public labels show Q8 and context, never an invented R cache precision.
 
+Qwen Q4/Q5 additionally offer opt-in speculative variants labeled "· MTP" next
+to their plain Q8 counterparts. They generate roughly 2–3× faster through the
+pinned MTP draft model at an extra 1.9–2.8 GiB measured VRAM cost; q4 has
+24 GiB-class variants where that cost fits, q5 does not. F16 groups and IQ3
+ship without variants. Their measurements and qualification are recorded in
+[mtp-profiles](mtp-profiles.md); plain profiles are unchanged.
+
 An upgrade normalizes shipped profiles in memory, without rewriting config.yaml.
 Existing valid UI choices are retained. Obsolete selections resolve to a current
 profile for the hardware. Custom model keys/checkpoints remain independent.
@@ -58,6 +65,10 @@ on the 5090 but took about 44 minutes; cached continuation returned in 1.73 s.
 - An allocation failure retries only a strictly smaller context of the same
   model, KV precision and GPU class. Frozen placement retains CPU experts and
   projector placement, rather than refilling freed VRAM with weights.
+- A session that started on an MTP variant recovers in this order: the same
+  context without MTP, then the next lower context with MTP, then that context
+  without MTP, continuing interleaved. Plain selections never gain MTP during
+  recovery; an explicit profile choice resets that intent.
 - Actual CUDA/host allocation errors are recognized at startup and on requests.
   High total VRAM usage alone does not kill an otherwise functioning model.
 - The emergency physical-RAM guard requires available RAM below 512 MiB for ten

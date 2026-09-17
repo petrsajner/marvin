@@ -347,6 +347,8 @@ def create_app(cfg=None, *, service=None):
             for key, profile in payload.get("kv_cache_modes", {}).items():
                 if key not in cfg.data["models"] or profile not in cfg.kv_cache_profiles(key):
                     raise ValueError("Unknown KV profile")
+                # An explicit selection redefines the recovery intent for the model.
+                service.models.cfg.data.get("_recovery_origin_mtp", {}).pop(key, None)
             preset = None
             if "vram_gb" in payload and payload["vram_gb"] != service.preferences.get("vram_gb", "auto") and "model" not in payload:
                 value = payload["vram_gb"]

@@ -200,7 +200,22 @@ def start(cfg: Config, model_key: str | None = None, ctx_size: int | None = None
           *, cancelled=None, on_phase=None, on_download_progress=None) -> int:
     with _start_lock:
         return _start_locked(cfg, model_key, ctx_size, cancelled=cancelled, on_phase=on_phase,
-                              on_download_progress=on_download_progress)
+                             on_download_progress=on_download_progress)
+
+
+def _mtp_draft_args(cfg: Config, *, cancelled=None, on_phase=None, on_download_progress=None) -> list[str]:
+    """Resolve, and download when necessary, the pinned MTP draft for speculative profiles."""
+    if not cfg.mtp_draft_ready():
+        from harness.model_catalog import QWEN27B_MTP_DRAFT
+        from harness.model_files import download_pinned_model
+        if on_phase:
+            on_phase("downloading")
+        download_pinned_model(cfg.path("paths.models_dir"), QWEN27B_MTP_DRAFT,
+                              should_stop=cancelled, on_progress=on_download_progress, on_phase=on_phase)
+    draft = cfg.mtp_draft_file()
+    if not draft.is_file():
+        raise RuntimeError(f"The MTP draft model is unavailable: {draft}")
+    return ["--spec-type", "draft-mtp", "--spec-draft-model", str(draft)]
 
 
 def _start_locked(cfg: Config, model_key: str | None = None,
@@ -234,7 +249,8 @@ def _start_locked(cfg: Config, model_key: str | None = None,
             if not profiles:
                 raise RuntimeError(f"This model has no supported profile for the {budget:g} GiB GPU budget. Choose a smaller model.")
             selected = max(profiles, key=lambda name: (profiles[name].get("cache_type") == "q8_0",
-                                                       int(profiles[name].get("ctx_size", 0))))
+                                                       int(profiles[name].get("ctx_size", 0)),
+                                                       profiles[name].get("speculative") is None))
             cfg.set_kv_cache_mode(model_key, selected)
     requested_context = ctx_size or cfg.context_size(model_key)
     (cfg.path("paths.runtime_dir") / "model-failure.json").unlink(missing_ok=True)
@@ -301,6 +317,9 @@ def _start_locked(cfg: Config, model_key: str | None = None,
         active_placement["cpu_expert_layers"] = plan.cpu_expert_layers
     elif cfg.data.get("hardware", {}).get("vram_gb", "auto") != "auto":
         argv += ["--fit", "off"]
+    if profile.get("speculative") == "mtp":
+        argv += _mtp_draft_args(cfg, cancelled=cancelled, on_phase=on_phase,
+                                on_download_progress=on_download_progress)
     argv += [str(x) for x in srv.get("extra_args", [])]
     cfg.data["_active_placement"] = active_placement
 
@@ -428,6 +447,10 @@ def ensure(cfg: Config, model_key: str | None = None, *, cancelled=None, on_phas
         lower = lower_memory_profiles(cfg, key)
         if not lower:
             raise RuntimeError(failure.get("error") or "There is not enough free system RAM")
+        if cfg.kv_cache_profiles(key).get(cfg.kv_cache_mode(key), {}).get("speculative") == "mtp":
+            # The recovery ladder interleaves MTP/plain variants only for sessions
+            # that started on a speculative profile; plain selections stay plain.
+            cfg.data.setdefault("_recovery_origin_mtp", {})[key] = True
         from harness.measured_profiles import freeze_placement
         freeze_placement(cfg, key)
         cfg.set_kv_cache_mode(key, lower[0])

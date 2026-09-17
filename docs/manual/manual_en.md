@@ -204,6 +204,7 @@ Thinking depth also stays beside the prompt because it can change between questi
 
 On 32 GB-class cards, the new-installation default is Qwen Q5 with Q8 KV and 192k context. Smaller cards select an appropriate Q8 profile from the table. F16 is an explicit option only for Qwen Q4/Q5 on 32 GB-class cards. IQ3 is offered on 16/24 GB cards only. Each model and KV precision group offers the two highest relevant context choices.
 
+Qwen Q4/Q5 also offer opt-in **MTP variants** of their Q8 profiles (for example "Q8 · 192k · MTP" next to "Q8 · 192k"). An MTP variant generates about 2–3× faster using a small draft model trained for the same model; answer quality stays the same. It needs about 2–2.9 GB of extra GPU memory, and the 1.4 GB draft model is downloaded and verified automatically on the first start. On 24 GB-class cards only Qwen Q4 has MTP variants. If memory runs out during an MTP session, Marvin first switches to the same context without MTP, then tries the next lower context with MTP, and finally that context without MTP.
 
 Nemotron is text-only. Qwen, Ornith, and Flash-Next use their own image support. The model list reports file availability; Flash-Next requires every shard and its projector. Qwen also offers compact profiles for smaller cards. The table does not promise that every combination will run on every PC; the selected model's settings show its exact profile choices.
 
@@ -213,7 +214,7 @@ Normally leave **Settings > Model and device > GPU memory budget** on **Automati
 
 Qwen IQ3 uses Q8 64k/48k on 16 GB, and Qwen Q5 uses Q8 96k/64k on 24 GB. Both retain vision with CPU image processing. Nemotron Q4/Q5 offer 512k/256k on 24 GB by executing some experts on the CPU. The 32 GB Nemotron Q5 512k profile also executes one expert block on the CPU; 256k uses GPU weights. These placements were measured on an RTX 5090, not physical 16/24 GB cards. Other programs can affect whether the larger choice starts successfully.
 
-If an actual allocation failure or sustained critical physical RAM interrupts a task, Marvin retries the next smaller context with the same model, cache precision and weight placement. Completed tool results remain in history. It never alternates Q8 and F16 during recovery. If no smaller supported context remains, the task stops with a memory explanation; select another model and use **Continue**. Successful settings are remembered for each GPU budget.
+If an actual allocation failure or sustained critical physical RAM interrupts a task, Marvin retries the next smaller context with the same model, cache precision and weight placement. Completed tool results remain in history. It never alternates Q8 and F16 during recovery. A session that started on an MTP variant first drops the draft at the same context, then interleaves lower contexts with and without MTP. If no smaller supported context remains, the task stops with a memory explanation; select another model and use **Continue**. Successful settings are remembered for each GPU budget.
 
 ## Flash-Next settings and realistic waiting times
 

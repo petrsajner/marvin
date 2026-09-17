@@ -439,3 +439,5 @@ sessions/         development conversation history (gitignored)
 ## Measured model profiles (1.9.0)
 
 The [approved profile table and 55-case qualification](docs/design/profile-remeasurement-2026-09-15.md) includes reusable JSON/CSV measurements, exact arguments, long-input coverage and smaller-card limitations. [Memory selection and recovery](docs/design/memory-profiles.md) documents the current behavior. Q8 is the default; F16 is optional only for Qwen Q4/Q5 on 32 GB-class GPUs.
+
+Qwen Q4/Q5 additionally offer opt-in **MTP speculative variants** (e.g. "Q8 · 192k · MTP") that generate about 2–3× faster through the pinned MTP draft model at 1.9–2.8 GiB of extra measured VRAM. The draft downloads and verifies automatically on first start. Under memory pressure a session started on MTP first drops the draft at the same context, then lowers the context with MTP, then without. See [MTP profiles](docs/design/mtp-profiles.md).

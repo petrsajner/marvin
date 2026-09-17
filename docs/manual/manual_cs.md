@@ -195,6 +195,8 @@ Myšlení zůstává také u promptu, protože ho můžete měnit mezi otázkami
 
 Na kartách třídy 32 GB je výchozí Qwen Q5 s Q8 KV a kontextem 192k. Menší karty dostanou odpovídající Q8 profil podle tabulky. F16 je volitelně pouze pro Qwen Q4/Q5 na 32GB kartách. IQ3 se nabízí pouze na 16/24GB kartách. Každá kombinace modelu a přesnosti KV nabízí dvě nejvyšší odpovídající velikosti kontextu.
 
+Qwen Q4/Q5 nabízejí také volitelné **MTP varianty** svých Q8 profilů (například „Q8 · 192k · MTP" vedle „Q8 · 192k"). MTP varianta generuje zhruba 2–3× rychleji pomocí malého draft modelu trénovaného pro stejný model; kvalita odpovědí zůstává stejná. Potřebuje asi 2–2,9 GB dodatečné paměti GPU a 1,4 GB draft model se při prvním spuštění automaticky stáhne a ověří. Na kartách třídy 24 GB mají MTP varianty pouze Qwen Q4. Pokud při běhu MTP relace dojde paměť, Marvin nejprve přepne na stejný kontext bez MTP, poté zkusí nižší kontext s MTP a nakonec bez MTP.
+
 Q5 používejte pro náročný vývoj, architekturu a finální kvalitu. Q4 je vhodný pro vyšší rychlost nebo kontext 256k. Ornith je extrémně rychlý, ale při reálném vývoji může být slabší než dense Qwen.
 
 
@@ -206,7 +208,7 @@ Pro běžnou práci ponechte **Nastavení > Model a zařízení > Limit paměti 
 
 Qwen IQ3 používá na 16 GB Q8 64k/48k, Qwen Q5 na 24 GB Q8 96k/64k. Oba zachovávají vision se zpracováním obrázků na CPU. Nemotron Q4/Q5 nabízí na 24 GB 512k/256k s částí expertů na CPU. Také Nemotron Q5 na 32 GB při 512k používá jeden blok expertů na CPU; při 256k jsou váhy na GPU. Tato rozložení byla změřena na RTX 5090, nikoli na fyzických 16/24GB kartách. Jiné programy mohou ovlivnit, zda se větší volba úspěšně spustí.
 
-Pokud skutečná chyba alokace nebo trvající kritický nedostatek fyzické RAM přeruší úlohu, Marvin zkusí nejbližší menší kontext se stejným modelem, přesností cache i rozložením vah. Výsledky dokončených nástrojů zůstanou v historii. Obnova nepřepíná mezi Q8 a F16. Pokud už menší podporovaný kontext nezbývá, úloha se zastaví s vysvětlením; můžete vybrat jiný model a použít **Pokračovat**. Úspěšné nastavení se pamatuje pro každý limit GPU.
+Pokud skutečná chyba alokace nebo trvající kritický nedostatek fyzické RAM přeruší úlohu, Marvin zkusí nejbližší menší kontext se stejným modelem, přesností cache i rozložením vah. Výsledky dokončených nástrojů zůstanou v historii. Obnova nepřepíná mezi Q8 a F16. Relace spuštěná s variantou MTP nejprve zruší draft na stejném kontextu a poté postupně zkouší nižší kontexty s MTP i bez něj. Pokud už menší podporovaný kontext nezbývá, úloha se zastaví s vysvětlením; můžete vybrat jiný model a použít **Pokračovat**. Úspěšné nastavení se pamatuje pro každý limit GPU.
 
 ## Flash-Next: nastavení a reálné čekání
 

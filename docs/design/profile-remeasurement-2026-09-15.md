@@ -1,6 +1,6 @@
 # GPU profile qualification and approved menu
 
-15 September 2026. The owner approved this measured table for Marvin 1.9.0. Production profiles, recovery logic, installed settings and release assets were not changed during the audit itself. The subsequent implementation is described in [memory profiles](memory-profiles.md).
+15 September 2026. The owner approved this measured table for Marvin 1.9.0. Production profiles, recovery logic, installed settings and release assets were not changed during the audit itself. The subsequent implementation is described in [memory profiles](memory-profiles.md). The opt-in MTP speculative variants added later reuse these plain measurements plus a separately measured draft increment; see [mtp-profiles](mtp-profiles.md). No plain case was re-run.
 
 Portable raw-result summaries: [JSON](measurements/2026-09-15.json) and [CSV](measurements/2026-09-15.csv). Full local evidence is retained as `runtime/archive/profile-remeasurement-2026-09-15.zip`, SHA-256 `a165eabebcffb886ec484969c28193e91e36ca58c40bb1a7590b42fbec03f9b0`. Reuse these results for the same weights/runtime/arguments; rerun only affected cases when an allocation or dependency changes.
 

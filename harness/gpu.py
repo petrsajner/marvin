@@ -115,16 +115,16 @@ def best_fit(cfg, vram_gb: float | None) -> tuple[str, str] | None:
         return cfg.model(key).get("family", "qwen" if key in ("q3", "q4", "q5") else key)
     related = [k for k in cfg.data["models"] if k != default_key and family(k) == family(default_key)]
     ordered = [default_key] + related + [k for k in cfg.data["models"] if k != default_key and k not in related]
-    best: tuple | None = None  # (order, Q8 preference, context, has_limit, model, profile)
+    best: tuple | None = None  # (order, Q8 preference, context, plain preference, has_limit, model, profile)
     for order, key in enumerate(ordered):
         for prof_key, prof in fitting_profiles(cfg, key, vram_gb).items():
             candidate = (-order, prof.get("cache_type", prof_key) == "q8_0", int(prof.get("ctx_size", 0)),
-                         "min_vram_gb" in prof, key, prof_key)
+                         prof.get("speculative") is None, "min_vram_gb" in prof, key, prof_key)
             if best is None or candidate > best:
                 best = candidate
     if best is None:
         return None
-    return best[4], best[5]
+    return best[5], best[6]
 
 
 def fits(cfg, model_key: str, profile_key: str, vram_gb: float | None) -> bool:
@@ -133,6 +133,14 @@ def fits(cfg, model_key: str, profile_key: str, vram_gb: float | None) -> bool:
 
 
 def lower_memory_profiles(cfg, model_key=None):
+    """Ordered fallback ladder under memory pressure.
+
+    The ladder keeps the model, cache precision and weight placement (GPU class).
+    A session that started on a speculative (MTP) profile first drops the draft
+    at the same context, then interleaves lower contexts as MTP/plain pairs.
+    Plain selections never gain MTP during recovery; ``_recovery_origin_mtp``
+    preserves the original intent between the ladder's steps.
+    """
     key = model_key or cfg.model_key()
     profiles = cfg.kv_cache_profiles(key)
     current_key = cfg.kv_cache_mode(key)
@@ -140,14 +148,24 @@ def lower_memory_profiles(cfg, model_key=None):
     context = cfg.context_size(key)
     minimum = 131072 if cfg.model(key).get("adaptive_runtime") else 0
     precision = current.get("cache_type", current_key)
-    candidates = []
-    for name, profile in profiles.items():
-        size = int(profile.get("ctx_size", 0))
-        gpu = profile_min_vram(profile)
-        if (minimum <= size < context and profile.get("cache_type", name) == precision
-                and profile.get("gpu_class") == current.get("gpu_class")):
-            candidates.append((size, gpu, name))
-    return [name for _, _, name in sorted(candidates, reverse=True)]
+    group = {name: profile for name, profile in profiles.items()
+             if profile.get("cache_type", name) == precision
+             and profile.get("gpu_class") == current.get("gpu_class")}
+    current_mtp = current.get("speculative") == "mtp"
+    keep_mtp = current_mtp or key in cfg.data.get("_recovery_origin_mtp", ())
+    ladder: list[str] = []
+    if current_mtp:
+        twin = next((n for n, p in group.items()
+                     if not p.get("speculative") and int(p.get("ctx_size", 0)) == context), None)
+        if twin:
+            ladder.append(twin)
+    for size in sorted({int(p.get("ctx_size", 0)) for p in group.values()
+                        if minimum <= int(p.get("ctx_size", 0)) < context}, reverse=True):
+        at_size = [(n, p) for n, p in group.items() if int(p.get("ctx_size", 0)) == size]
+        if keep_mtp:
+            ladder += [n for n, p in at_size if p.get("speculative")]
+        ladder += [n for n, p in at_size if not p.get("speculative")]
+    return ladder
 
 
 def download_keys(cfg, vram_gb: float | None) -> list[str]:

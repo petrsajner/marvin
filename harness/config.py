@@ -246,6 +246,18 @@ class Config:
         model = self.model(key)
         return str(model.get("mmproj_repo") or model["repo"])
 
+    def mtp_draft_file(self) -> Path:
+        """Path to the pinned MTP draft model used by speculative profiles."""
+        from harness.model_catalog import QWEN27B_MTP_DRAFT
+        from harness.model_files import asset_path, local_model_dir
+        spec = QWEN27B_MTP_DRAFT
+        return asset_path(local_model_dir(self.path("paths.models_dir"), spec), spec["assets"][0]["path"])
+
+    def mtp_draft_ready(self) -> bool:
+        from harness.model_catalog import QWEN27B_MTP_DRAFT
+        from harness.model_files import model_ready
+        return model_ready(self.path("paths.models_dir"), QWEN27B_MTP_DRAFT)
+
     def kv_cache_profiles(self, key: str | None = None) -> dict[str, dict[str, Any]]:
         profiles = self.model(key).get("kv_cache_profiles") or {}
         return {name: {**profile, "label_cs": profile.get("label_cs") or translate(str(profile.get("label", name)), "cs")}

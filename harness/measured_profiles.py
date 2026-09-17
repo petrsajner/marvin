@@ -3,24 +3,36 @@
 GPU classes describe the menu, while min_vram_gb records measured model allocation.
 The latter excludes desktop usage and is not an invented capacity reservation.
 Smaller-card placements were measured on a 5090, not on physical 16/24 GB cards.
+
+Speculative ("MTP") variants reuse the 2026-09-15 plain measurements plus the
+draft-model allocation measured on 2026-09-17; see docs/design/mtp-profiles.md.
 """
 from __future__ import annotations
 
 import copy
 
 MEASUREMENT_ID = "profile-remeasurement-2026-09-15"
+MTP_MEASUREMENT_ID = "mtp-speculative-2026-09-17"
 
 
-def profile(context, gpu_class, measured, *, precision="q8_0", cpu_layers=0, cpu_vision=False):
+def profile(context, gpu_class, measured, *, precision="q8_0", cpu_layers=0, cpu_vision=False, speculative=False):
     args = ["--fit", "off"]
     if cpu_layers:
         args += ["--n-cpu-moe", str(cpu_layers)]
     if cpu_vision:
         args += ["--no-mmproj-offload"]
-    return {"cache_type": precision, "ctx_size": context * 1024,
+    label = f"{'Q8' if precision == 'q8_0' else 'F16'} · {context}k"
+    if speculative:
+        label += " · MTP"
+    spec = {"cache_type": precision, "ctx_size": context * 1024,
             "gpu_class": gpu_class, "min_vram_gb": measured,
-            "label": f"{'Q8' if precision == 'q8_0' else 'F16'} · {context}k",
-            "server_args": args, "measurement_id": MEASUREMENT_ID}
+            "label": label, "server_args": args,
+            "measurement_id": MTP_MEASUREMENT_ID if speculative else MEASUREMENT_ID}
+    if speculative:
+        # The draft model is resolved and verified by servermgmt at launch time;
+        # it is deliberately not part of server_args so recovery can toggle it.
+        spec["speculative"] = "mtp"
+    return spec
 
 
 PROFILES = {
@@ -32,15 +44,21 @@ PROFILES = {
     },
     "q4": {
         "q8_0": profile(256, 32, 26.137),
+        "q8_0_mtp": profile(256, 32, 28.982, speculative=True),
         "q8_0_192k": profile(192, 32, 23.502),
+        "q8_0_192k_mtp": profile(192, 32, 26.033, speculative=True),
         "f16": profile(128, 32, 24.371, precision="f16"),
         "f16_96k": profile(96, 32, 22.363, precision="f16"),
         "q8_0_compact": profile(96, 24, 19.925),
+        "q8_0_compact_mtp": profile(96, 24, 21.901, speculative=True),
         "q8_0_64k": profile(64, 24, 18.858),
+        "q8_0_64k_mtp": profile(64, 24, 20.750, speculative=True),
     },
     "q5": {
         "q8_0": profile(192, 32, 26.580),
+        "q8_0_mtp": profile(192, 32, 29.126, speculative=True),
         "q8_0_128k": profile(128, 32, 24.189),
+        "q8_0_128k_mtp": profile(128, 32, 26.317, speculative=True),
         "f16_128k": profile(128, 32, 27.654, precision="f16"),
         "f16": profile(96, 32, 25.441, precision="f16"),
         "q8_0_96k": profile(96, 24, 21.923, cpu_vision=True),

@@ -10,7 +10,7 @@
 ; Override the version from the command line: ISCC /DMyAppVersion=x.y.z
 ; (installer\release.bat uses installer\version.txt)
 #ifndef MyAppVersion
-#define MyAppVersion "1.9.0"
+#define MyAppVersion "1.10.0"
 #endif
 
 #define MyAppName "Marvin"

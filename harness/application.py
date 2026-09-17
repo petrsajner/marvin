@@ -150,6 +150,7 @@ class ApplicationService:
             profile = self.models.cfg.kv_cache_mode(model)
             if self.models.cfg.data.pop("_memory_profile_recovered", False) and self.preferences["model"] == model:
                 self.preferences.setdefault("adaptive_kv_requests", {})[model] = profile
+            self.models.cfg.data.get("_recovery_origin_mtp", {}).pop(model, None)
             self.preferences.setdefault("kv_cache_modes", {})[model] = profile
             self.remember_running_model(model, profile)
             self.store.emit(None, "settings_changed", copy.deepcopy(self.preferences))
@@ -400,6 +401,9 @@ class ApplicationService:
             return False
         profile = choices[0]
         key = cfg.model_key()
+        if cfg.kv_cache_profiles(key).get(cfg.kv_cache_mode(key), {}).get("speculative") == "mtp":
+            # Keep interleaving MTP/plain variants during this recovery sequence.
+            cfg.data.setdefault("_recovery_origin_mtp", {})[key] = True
         from harness.measured_profiles import freeze_placement
         active = self.models.cfg.data.get("_active_placement", {})
         if active.get("model") == key:

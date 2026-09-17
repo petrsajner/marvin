@@ -50,3 +50,19 @@ FLASH_NEXT_Q3 = {
         "non_thinking": {"temperature": 0.7, "top_p": 0.8, "top_k": 20, "min_p": 0.0, "presence_penalty": 1.5},
     },
 }
+
+# Auxiliary draft model for the speculative ("MTP") q4/q5 profiles. Selected via
+# a profile, never a standalone model entry; same upstream repository as the
+# Qwen3.8-27B weights so the tokenizer matches the target models exactly.
+QWEN27B_MTP_DRAFT = {
+    "alias": "Qwen3.8-27B MTP draft model (1.3 GB, speculative decoding)",
+    "repo": "unsloth/Qwen3.8-27B-GGUF",
+    "revision": "4ca720788d1e01f1bff70c033e0d0028fd02e502",
+    "download_dir": "Qwen3.8-27B",
+    "download_transport": "range",
+    "optional_download": True,
+    "assets": [
+        {"path": "MTP/mtp-Qwen3.8-27B-Q4_0.gguf", "size": 1369590656,
+         "sha256": "50d9ce5a6da381bbcfb31061cf73df94a90e6faf8efeddee379a9cb8f1501c6e"},
+    ],
+}

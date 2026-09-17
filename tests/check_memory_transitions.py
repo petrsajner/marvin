@@ -97,6 +97,18 @@ def main():
             assert len([m for m in service.session(sid).messages if m.get("role") == "user" and m.get("content") == "Reply with exactly MEMORY-RECOVERED."]) == 1
             report["injected_pressure_recovered"] = True
             report["recovered_profile"] = service.models.cfg.kv_cache_mode("q5")
+            # The MTP ladder first drops the draft at the same context.
+            client.patch("/api/settings", json={"kv_cache_modes": {"q5": "q8_0_mtp"}}).raise_for_status()
+            ready("q5")
+            assert service.models.cfg.kv_cache_mode("q5") == "q8_0_mtp"
+            injection["count"] = 0
+            client.post(f"/api/sessions/{sid}/submit", json={"text": "Reply with exactly MTP-RECOVERED.", "request_id": "mtp-recovery"}).raise_for_status()
+            complete("mtp-recovery")
+            assert injection["count"] == 1
+            assert service.models.cfg.kv_cache_mode("q5") == "q8_0"
+            assert "MTP-RECOVERED" in service.session(sid).messages[-1].get("content", "")
+            report["injected_pressure_recovered_mtp_to_plain"] = True
+            report["mtp_recovered_profile"] = service.models.cfg.kv_cache_mode("q5")
             report["ok"] = True
             print("PASS pressure recovery", flush=True)
     except Exception as exc:

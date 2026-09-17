@@ -190,14 +190,17 @@ class MemoryProfileTests(unittest.TestCase):
 
     def test_approved_menu_is_exact_for_each_card_class(self):
         expected = {
-            16: {"q3": {"q8_0": [64, 48]}},
-            24: {"q3": {"q8_0": [128, 96]}, "q4": {"q8_0": [96, 64]},
-                 "q5": {"q8_0": [96, 64]}, "nemotron_q4": {"q8_0": [512, 256]},
-                 "nemotron_q5": {"q8_0": [512, 256]}},
-            32: {"q4": {"q8_0": [256, 192], "f16": [128, 96]},
-                 "q5": {"q8_0": [192, 128], "f16": [128, 96]},
-                 "ornith_q5": {"q8_0": [256, 192]},
-                 "nemotron_q4": {"q8_0": [512, 256]}, "nemotron_q5": {"q8_0": [512, 256]}},
+            16: {"q3": {"q8_0": ["64k", "48k"]}},
+            24: {"q3": {"q8_0": ["128k", "96k"]},
+                 "q4": {"q8_0": ["96k", "96k·MTP", "64k", "64k·MTP"]},
+                 "q5": {"q8_0": ["96k", "64k"]},
+                 "nemotron_q4": {"q8_0": ["512k", "256k"]},
+                 "nemotron_q5": {"q8_0": ["512k", "256k"]}},
+            32: {"q4": {"q8_0": ["256k", "256k·MTP", "192k", "192k·MTP"], "f16": ["128k", "96k"]},
+                 "q5": {"q8_0": ["192k", "192k·MTP", "128k", "128k·MTP"], "f16": ["128k", "96k"]},
+                 "ornith_q5": {"q8_0": ["256k", "192k"]},
+                 "nemotron_q4": {"q8_0": ["512k", "256k"]},
+                 "nemotron_q5": {"q8_0": ["512k", "256k"]}},
         }
         for capacity, table in expected.items():
             actual = {}
@@ -205,12 +208,94 @@ class MemoryProfileTests(unittest.TestCase):
                 if self.cfg.model(key).get("adaptive_runtime"):
                     continue
                 for profile in gpu.offered_profiles(self.cfg, key, capacity - .16).values():
-                    actual.setdefault(key, {}).setdefault(profile["cache_type"], []).append(profile["ctx_size"] // 1024)
+                    context = f"{profile['ctx_size'] // 1024}k" + ("·MTP" if profile.get("speculative") else "")
+                    actual.setdefault(key, {}).setdefault(profile["cache_type"], []).append(context)
             for groups in actual.values():
                 for contexts in groups.values():
-                    contexts.sort(reverse=True)
+                    contexts.sort(key=lambda c: (-int(c.split("k")[0]), "MTP" in c))
             self.assertEqual(actual, table)
         self.assertFalse(gpu.offered_profiles(self.cfg, "q3", 96))
+
+    def test_mtp_recovery_ladder_drops_the_draft_before_the_context(self):
+        self.cfg.data["default_model"] = "q5"
+        self.cfg.set_kv_cache_mode("q5", "q8_0_mtp")
+        self.assertEqual(gpu.lower_memory_profiles(self.cfg, "q5"),
+                         ["q8_0", "q8_0_128k_mtp", "q8_0_128k"])
+        # After the first step the session still interleaves MTP variants.
+        self.cfg.data["_recovery_origin_mtp"] = {"q5": True}
+        self.cfg.set_kv_cache_mode("q5", "q8_0")
+        self.assertEqual(gpu.lower_memory_profiles(self.cfg, "q5"),
+                         ["q8_0_128k_mtp", "q8_0_128k"])
+        # Plain selections never gain MTP during recovery.
+        self.cfg.data["_recovery_origin_mtp"] = {}
+        self.assertEqual(gpu.lower_memory_profiles(self.cfg, "q5"), ["q8_0_128k"])
+
+    def test_startup_recovery_walks_the_mtp_ladder(self):
+        self.cfg.data["default_model"] = "q5"
+        self.cfg.set_kv_cache_mode("q5", "q8_0_mtp")
+        selected = []
+
+        def start(cfg, key, **kwargs):
+            selected.append(cfg.kv_cache_mode(key))
+            if len(selected) < 3:
+                (cfg.path("paths.runtime_dir") / "model-failure.json").write_text(json.dumps({
+                    "code": "vram_pressure", "model": key, "error": "Pressure"}))
+                raise RuntimeError("Pressure")
+            return 0
+
+        with patch.object(servermgmt, "health", return_value=False), patch.object(servermgmt, "start", side_effect=start):
+            self.assertTrue(servermgmt.ensure(self.cfg, "q5"))
+        self.assertEqual(selected, ["q8_0_mtp", "q8_0", "q8_0_128k_mtp"])
+        self.assertEqual(self.cfg.data["_recovery_origin_mtp"], {"q5": True})
+
+    def test_best_fit_prefers_plain_profiles_over_mtp_twins(self):
+        self.cfg.data["default_model"] = "q5"
+        self.assertEqual(gpu.best_fit(self.cfg, 31.8), ("q5", "q8_0"))
+        self.cfg.data["default_model"] = "q4"
+        self.assertEqual(gpu.best_fit(self.cfg, 31.8), ("q4", "q8_0"))
+
+    def test_speculative_profiles_pair_with_measured_plain_twins(self):
+        for key in ("q4", "q5"):
+            profiles = self.cfg.kv_cache_profiles(key)
+            for name, values in profiles.items():
+                if values.get("speculative") != "mtp":
+                    continue
+                twins = [v for v in profiles.values() if not v.get("speculative")
+                         and v["ctx_size"] == values["ctx_size"]
+                         and v["cache_type"] == values["cache_type"]]
+                self.assertEqual(len(twins), 1, name)
+                self.assertEqual(values["gpu_class"], twins[0]["gpu_class"], name)
+                self.assertEqual(values["server_args"], twins[0]["server_args"], name)
+                self.assertGreater(values["min_vram_gb"], twins[0]["min_vram_gb"], name)
+                self.assertTrue(values["label"].endswith(" · MTP"), name)
+                self.assertNotIn("--spec-type", values["server_args"], name)
+        # Qwen IQ3 keeps no speculative variants.
+        self.assertFalse([n for n in self.cfg.kv_cache_profiles("q3") if "mtp" in n])
+        # The 24 GiB class offers MTP only where the measured allocation fits.
+        self.assertEqual([n for n, v in self.cfg.kv_cache_profiles("q5").items()
+                          if v.get("speculative") and v["gpu_class"] == 24], [])
+
+    def test_mtp_draft_args_download_and_verification(self):
+        draft = self.cfg.mtp_draft_file()
+        draft.parent.mkdir(parents=True, exist_ok=True)
+        draft.write_bytes(b"gguf")
+        with patch("harness.model_files.download_pinned_model") as download, \
+             patch.object(Config, "mtp_draft_ready", return_value=False):
+            download.side_effect = lambda models_dir, spec, **kwargs: models_dir
+            args = servermgmt._mtp_draft_args(self.cfg)
+        self.assertEqual(download.call_count, 1)
+        self.assertEqual(args[:2], ["--spec-type", "draft-mtp"])
+        self.assertEqual(args[3], str(draft))
+        # An already verified draft is not downloaded again.
+        with patch("harness.model_files.download_pinned_model") as download, \
+             patch.object(Config, "mtp_draft_ready", return_value=True):
+            self.assertEqual(servermgmt._mtp_draft_args(self.cfg), args)
+        self.assertFalse(download.called)
+        # A draft that cannot be produced is a hard error.
+        draft.unlink()
+        with patch.object(Config, "mtp_draft_ready", return_value=True):
+            with self.assertRaisesRegex(RuntimeError, "MTP draft"):
+                servermgmt._mtp_draft_args(self.cfg)
 
     def test_fallback_keeps_precision_class_and_placement(self):
         from harness.measured_profiles import freeze_placement
@@ -219,11 +304,16 @@ class MemoryProfileTests(unittest.TestCase):
                 self.cfg.data.pop("_recovery_placement", None)
                 self.cfg.data["default_model"] = key
                 self.cfg.set_kv_cache_mode(key, name)
-                for lower in gpu.lower_memory_profiles(self.cfg):
+                for index, lower in enumerate(gpu.lower_memory_profiles(self.cfg)):
                     target = self.cfg.kv_cache_profiles(key)[lower]
                     self.assertEqual(target.get("cache_type"), values.get("cache_type"))
                     self.assertEqual(target.get("gpu_class"), values.get("gpu_class"))
-                    self.assertLess(target["ctx_size"], values["ctx_size"])
+                    if values.get("speculative") and index == 0:
+                        # The first MTP recovery step drops the draft at the same context.
+                        self.assertEqual(target["ctx_size"], values["ctx_size"])
+                        self.assertFalse(target.get("speculative"))
+                    else:
+                        self.assertLess(target["ctx_size"], values["ctx_size"])
                 freeze_placement(self.cfg)
                 self.assertEqual(self.cfg.data["_recovery_placement"]["server_args"], values.get("server_args", []))
         self.cfg.data.pop("_recovery_placement", None)
