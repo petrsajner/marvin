@@ -34,3 +34,15 @@ no GitHub assets.
 |---|---:|---|
 | Minimal | 53,468,892 | built; not installed this time |
 | Full | 940,743,277 | Exit 0, 67.9 s |
+
+## Offline backup
+
+`Marvin-Offline-Backup-1.9.0` was renamed in place to
+`Marvin-Offline-Backup-1.10.1`. Four distribution files changed (Full Setup,
+both manuals — the install guides, README-OFFLINE and requirement files are
+unchanged) and the MTP draft model with its verification receipt was added
+under `payload/runtime/models/Qwen3.8-27B/`. The manifest now has 84 entries;
+weights, llama.cpp, WebView2 payloads and the Python dependency ZIP were not
+re-copied or repacked. The installed backup selector points to the new folder.
+Every file passed the full SHA-256 `offline_backup.py verify` check.
+Manifest SHA-256: `03f690bca711ba6297d8bce8c9328b25114d82486df5a31240367a1ed8a6e0f3`.
