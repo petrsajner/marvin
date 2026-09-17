@@ -1,8 +1,11 @@
 # Marvin 1.10.1 - MTP visibility and the RAM-draft verdict
 
-Released on 18 September 2026 from the local application commit recorded in Git.
-Local release, same scope as 1.10.0: the owner's workstation installation only,
-no GitHub assets.
+Released on 18 September 2026 and published publicly. GitHub tag `v1.10.1`
+resolves to application commit `aff018b8263e29d14fc56bf603a2d97b3f765089`
+(pushed as `53e24d4..aff018b` on `main`). The [release
+manifest](release-1.10.1.json) records all seven public assets, their sizes,
+SHA-256 values and stable download URLs. Public link:
+https://github.com/petrsajner/marvin/releases/latest
 
 ## Changes
 
@@ -46,3 +49,16 @@ weights, llama.cpp, WebView2 payloads and the Python dependency ZIP were not
 re-copied or repacked. The installed backup selector points to the new folder.
 Every file passed the full SHA-256 `offline_backup.py verify` check.
 Manifest SHA-256: `03f690bca711ba6297d8bce8c9328b25114d82486df5a31240367a1ed8a6e0f3`.
+
+## Public downloads
+
+All seven asset sizes and server-side SHA-256 digests matched the local values
+before publication (draft verified via the releases API). After publication,
+unauthenticated `latest` requests resolve to 1.10.1. Small public downloads
+(both manuals, SHA256SUMS.txt, the workspace preview) passed full SHA-256
+checks; installer and ZIP range requests verified the PE/ZIP file signatures
+and total sizes against the GitHub asset digests. The release body explains the
+MTP profiles and the automatic WebView2 setup. The combined ZIP
+(`Marvin-1.10.1-Windows-x64.zip`, 993,374,015 bytes) and the dependency
+restore from the updated backup into a fresh venv passed
+`tests/check_distribution.py` before upload.
