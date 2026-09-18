@@ -1,6 +1,7 @@
 """Per-task file-change journal with persistent rollback."""
 from __future__ import annotations
 
+import difflib
 import hashlib
 import json
 import os
@@ -9,6 +10,10 @@ import threading
 import time
 import uuid
 from pathlib import Path
+
+# Diffs above this size are truncated rather than rendered whole.
+DIFF_MAX_BYTES = 1536 * 1024
+DIFF_CONTEXT = 3
 
 
 def file_sha256(path: Path) -> str | None:
@@ -142,15 +147,99 @@ class ChangeJournal:
             ],
         }
 
-    def undo(self, task_id: str | None = None, force: bool = False) -> dict:
+    def _diff_lines(self, before: list[str], after: list[str]) -> list[dict]:
+        """Line records with old/new numbers; long equal runs collapse into gaps."""
+        records: list[dict] = []
+        a = b = 0
+        pending: list[dict] = []
+        for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(
+                None, before, after, autojunk=False).get_opcodes():
+            if tag == "equal":
+                for offset, text in enumerate(before[i1:i2]):
+                    pending.append({"tag": " ", "a": i1 + offset + 1, "b": j1 + offset + 1, "text": text})
+            else:
+                records.extend(pending)
+                pending = []
+                for offset, text in enumerate(before[i1:i2]):
+                    records.append({"tag": "-", "a": i1 + offset + 1, "b": None, "text": text})
+                for offset, text in enumerate(after[j1:j2]):
+                    records.append({"tag": "+", "a": None, "b": j1 + offset + 1, "text": text})
+        # Collapse long unchanged runs into gap markers with a small context fringe.
+        collapsed: list[dict] = []
+        run: list[dict] = []
+
+        def flush_run() -> None:
+            if not run:
+                return
+            if len(run) > 2 * DIFF_CONTEXT + 2:
+                collapsed.extend(run[:DIFF_CONTEXT])
+                collapsed.append({"tag": "gap", "count": len(run) - 2 * DIFF_CONTEXT})
+                collapsed.extend(run[-DIFF_CONTEXT:])
+            else:
+                collapsed.extend(run)
+            run.clear()
+
+        for record in records + pending:
+            if record["tag"] == " ":
+                run.append(record)
+                continue
+            flush_run()
+            collapsed.append(record)
+        flush_run()
+        return collapsed
+
+    def file_diff(self, path: str, task_id: str | None = None) -> dict:
+        """Structured line diff of one recorded file against its live content."""
+        manifest = self._load_manifest(task_id)
+        record = next((r for r in (manifest or {}).get("files", [])
+                       if r.get("display_path") == path or r.get("path") == path), None)
+        if record is None or record.get("kind") == "directory":
+            raise FileNotFoundError(f"No recorded change for {path}")
+        task_dir = self.base / manifest["task_id"]
+        live = Path(record["path"])
+        change = ("deleted" if record["existed"] and record.get("after_sha256") is None
+                  else "modified" if record["existed"] else "created")
+        changed_after = False
+        binary = truncated = False
+
+        def read_lines(source: Path) -> list[str]:
+            nonlocal binary, truncated
+            try:
+                raw = source.read_bytes()
+            except OSError:
+                return []
+            if b"\x00" in raw[:65536]:
+                binary = True
+                return []
+            truncated = truncated or len(raw) > DIFF_MAX_BYTES
+            return raw[:DIFF_MAX_BYTES].decode("utf-8", errors="replace").splitlines()
+
+        before = read_lines(task_dir / record["backup"]) if record["existed"] else []
+        after = [] if change == "deleted" else read_lines(live)
+        if record["existed"] and change != "deleted":
+            try:
+                changed_after = file_sha256(live) != record.get("after_sha256")
+            except OSError:
+                changed_after = True
+        return {
+            "task_id": manifest["task_id"], "path": record["display_path"], "change": change,
+            "undone": bool(manifest.get("undone_at")),
+            "changed_after": changed_after, "binary": binary, "truncated": truncated,
+            "lines": [] if binary else self._diff_lines(before, after),
+        }
+
+    def undo(self, task_id: str | None = None, force: bool = False, paths: list[str] | None = None) -> dict:
         with self._lock:
             manifest = self._load_manifest(task_id)
             if not manifest:
                 return {"restored": [], "errors": ["No task checkpoint available"]}
             task_dir = self.base / manifest["task_id"]
+            wanted = set(paths) if paths is not None else None
             restored: list[str] = []
             errors: list[str] = []
             for record in reversed(manifest.get("files", [])):
+                if wanted is not None and record["display_path"] not in wanted:
+                    continue
                 path = Path(record["path"])
                 try:
                     if record.get("kind") != "directory" and not force:
@@ -175,7 +264,8 @@ class ChangeJournal:
                     restored.append(record["display_path"])
                 except OSError as exc:
                     errors.append(f"{record['display_path']}: {exc}")
-            if not errors:
+            # A partial restore leaves the task itself active for the remaining files.
+            if not errors and wanted is None:
                 manifest["undone_at"] = time.time()
             manifest["restore_errors"] = errors
             self._atomic_json(task_dir / "manifest.json", manifest)

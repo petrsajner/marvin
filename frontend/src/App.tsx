@@ -43,6 +43,7 @@ import {
   Archive,
   Upload,
   Save,
+  GitCompare,
 } from "lucide-react";
 import {
   api,
@@ -1176,6 +1177,21 @@ export function App() {
                                   : tr("Result")}
                               </small>
                             </button>
+                            {f.kind === "changed" && (
+                              <button
+                                className="icon"
+                                aria-label={tr("Show changes")}
+                                title={tr("Show changes")}
+                                onClick={() =>
+                                  setDialog({
+                                    type: "diff",
+                                    data: { path: f.path },
+                                  })
+                                }
+                              >
+                                <GitCompare />
+                              </button>
+                            )}
                             <button
                               className="icon"
                               aria-label={tr("Open folder")}
@@ -1357,7 +1373,20 @@ export function App() {
                         {detail?.changes?.files
                           ?.filter((f: any) => f.changed)
                           .map((f: any) => (
-                            <p key={f.path}>{f.path}</p>
+                            <button
+                              key={f.path}
+                              className="file-diff-link"
+                              title={tr("Show changes")}
+                              onClick={() =>
+                                setDialog({
+                                  type: "diff",
+                                  data: { path: f.path },
+                                })
+                              }
+                            >
+                              <GitCompare />
+                              {f.path}
+                            </button>
                           ))}
                         <button
                           className="wide"
@@ -1457,19 +1486,23 @@ export function App() {
                             </button>
                           </div>
                         ))}
-                        <button
-                          onClick={() =>
-                            pick(false)
-                              .then((p) => p && act("pin", { path: p }))
-                              .catch(error)
-                          }
-                        >
-                          <Plus />
-                          {tr("Pin file")}
-                        </button>
-                        <button onClick={() => act("clear_pins").catch(error)}>
-                          {tr("Unpin all")}
-                        </button>
+                        <div className="row">
+                          <button
+                            onClick={() =>
+                              pick(false)
+                                .then((p) => p && act("pin", { path: p }))
+                                .catch(error)
+                            }
+                          >
+                            <Plus />
+                            {tr("Pin file")}
+                          </button>
+                          <button
+                            onClick={() => act("clear_pins").catch(error)}
+                          >
+                            {tr("Unpin all")}
+                          </button>
+                        </div>
                       </section>
                       <section>
                         <h3>{tr("Loaded skills")}</h3>

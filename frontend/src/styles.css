@@ -211,6 +211,71 @@ button.wide {
   width: 100%;
   margin: 5px 0;
 }
+button.file-diff-link {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 4px 2px;
+  text-align: left;
+  font-size: 13px;
+  word-break: break-all;
+}
+button.file-diff-link svg {
+  flex: none;
+  opacity: 0.7;
+}
+.diff-body {
+  overflow: auto;
+  max-height: 62vh;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+.diff-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: ui-monospace, Consolas, "Courier New", monospace;
+  font-size: 12.5px;
+  table-layout: fixed;
+}
+.diff-table td {
+  padding: 0 8px;
+  vertical-align: top;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.diff-table td.diff-num {
+  width: 44px;
+  color: var(--muted, #8a93a5);
+  text-align: right;
+  user-select: none;
+  background: var(--input);
+  font-size: 11.5px;
+  padding-top: 2px;
+}
+.diff-side {
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+.diff-add {
+  background: var(--green-bg);
+}
+.diff-add.diff-side {
+  box-shadow: inset 2px 0 0 var(--green);
+}
+.diff-del {
+  background: var(--red-bg);
+}
+.diff-del.diff-side {
+  box-shadow: inset 2px 0 0 var(--red);
+}
+.diff-gap td {
+  text-align: center;
+  color: var(--muted, #8a93a5);
+  background: var(--hover);
+  padding: 2px;
+  font-size: 11.5px;
+}
 button.nav-button {
   justify-content: flex-start;
   text-align: left;

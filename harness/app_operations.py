@@ -297,4 +297,8 @@ def perform_action(app, sid, action, payload):
     if action == "restore":
         journal = ChangeJournal(session, Path(session.meta.get("workspace") or session.dir))
         return journal.undo(payload["id"], force=bool(payload.get("force")))
+    if action == "restore_file":
+        journal = ChangeJournal(session, Path(session.meta.get("workspace") or session.dir))
+        return journal.undo(payload.get("task_id"), force=bool(payload.get("force")),
+                            paths=[payload["path"]])
     raise ValueError(f"Unknown action: {action}")

@@ -43,6 +43,7 @@ import {
   Archive,
   Upload,
   Save,
+  Sparkles,
 } from "lucide-react";
 import {
   api,
@@ -86,6 +87,8 @@ export function DialogView(props: any) {
     [maintenance, setMaintenance] = useState<any[]>([]),
     [page, setPage] = useState(1),
     [format, setFormat] = useState("pdf"),
+    [diff, setDiff] = useState<any>(null),
+    [diffMode, setDiffMode] = useState("split"),
     [busy, setBusy] = useState(false);
   const memoryDirty = useRef(false);
   const section = dialog.section || "model";
@@ -183,6 +186,7 @@ export function DialogView(props: any) {
               export: tr("Export"),
               decisions: tr("Project decisions"),
               "queue-edit": tr("Queued message"),
+              diff: (dialog.data?.path || "").split(/[\\/]/).pop() || tr("Changes"),
             } as any
           )[dialog.type] || dialog.type;
   const settingsSections = [
@@ -198,6 +202,15 @@ export function DialogView(props: any) {
     await refresh();
     close();
   };
+  useEffect(() => {
+    if (dialog.type !== "diff") return;
+    setDiff(null);
+    const params = new URLSearchParams({ path: dialog.data.path });
+    if (dialog.data.task_id) params.set("task_id", dialog.data.task_id);
+    api("/api/sessions/" + sid + "/diff?" + params)
+      .then(setDiff)
+      .catch(error);
+  }, [dialog.type, dialog.data, sid, error]);
   useEffect(() => {
     if (dialog.type !== "process-output") return;
     let cancelled = false;
@@ -362,16 +375,22 @@ export function DialogView(props: any) {
                 </label>
                 <p>{tr("Changing the budget restarts the model automatically when no task is running. A compatible context or smaller model is selected when needed.")}</p>
                 {app.models.find((m: any) => m.id === app.preferences.model)?.uses_system_ram && <p>{tr("This profile also uses system RAM. A smaller GPU moves more weights into RAM. Windows can reclaim memory while the model starts.")}</p>}
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={!!app.semantic_search?.enabled}
-                    onChange={(e) =>
-                      call(() => settings({ semantic_search: e.target.checked }))
+                <div className="row">
+                  <button
+                    className={app.semantic_search?.enabled ? "positive" : "outline"}
+                    disabled={app.semantic_search?.preparing}
+                    onClick={() =>
+                      call(() =>
+                        settings({
+                          semantic_search: !app.semantic_search?.enabled,
+                        }),
+                      )
                     }
-                  />{" "}
-                  {tr("Semantic search")}
-                </label>
+                  >
+                    <Sparkles />
+                    {tr("Semantic search")}
+                  </button>
+                </div>
                 {app.semantic_search?.enabled && (
                   <p>
                     {app.semantic_search.preparing
@@ -415,6 +434,17 @@ export function DialogView(props: any) {
                     </button>
                   ))}
                 </div>
+                {app.semantic_search?.enabled && (
+                  <p>
+                    {app.semantic_search.preparing
+                      ? tr("Downloading the embedding model (~635 MB)…")
+                      : app.semantic_search.model_ready
+                        ? app.semantic_search.server
+                          ? tr("Semantic search is ready.")
+                          : tr("Ready; the CPU search service starts with the first search.")
+                        : tr("The embedding model will be downloaded in the background (~635 MB, CPU only).")}
+                  </p>
+                )}
                 <ModelStatus runtime={runtime} cs={cs} />
               </>
             )}
@@ -1180,6 +1210,135 @@ export function DialogView(props: any) {
             )}
             {dialog.type === "process-output" && (
               <pre className="document-preview">{content}</pre>
+            )}
+            {dialog.type === "diff" && (
+              <>
+                <div className="row">
+                  <button
+                    className={diffMode === "split" ? "positive" : "outline"}
+                    onClick={() => setDiffMode("split")}
+                  >
+                    {tr("Side by side")}
+                  </button>
+                  <button
+                    className={diffMode === "unified" ? "positive" : "outline"}
+                    onClick={() => setDiffMode("unified")}
+                  >
+                    {tr("Unified")}
+                  </button>
+                  <span className="spacer" />
+                  <button
+                    className="danger"
+                    disabled={!diff || diff.undone}
+                    onClick={() =>
+                      call(async () => {
+                        const result = await act("restore_file", {
+                          path: dialog.data.path,
+                          task_id: dialog.data.task_id,
+                        });
+                        if (
+                          result?.errors?.length &&
+                          window.confirm(
+                            tr(
+                              "The file changed after this task. Restore the original version anyway?",
+                            ),
+                          )
+                        ) {
+                          await act("restore_file", {
+                            path: dialog.data.path,
+                            task_id: dialog.data.task_id,
+                            force: true,
+                          });
+                        }
+                        const params = new URLSearchParams({
+                          path: dialog.data.path,
+                        });
+                        if (dialog.data.task_id)
+                          params.set("task_id", dialog.data.task_id);
+                        setDiff(
+                          await api(
+                            "/api/sessions/" +
+                              sid +
+                              "/diff?" +
+                              params,
+                          ),
+                        );
+                      })
+                    }
+                  >
+                    <History />
+                    {tr("Restore this file")}
+                  </button>
+                </div>
+                {diff?.changed_after && (
+                  <p className="amber">
+                    {tr(
+                      "The file was changed after this task; restoring may overwrite newer edits.",
+                    )}
+                  </p>
+                )}
+                {diff?.binary && (
+                  <p>{tr("Binary file; content preview is not available.")}</p>
+                )}
+                {!diff && <p>{tr("Loading…")}</p>}
+                {diff && !diff.binary && (
+                  <div className="diff-body">
+                    <table className={"diff-table " + diffMode}>
+                      <tbody>
+                        {(diff.lines || []).map(
+                          (line: any, index: number) =>
+                            line.tag === "gap" ? (
+                              <tr key={index} className="diff-gap">
+                                <td colSpan={diffMode === "split" ? 4 : 3}>
+                                  ⋯ {line.count}
+                                </td>
+                              </tr>
+                            ) : diffMode === "split" ? (
+                              <tr key={index}>
+                                <td className="diff-num">{line.a ?? ""}</td>
+                                <td
+                                  className={
+                                    "diff-side " +
+                                    (line.tag === "-" ? "diff-del" : "")
+                                  }
+                                >
+                                  {line.tag === "+" ? "" : line.text}
+                                </td>
+                                <td className="diff-num">{line.b ?? ""}</td>
+                                <td
+                                  className={
+                                    "diff-side " +
+                                    (line.tag === "+" ? "diff-add" : "")
+                                  }
+                                >
+                                  {line.tag === "-" ? "" : line.text}
+                                </td>
+                              </tr>
+                            ) : (
+                              <tr key={index}>
+                                <td className="diff-num">{line.a ?? ""}</td>
+                                <td className="diff-num">{line.b ?? ""}</td>
+                                <td
+                                  className={
+                                    "diff-side " +
+                                    (line.tag === "+"
+                                      ? "diff-add"
+                                      : line.tag === "-"
+                                        ? "diff-del"
+                                        : "")
+                                  }
+                                >
+                                  {line.tag === " " ? "" : line.tag}{" "}
+                                  {line.text}
+                                </td>
+                              </tr>
+                            ),
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
             )}
             {dialog.type === "context-snapshot" && (
               <>

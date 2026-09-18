@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 
 from harness.application import ApplicationService, read_json
 from harness.app_operations import COMMANDS, perform_action, session_detail
-from harness.changes import atomic_write_text
+from harness.changes import ChangeJournal, atomic_write_text
 from harness.config import Config, load_config
 from harness.history_index import HistoryIndex
 from harness.projects import Projects
@@ -153,6 +153,13 @@ def create_app(cfg=None, *, service=None):
     @app.get("/api/sessions/{sid}/detail")
     def detail(sid: str):
         return session_detail(service, service.session(sid))
+
+    @app.get("/api/sessions/{sid}/diff")
+    def file_diff(sid: str, path: str, task_id: str | None = None):
+        session = service.session(sid)
+        workspace = Path(session.meta.get("workspace") or session.dir)
+        journal = ChangeJournal(session, workspace)
+        return journal.file_diff(path, task_id)
 
     @app.post("/api/sessions")
     def new_session(payload: dict):

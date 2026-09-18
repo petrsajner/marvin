@@ -668,7 +668,16 @@
     "Downloading the embedding model (~635 MB)…": "Stahuje se embedding model (~635 MB)…",
     "Semantic search is ready.": "Sémantické vyhledávání je připraveno.",
     "Ready; the CPU search service starts with the first search.": "Připraveno; vyhledávací služba na CPU se spustí při prvním hledání.",
-    "The embedding model will be downloaded in the background (~635 MB, CPU only).": "Embedding model se stáhne na pozadí (~635 MB, jen CPU)."
+    "The embedding model will be downloaded in the background (~635 MB, CPU only).": "Embedding model se stáhne na pozadí (~635 MB, jen CPU).",
+    "Changes": "Změny",
+    "Side by side": "Vedle sebe",
+    "Unified": "Jeden sloupec",
+    "Restore this file": "Obnovit tento soubor",
+    "The file changed after this task. Restore the original version anyway?": "Soubor se po této úloze změnil. Přesto obnovit původní verzi?",
+    "The file was changed after this task; restoring may overwrite newer edits.": "Soubor byl po této úloze změněn; obnovení může přepsat novější úpravy.",
+    "Binary file; content preview is not available.": "Binární soubor; náhled obsahu není k dispozici.",
+    "Loading…": "Načítání…",
+    "Show changes": "Zobrazit změny"
   },
   "legacy_profile_labels": {
     "16 bit - přesnější, kontext 128k": "16-bit - more precise, context 128k",
