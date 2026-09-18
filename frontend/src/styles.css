@@ -1033,6 +1033,7 @@ button.nav-button {
   background: var(--pane);
   box-shadow: 0 20px 65px #0008;
   min-width: 0;
+  position: relative;
 }
 .modal > header {
   display: flex;
@@ -1200,12 +1201,18 @@ button.nav-button {
   padding-top: 14px;
 }
 .busy {
+  position: absolute;
+  bottom: 10px;
+  right: 14px;
   display: flex;
   align-items: center;
   gap: 8px;
   color: var(--green);
   font-size: 12px;
-  margin-top: 15px;
+  background: color-mix(in srgb, var(--pane) 85%, transparent);
+  padding: 3px 8px;
+  border-radius: 5px;
+  pointer-events: none;
 }
 .startup {
   display: flex;
