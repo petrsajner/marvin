@@ -23,6 +23,51 @@ def _result(proc: subprocess.CompletedProcess, label: str, limit: int = 40_000) 
     return f"{label}\n[exit code: {proc.returncode}]\n{truncate(output, limit, 'git output')}"
 
 
+def is_repo(ctx: AgentContext) -> bool:
+    """True when the workspace is inside a Git work tree."""
+    try:
+        proc = _git(ctx, ["rev-parse", "--is-inside-work-tree"])
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0 and (proc.stdout or "").strip() == "true"
+
+
+def task_paths(ctx: AgentContext) -> list[str]:
+    """Workspace-relative paths changed by the current task."""
+    if not ctx.changes:
+        return []
+    selected: list[str] = []
+    for item in ctx.changes.summary().get("files", []):
+        if not item.get("changed"):
+            continue
+        path = Path(item["path"])
+        if path.is_absolute():
+            try:
+                path = path.relative_to(ctx.workspace)
+            except ValueError:
+                continue
+        selected.append(str(path))
+    return selected
+
+
+def commit_files(ctx: AgentContext, paths: list[str], message: str) -> dict:
+    """Stage the given paths and commit locally; never pushes.
+
+    Shared by the model-driven git_commit tool and the harness auto-commit."""
+    try:
+        add = _git(ctx, ["add", "--", *paths])
+        if add.returncode:
+            return {"ok": False, "error": _result(add, "$ git add -- " + " ".join(paths))}
+        commit = _git(ctx, ["commit", "-m", message], timeout=60)
+        if commit.returncode:
+            return {"ok": False, "error": _result(commit, "$ git commit")}
+        hash_proc = _git(ctx, ["rev-parse", "--short", "HEAD"])
+        return {"ok": True, "hash": (hash_proc.stdout or "").strip(),
+                "output": _result(commit, f"$ git commit -m {json.dumps(message, ensure_ascii=False)}")}
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"ok": False, "error": f"git commit failed: {exc}"}
+
+
 class GitStatusTool(Tool):
     name = "git_status"
     parallel_safe = True
@@ -80,34 +125,11 @@ class GitCommitTool(Tool):
         message = (message or "").strip()
         if not message:
             return "ERROR: commit message must not be empty"
-        selected = list(paths or self._task_paths(ctx))
+        selected = list(paths or task_paths(ctx))
         if not selected:
             return "ERROR: no current-task files to commit; pass explicit paths if intended"
-        try:
-            add = _git(ctx, ["add", "--", *selected])
-            if add.returncode:
-                return _result(add, "$ git add -- " + " ".join(selected))
-            commit = _git(ctx, ["commit", "-m", message], timeout=60)
-            return _result(commit, f"$ git commit -m {json.dumps(message, ensure_ascii=False)}")
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            return f"ERROR: git commit failed: {exc}"
-
-    @staticmethod
-    def _task_paths(ctx: AgentContext) -> list[str]:
-        if not ctx.changes:
-            return []
-        selected: list[str] = []
-        for item in ctx.changes.summary().get("files", []):
-            if not item.get("changed"):
-                continue
-            path = Path(item["path"])
-            if path.is_absolute():
-                try:
-                    path = path.relative_to(ctx.workspace)
-                except ValueError:
-                    continue
-            selected.append(str(path))
-        return selected
+        result = commit_files(ctx, selected, message)
+        return result.get("output") or result.get("error") or "ERROR: git commit failed"
 
 
 def register_git_tools(registry) -> None:

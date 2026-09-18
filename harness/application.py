@@ -388,6 +388,60 @@ class ApplicationService:
             session.add("tool", "Execution was interrupted; outcome unknown. Inspect actual state before retrying.",
                         tool_call_id=call["id"], name=call["function"]["name"])
 
+    def _maybe_autocommit(self, agent, session, job, result_text: str) -> str | None:
+        """Commit the task's changed files when the project opted into auto-commit.
+
+        Runs after a successfully completed development/computer task in a Git
+        repository. Failures never fail the run; they surface as a notice."""
+        workspace = session.meta.get("workspace")
+        if not workspace or agent.work_mode not in ("development", "computer"):
+            return None
+        from harness.project_profile import autocommit_enabled
+        if not autocommit_enabled(workspace):
+            return None
+        from harness.tools.git import commit_files, is_repo, task_paths
+        if not is_repo(agent.ctx):
+            return None
+        paths = task_paths(agent.ctx)
+        if not paths:
+            return None
+        message = self._autocommit_message(agent, session, job, result_text)
+        if not message:
+            return None
+        result = commit_files(agent.ctx, paths, message)
+        if not result.get("ok"):
+            return f"Auto-commit failed: {str(result.get('error'))[:300]}"
+        return (f"Auto-committed {len(paths)} file{'s' if len(paths) != 1 else ''} "
+                f"as {result.get('hash') or 'HEAD'}.")
+
+    @staticmethod
+    def _autocommit_message(agent, session, job, result_text: str) -> str:
+        """Subject from the task goal, body from the final summary's Done section."""
+        plan = agent.ctx.task_plan.load() if agent.ctx.task_plan else {}
+        goal = str(plan.get("goal") or job.get("text") or "").strip().replace("\n", " ")
+        subject = (goal[:97] + "…") if len(goal) > 100 else goal
+        if not subject:
+            return ""
+        done: list[str] = []
+        in_done = False
+        for line in (result_text or "").splitlines():
+            stripped = line.strip()
+            if not in_done and stripped.startswith("✅"):
+                in_done = True
+            elif in_done and stripped.startswith(("🔍", "📋", "⏸")):
+                break
+            if in_done:
+                done.append(line.rstrip())
+        body = "\n".join(done).strip()[:1500]
+        if not body:
+            validations = plan.get("validations") or []
+            if validations:
+                last = validations[-1]
+                body = f"Validation: {last.get('status')} — {last.get('label')}"
+        trailer = (f"Marvin: session {session.id} · task "
+                   f"{agent.ctx.changes.summary().get('task_id', '')}")
+        return f"{subject}\n\n{body}\n\n{trailer}" if body else f"{subject}\n\n{trailer}"
+
     def _recover_memory_profile(self, cfg, job, live, session):
         """Retry a pressure-interrupted model call with a smaller context, at most
         once per available context. Completed tool results remain in history."""
@@ -659,11 +713,18 @@ class ApplicationService:
                 status = "stopped" if self.abort.is_set() else {
                     Status.FINAL: "complete", Status.ABORTED: "stopped",
                     Status.ERROR: "failed", Status.NEEDS_CONFIRMATION: "waiting_confirmation"}[result.status]
+                if status == "complete":
+                    commit_note = self._maybe_autocommit(agent, session, job, result.text)
+                else:
+                    commit_note = None
                 self.store.save_job(job, status)
                 if status in ("stopped", "failed") and (live["text"] or live["reasoning"]):
                     if not any(m.get("role") == "assistant" and m.get("step_id") == live["step"]
                                and m.get("run_id") == rid for m in session.messages[-8:]):
                         session.add("assistant", live["text"], reasoning=live["reasoning"])
+                if commit_note:
+                    self.store.emit(sid, "notice", {"text": commit_note,
+                                                    "run_id": rid, "created": time.time()})
                 self.store.emit(sid, "run_status", {"run_id": rid, "status": status,
                     "text": result.text, "pending": result.pending_summary if status == "waiting_confirmation" else [],
                     "usage": session.meta.get("last_usage", {})})

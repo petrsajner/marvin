@@ -451,6 +451,8 @@ Krátké příkazy běží synchronně s timeoutem. Úplný stdout/stderr se ukl
 Projekt může detekci nahradit souborem `.qwen/project.yaml`:
 
 ```yaml
+git:
+  autocommit: true
 checks:
   - id: tests
     label: Kompletní testy
@@ -460,6 +462,12 @@ checks:
     timeout: 900
     primary: true
 ```
+
+S `git.autocommit: true` se po každé úspěšně dokončené úloze ve Vývoji nebo
+Počítači automaticky commitnou právě její změněné soubory — předmět z cíle
+úlohy, tělo z finálního souhrnu, závěr s odkazem zpět do chatu. Auto-commit je
+ve výchozím stavu vypnutý a nikdy nepushuje; v chatu se zobrazí oznámení s
+hashem commitu.
 
 Dokončená kontrola se zapíše do panelu. Pokud změněná úloha končí bez validace, dokončeného plánu nebo kontroly diffu, harness model jednou upozorní. Model užitečnou kontrolu provede, nebo vysvětlí, proč pro danou úlohu nemá smysl.
 

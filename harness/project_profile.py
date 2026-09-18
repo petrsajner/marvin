@@ -7,6 +7,26 @@ from pathlib import Path
 from typing import Any
 
 
+def autocommit_enabled(workspace: Path | str | None) -> bool:
+    """Read the optional git.autocommit flag from .qwen/project.yaml.
+
+    Off unless the project owner explicitly opts in; any malformed or missing
+    configuration counts as off."""
+    if not workspace:
+        return False
+    path = Path(workspace) / ".qwen" / "project.yaml"
+    if not path.is_file():
+        return False
+    try:
+        import yaml
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        git = data.get("git") or {}
+        # Strictly require an explicit boolean; strings like "banana" must not enable it.
+        return isinstance(git, dict) and git.get("autocommit") is True
+    except (OSError, ValueError, TypeError, ImportError):
+        return False
+
+
 @dataclass(frozen=True)
 class ProjectCheck:
     id: str
