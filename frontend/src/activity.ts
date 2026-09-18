@@ -40,7 +40,8 @@ function labelFor(path: string): string {
 }
 
 export function beginActivity(path: string, method: string) {
-  if (path.endsWith("/actions/draft") || (method === "GET" && !/preview|library|read_skill/.test(path))) return () => {};
+  if (path.endsWith("/actions/draft") || path.endsWith("/select")
+      || (method === "GET" && !/preview|library|read_skill/.test(path))) return () => {};
   const id = ++sequence;
   const entry: Activity = { id, label: labelFor(path), started: Date.now() };
   const button = document.activeElement?.closest("button") as HTMLElement | null;
