@@ -14,6 +14,11 @@ from pathlib import Path
 # Diffs above this size are truncated rather than rendered whole.
 DIFF_MAX_BYTES = 1536 * 1024
 DIFF_CONTEXT = 3
+# Harness-managed project state. A workspace snapshot must not attribute these to
+# whichever task happened to run when they changed - they would show up as task
+# changes and reach the optional auto-commit. An explicit agent edit still
+# records normally through record_before/record_after.
+HARNESS_STATE_DIRS = {".qwen"}
 
 
 def file_sha256(path: Path) -> str | None:
@@ -193,6 +198,18 @@ class ChangeJournal:
         manifest = self._load_manifest(task_id)
         record = next((r for r in (manifest or {}).get("files", [])
                        if r.get("display_path") == path or r.get("path") == path), None)
+        restorable = record is not None
+        if record is None and (manifest or {}).get("snapshot"):
+            live = self.workspace / path
+            inside = True
+            try:
+                live.resolve().relative_to(self.workspace)
+            except (OSError, ValueError):
+                inside = False
+            if inside and live.is_file() and not self._harness_state(live):
+                record = {"path": str(live.resolve()), "display_path": self._display_path(live),
+                          "existed": False, "backup": None, "before_sha256": None,
+                          "after_sha256": file_sha256(live)}
         if record is None or record.get("kind") == "directory":
             raise FileNotFoundError(f"No recorded change for {path}")
         task_dir = self.base / manifest["task_id"]
@@ -223,7 +240,7 @@ class ChangeJournal:
                 changed_after = True
         return {
             "task_id": manifest["task_id"], "path": record["display_path"], "change": change,
-            "undone": bool(manifest.get("undone_at")),
+            "undone": bool(manifest.get("undone_at")), "restorable": restorable,
             "changed_after": changed_after, "binary": binary, "truncated": truncated,
             "lines": [] if binary else self._diff_lines(before, after),
         }
@@ -296,7 +313,8 @@ class ChangeJournal:
         from harness.file_index import project_files
         self._snapshot = True
         for path in project_files(self.workspace, refresh=True):
-            if path.is_file() and not path.is_relative_to(self.base):
+            if (path.is_file() and not path.is_relative_to(self.base)
+                    and not self._harness_state(path)):
                 self.record_before(path)
                 self.record_after(path)
         self._write_manifest()
@@ -306,7 +324,7 @@ class ChangeJournal:
             return
         from harness.file_index import project_files
         for path in project_files(self.workspace, refresh=True):
-            if path.is_relative_to(self.base):
+            if path.is_relative_to(self.base) or self._harness_state(path):
                 continue
             key = str(path.resolve())
             if key not in self._records:
@@ -316,6 +334,50 @@ class ChangeJournal:
             if record.get("kind") != "directory":
                 record["after_sha256"] = file_sha256(Path(record["path"]))
         self._write_manifest()
+
+    def _harness_state(self, path: Path) -> bool:
+        try:
+            parts = path.resolve().relative_to(self.workspace).parts
+        except (OSError, ValueError):
+            return False
+        return bool(parts) and parts[0] in HARNESS_STATE_DIRS
+
+    def changed_since(self, task_id: str | None = None) -> dict:
+        """Files whose current content differs from a checkpoint's saved state.
+
+        summary() reports what a task recorded, but a restore point taken before
+        any edit records before == after for every file. Comparing the live file
+        against the saved pre-task hash is what makes a checkpoint inspectable."""
+        manifest = self._load_manifest(task_id)
+        if not manifest:
+            return {"task_id": None, "label": "", "files": []}
+        files: list[dict] = []
+        for record in manifest.get("files", []):
+            if record.get("kind") == "directory":
+                continue
+            live = file_sha256(Path(record["path"]))
+            if live == record.get("before_sha256"):
+                continue
+            files.append({
+                "path": record["display_path"],
+                "change": ("created" if not record["existed"]
+                           else "deleted" if live is None else "modified"),
+                "changed": True, "restorable": True,
+            })
+        if manifest.get("snapshot"):
+            # A file created after the snapshot has no manifest entry, but it is
+            # still drift the user wants to see. It cannot be restored from a
+            # backup that never existed.
+            from harness.file_index import project_files
+            known = {record["path"] for record in manifest.get("files", [])}
+            for path in project_files(self.workspace, refresh=True):
+                if (str(path.resolve()) in known or path.is_relative_to(self.base)
+                        or self._harness_state(path) or not path.is_file()):
+                    continue
+                files.append({"path": self._display_path(path), "change": "created",
+                              "changed": True, "restorable": False})
+        return {"task_id": manifest["task_id"], "label": manifest.get("label", ""),
+                "files": sorted(files, key=lambda item: item["path"])}
 
     def _display_path(self, path: Path) -> str:
         try:

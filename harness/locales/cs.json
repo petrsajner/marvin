@@ -688,7 +688,20 @@
     "pass": "prošlo",
     "fail": "selhalo",
     "timeout": "vypršel čas",
-    "error": "chyba"
+    "error": "chyba",
+    "queued…": "ve frontě…",
+    "Running project checks": "Spouštím kontroly projektu",
+    "Starting check repair": "Spouštím opravu kontrol",
+    "Core tests": "Základní testy",
+    "Unittest suite": "Sada unittest",
+    "Pytest suite": "Sada pytest",
+    "Ruff lint": "Kontrola Ruff",
+    "Show changes since this restore point": "Zobrazit změny od tohoto bodu obnovy",
+    "Changes since": "Změny od",
+    "Nothing changed since this restore point.": "Od tohoto bodu obnovy se nic nezměnilo.",
+    "modified": "změněno",
+    "created": "vytvořeno",
+    "deleted": "smazáno"
   },
   "legacy_profile_labels": {
     "16 bit - přesnější, kontext 128k": "16-bit - more precise, context 128k",

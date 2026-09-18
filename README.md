@@ -395,6 +395,18 @@ TTFT ~1–2 s. Custom benchmark: `.venv/Scripts/python scripts/bench.py [--model
   one-click revert of the whole task.
 - `start_project_check` automatically finds the project's main test command and runs
   it as a long operation.
+- **Check detection** covers the common layouts: `tests/test_core.py`, a `tests/`
+  directory, and `test_*.py` modules kept in the project root. The stdlib
+  `unittest` runner is used by default; pytest only when the project configures it
+  (`pytest.ini`, `conftest.py`, `[tool.pytest]`) **and** the interpreter can import
+  it. Lint and type checks are offered only when their tool is installed, so a
+  detected check never fails just by starting.
+- **Project status** in the Progress panel lists the detected checks before the
+  first run, runs them all without the model, and keeps the result per project in
+  `.qwen/check-status.json`. "Fix failures with agent" opens a Development chat in
+  that project and lets the agent repair the failures.
+- **Restore points** can be inspected: each one shows what changed in the workspace
+  since it was taken, and every file opens in the diff viewer.
 - A project can define named checks in `.qwen/project.yaml`:
 
 ```yaml
