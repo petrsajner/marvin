@@ -446,7 +446,7 @@ Model umí číst status a diff a vytvořit lokální commit. `git_commit` stagu
 
 Krátké příkazy běží synchronně s timeoutem. Úplný stdout/stderr se ukládá do `sessions\<id-chatu>\command-logs`; model dostane začátek i konec, takže neztratí závěrečnou chybu. Stop aktivní synchronní příkaz ihned ukončí. Dlouhé příkazy na pozadí vrátí process ID a lze je pollovat, posílat jim stdin nebo ukončit celý strom procesů.
 
-`project_validation_profile` vypíše detekované test/lint/typecheck/build příkazy. `start_project_check` spustí primární nebo pojmenovanou kontrolu. Detekce pokrývá tento harness, pytest, Node scripts, Rust, Go a .NET.
+`project_validation_profile` vypíše detekované test/lint/typecheck/build příkazy. `start_project_check` spustí primární nebo pojmenovanou kontrolu. Detekce pokrývá tento harness, složku `tests/` i moduly `test_*.py` v kořeni projektu, Node scripts, Rust, Go a .NET. Ve výchozím stavu se používá standardní `unittest`; pytest jen tehdy, když si ho projekt nakonfiguruje (`pytest.ini`, `conftest.py`, `[tool.pytest]`) a interpret ho umí naimportovat.
 
 Projekt může detekci nahradit souborem `.qwen/project.yaml`:
 
@@ -460,6 +460,21 @@ checks:
     timeout: 900
     primary: true
 ```
+
+Kontroly běží ve vlastním virtuálním prostředí projektu (`.venv` nebo `venv`),
+pokud ho projekt má, takže vidí jeho závislosti. Bez něj je spustí interpret
+Marvina a chybějící cizí závislost se ohlásí jako důvod selhání. Lint a typovou
+kontrolu nabídne jen tehdy, když je nástroj nainstalovaný — detekovaná kontrola
+tedy neselže už při startu.
+
+**Stav projektu.** Panel **Průběh** vypíše detekované kontroly aktuálního
+projektu ještě předtím, než kdy běžely, tlačítkem **Spustit kontroly projektu**
+je všechny spustí bez modelu a výsledek uchová u projektu v
+`.qwen/check-status.json`, takže přežije restart. Každý řádek ukazuje, zda
+prošel nebo selhal, kdy běžel, a po najetí myší konec výstupu. **Nech agenta
+opravit selhání** otevře v projektu chat ve Vývoji a zadá agentovi, ať kontroly
+spustí, opraví co selhává a opakuje to, aniž by testy oslaboval. Obě tlačítka
+srozumitelně oznámí, když projekt žádné detekovatelné kontroly nemá.
 
 **Automatické commity úloh.** V dialogu projektu (třítečkové menu u výběru projektu)
 přepínač **Automaticky commitnout každou dokončenou úlohu** způsobí, že každá
@@ -751,6 +766,8 @@ Výzkum ukládá průběžné poznámky k důkazům. Po přerušení je syntéza
 ## Body obnovy
 
 Otevřete **Výsledky > Body obnovy** nebo použijte `/checkpoint název`. Bod zachytí pracovní soubory, nikoli generované závislosti nebo modely a runtime. Úlohový snapshot eviduje také změny provedené příkazy modelu. **Obnovit** oznámí konflikt s pozdější úpravou a nepřepíše ji tiše. Částečné selhání se neoznačí za kompletní obnovení.
+
+Tlačítko porovnání u bodu obnovy vypíše všechno, co se v projektu od jeho pořízení změnilo — upravené, smazané i nově vzniklé soubory — a každý řádek otevře prohlížeč rozdílů proti uložené verzi. Nevyžaduje to žádnou činnost modelu, takže bod obnovy slouží i k revizi vlastních úprav. Soubor vzniklý až po bodu obnovy za sebou uloženou verzi nemá: lze ho zobrazit, ale ne vrátit.
 
 ## Přenos projektu
 

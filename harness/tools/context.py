@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 from harness.safety import Risk
@@ -112,9 +111,8 @@ class ReadProjectDocumentTool(Tool):
 
 def detect_project_check(workspace: Path) -> tuple[str, str] | None:
     workspace = workspace.resolve()
-    venv_python = workspace / ".venv" / "Scripts" / "python.exe"
-    python = venv_python if venv_python.exists() else Path(sys.executable)
-    from harness.project_profile import ProjectProfile
+    from harness.project_profile import ProjectProfile, project_python
+    python = project_python(workspace)
     selected = ProjectProfile(workspace, python).select()
     return (selected.shell, selected.command) if selected else None
 
@@ -129,9 +127,8 @@ class ProjectValidationProfileTool(Tool):
     def run(self, ctx: AgentContext) -> str:
         if ctx.project_workspace is None:
             return "ERROR: no project selected"
-        venv_python = ctx.workspace / ".venv" / "Scripts" / "python.exe"
-        python = venv_python if venv_python.exists() else Path(sys.executable)
-        from harness.project_profile import ProjectProfile
+        from harness.project_profile import ProjectProfile, project_python
+        python = project_python(ctx.workspace)
         return ProjectProfile(ctx.workspace, python).describe()
 
 
@@ -150,9 +147,8 @@ class StartProjectCheckTool(Tool):
             check: str = "primary") -> str:
         if ctx.project_workspace is None:
             return "ERROR: no project selected"
-        venv_python = ctx.workspace / ".venv" / "Scripts" / "python.exe"
-        python = venv_python if venv_python.exists() else Path(sys.executable)
-        from harness.project_profile import ProjectProfile
+        from harness.project_profile import ProjectProfile, project_python
+        python = project_python(ctx.workspace)
         selected = ProjectProfile(ctx.workspace, python).select(check)
         if selected is None:
             return "ERROR: no supported project test command detected"

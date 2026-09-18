@@ -662,7 +662,10 @@ Short commands run synchronously with a timeout. Their complete stdout/stderr is
 `project_validation_profile` lists detected test, lint, typecheck, and build commands. `start_project_check` starts the primary command or a named check:
 
 - This harness: `tests/test_core.py`.
-- Python: pytest/pyproject.
+- Python: a `tests/` directory, or `test_*.py` modules in the project root. The
+  stdlib `unittest` runner is used by default; pytest only when the project
+  configures it (`pytest.ini`, `conftest.py`, `[tool.pytest]`) and the
+  interpreter can import it.
 - Node: `npm test` or `npm run check`.
 - Rust: `cargo test`.
 - Go: `go test ./...`.
@@ -680,6 +683,21 @@ checks:
     timeout: 900
     primary: true
 ```
+
+Checks run with the project's own virtual environment (`.venv` or `venv`) when it
+has one, so they see the project's dependencies. Without one Marvin's interpreter
+runs them and a missing third-party import is reported as the failure reason.
+Lint and type checks are offered only when their tool is installed, so a detected
+check never fails merely by starting.
+
+**Project status.** The **Progress** panel lists the detected checks for the
+current project before they have ever run, runs them all without the model with
+**Run project checks**, and keeps the outcome per project in
+`.qwen/check-status.json` so it survives a restart. Each row shows pass or fail,
+when it ran, and its output tail on hover. **Fix failures with agent** opens a
+Development chat in that project and asks the agent to run the checks, fix what
+fails and iterate without weakening tests. Both buttons say so plainly when a
+project has no detectable checks.
 
 **Automatic task commits.** In the project dialog (three-dot menu beside the project
 selector), the switch **Commit each finished task automatically** makes every
@@ -1037,6 +1055,8 @@ Research saves intermediate evidence notes. Interrupted synthesis can reuse thos
 ## Restore points
 
 Open **Results > Restore points** or use `/checkpoint name`. A restore point captures working files while excluding generated dependencies and model/runtime directories. Task snapshots also reconcile file changes made through model commands. **Restore** reports later conflicting edits instead of silently overwriting them, and a partial failure is not marked fully restored.
+
+The compare button beside a restore point lists everything that changed in the workspace since it was taken - modified, deleted and newly created files - and each row opens the diff viewer against the saved version. This needs no model activity, so a restore point doubles as a way to review your own edits. A file created after the restore point has no saved version behind it: it can be viewed but not reverted.
 
 ## Portable projects
 

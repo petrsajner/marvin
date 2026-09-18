@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 import threading
 import time
 from pathlib import Path
@@ -33,15 +32,10 @@ def status_path(workspace: Path) -> Path:
     return Path(workspace) / ".qwen" / "check-status.json"
 
 
-def _python_for(workspace: Path) -> str:
-    venv_python = Path(workspace) / ".venv" / "Scripts" / "python.exe"
-    return str(venv_python) if venv_python.is_file() else sys.executable
-
-
 def check_definitions(cfg, workspace: Path) -> list[dict]:
-    from harness.project_profile import ProjectProfile
-    python = _python_for(workspace)
-    return [item.as_dict() for item in ProjectProfile(workspace, python).checks()]
+    from harness.project_profile import ProjectProfile, project_python
+    return [item.as_dict()
+            for item in ProjectProfile(workspace, project_python(workspace)).checks()]
 
 
 # Outcome fields carried over from a persisted run onto the current definition.

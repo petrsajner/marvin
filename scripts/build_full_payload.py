@@ -71,9 +71,15 @@ def build():
     manifest = {"app_version": version, "python": sys.version.split()[0], "packages_files": len(copied),
                 "requirements_digest": hashlib.sha256(content).hexdigest()}
     (target / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    # Swap the new payload in, then drop the old one. Keeping it aside used to be
+    # permanent and leaked 1.2 GB of build output per full build.
+    previous = None
     if destination.exists():
-        destination.rename(destination.with_name(destination.name + "-previous-" + str(time.time_ns())))
+        previous = destination.with_name(destination.name + "-previous-" + str(time.time_ns()))
+        destination.rename(previous)
     target.rename(destination)
+    if previous is not None:
+        shutil.rmtree(previous, ignore_errors=True)
     print(json.dumps({"path": str(destination), **manifest}, indent=2))
 
 
