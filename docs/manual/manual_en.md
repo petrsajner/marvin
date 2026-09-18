@@ -671,8 +671,6 @@ Short commands run synchronously with a timeout. Their complete stdout/stderr is
 Projects can replace auto-detection with `.qwen/project.yaml`:
 
 ```yaml
-git:
-  autocommit: true
 checks:
   - id: tests
     label: Full test suite
@@ -683,11 +681,12 @@ checks:
     primary: true
 ```
 
-With `git.autocommit: true`, every successfully completed Development or Computer
-task automatically commits its own changed files in the project repository —
-subject from the task goal, body from the final summary, trailer linking back to
-the chat. Auto-commit is off by default and never pushes; the chat shows a notice
-with the commit hash.
+**Automatic task commits.** In the project dialog (three-dot menu beside the project
+selector), the switch **Commit each finished task automatically** makes every
+successfully completed Development or Computer task commit exactly its own changed
+files in the project repository — subject from the task goal, body from the final
+summary, trailer linking back to the chat. The switch is off by default and Marvin
+never pushes; the chat shows a notice with the commit hash.
 
 Completed checks are recorded automatically in **Task progress**. Before a changed task finishes, the harness gives the model one non-blocking reminder when validation, plan steps, or final diff review are still missing. The model can perform the useful checks or explain why one is not relevant.
 

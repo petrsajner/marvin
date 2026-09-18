@@ -396,8 +396,9 @@ class ApplicationService:
         workspace = session.meta.get("workspace")
         if not workspace or agent.work_mode not in ("development", "computer"):
             return None
-        from harness.project_profile import autocommit_enabled
-        if not autocommit_enabled(workspace):
+        from harness.projects import Projects
+        project = Projects(self.cfg).by_path(workspace)
+        if not (project or {}).get("autocommit"):
             return None
         from harness.tools.git import commit_files, is_repo, task_paths
         if not is_repo(agent.ctx):

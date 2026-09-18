@@ -825,20 +825,43 @@ export function DialogView(props: any) {
                   {tr("Attach existing folder")}
                 </button>
                 {project && (
-                  <div className="danger-zone">
-                    <p className="path">{project.path}</p>
-                    <button
-                      className="danger"
-                      onClick={() =>
-                        setDialog({ type: "delete-project", data: project })
-                      }
-                    >
-                      <Trash2 />
-                      {project.managed
-                        ? tr("Delete project and folder")
-                        : tr("Remove project")}
-                    </button>
-                  </div>
+                  <>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={!!project.autocommit}
+                        onChange={(e) =>
+                          call(() =>
+                            api(
+                              "/api/projects/" + project.id,
+                              "PATCH",
+                              { autocommit: e.target.checked },
+                            ),
+                          )
+                        }
+                      />{" "}
+                      {tr("Commit each finished task automatically")}
+                    </label>
+                    <p className="muted">
+                      {tr(
+                        "When enabled, every successfully finished Development or Computer task commits its own changed files in this project. Never pushes.",
+                      )}
+                    </p>
+                    <div className="danger-zone">
+                      <p className="path">{project.path}</p>
+                      <button
+                        className="danger"
+                        onClick={() =>
+                          setDialog({ type: "delete-project", data: project })
+                        }
+                      >
+                        <Trash2 />
+                        {project.managed
+                          ? tr("Delete project and folder")
+                          : tr("Remove project")}
+                      </button>
+                    </div>
+                  </>
                 )}
               </>
             )}

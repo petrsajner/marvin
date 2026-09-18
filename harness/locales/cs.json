@@ -677,7 +677,9 @@
     "The file was changed after this task; restoring may overwrite newer edits.": "Soubor byl po této úloze změněn; obnovení může přepsat novější úpravy.",
     "Binary file; content preview is not available.": "Binární soubor; náhled obsahu není k dispozici.",
     "Loading…": "Načítání…",
-    "Show changes": "Zobrazit změny"
+    "Show changes": "Zobrazit změny",
+    "Commit each finished task automatically": "Automaticky commitnout každou dokončenou úlohu",
+    "When enabled, every successfully finished Development or Computer task commits its own changed files in this project. Never pushes.": "Pokud je zapnuto, každá úspěšně dokončená úloha ve Vývoji nebo Počítači commitne právě své změněné soubory v tomto projektu. Nikdy nepushuje."
   },
   "legacy_profile_labels": {
     "16 bit - přesnější, kontext 128k": "16-bit - more precise, context 128k",

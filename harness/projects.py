@@ -102,6 +102,15 @@ class Projects:
                 self._save(items)
                 return
 
+    def set_autocommit(self, path: str, enabled: bool) -> None:
+        """Per-project auto-commit switch, persisted in the project registry."""
+        items = self._load()
+        for item in items:
+            if item.get("path") == path:
+                item["autocommit"] = bool(enabled)
+                self._save(items)
+                return
+
     def delete_by_path(self, path: str) -> dict:
         """Unregister a project. Only Marvin-created project folders are deleted from disk.
 

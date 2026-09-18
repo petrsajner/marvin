@@ -325,6 +325,17 @@ def create_app(cfg=None, *, service=None):
     def select_project(payload: dict):
         return {"session_id": service.select_project(payload.get("id")).id}
 
+    @app.patch("/api/projects/{project_id}")
+    def update_project(project_id: str, payload: dict):
+        if not isinstance(payload.get("autocommit"), bool):
+            raise ValueError("Expected an autocommit true/false setting")
+        project = next((p for p in Projects(cfg).list_all() if p["id"] == project_id), None)
+        if not project:
+            raise ValueError("Unknown project")
+        Projects(cfg).set_autocommit(project["path"], payload["autocommit"])
+        service.store.emit(None, "settings_changed", service.preferences)
+        return Projects(cfg).by_path(project["path"])
+
     @app.delete("/api/projects/{project_id}")
     def delete_project(project_id: str):
         project = next((p for p in Projects(cfg).list_all() if p["id"] == project_id), None)

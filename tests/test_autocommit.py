@@ -1,4 +1,4 @@
-"""Git auto-commit: project flag, message composition, gates and a real temp repo."""
+"""Git auto-commit: per-project switch, message composition, gates, real repo."""
 import copy
 import subprocess
 import tempfile
@@ -6,39 +6,55 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
+from fastapi.testclient import TestClient
+
 from harness.application import ApplicationService
 from harness.changes import ChangeJournal
 from harness.config import Config, load_config
-from harness.project_profile import autocommit_enabled
+from harness.projects import Projects
 from harness.session import Session
-from harness.tools.git import GitCommitTool, task_paths
+from harness.tools.git import GitCommitTool
+from harness.web_api import create_app
 
 
 def _ctx(workspace, journal=None):
     return SimpleNamespace(workspace=workspace, changes=journal)
 
 
-class AutocommitFlagTests(unittest.TestCase):
+class AutocommitSwitchTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
-        (self.root / ".qwen").mkdir()
+        data = copy.deepcopy(load_config().data)
+        data["agent"].update(workspace=None, autonomy="auto")
+        self.cfg = Config(data, self.root)
+        self.app = ApplicationService(self.cfg, llm_factory=lambda c: None,
+                                      manage_model=False)
+        self.client = TestClient(create_app(self.cfg, service=self.app))
 
     def tearDown(self):
+        self.app.close()
+        self.app.models.wait(3)
         self.temp.cleanup()
 
-    def _write(self, content: str):
-        (self.root / ".qwen" / "project.yaml").write_text(content, encoding="utf-8")
-
-    def test_flag_off_by_default_and_tolerates_garbage(self):
-        self.assertFalse(autocommit_enabled(self.root))
-        self.assertFalse(autocommit_enabled(None))
-        self._write("checks:\n  - id: tests\n    command: npm test\n")
-        self.assertFalse(autocommit_enabled(self.root))
-        self._write("git: {autocommit: banana}\n")
-        self.assertFalse(autocommit_enabled(self.root))
-        self._write("git:\n  autocommit: true\n")
-        self.assertTrue(autocommit_enabled(self.root))
+    def test_switch_is_off_by_default_and_flips_via_api(self):
+        workspace = self.root / "repo"
+        workspace.mkdir()
+        project = self.client.post("/api/projects", json={"path": str(workspace)}).json()["project"]
+        self.assertFalse(project.get("autocommit"))
+        response = self.client.patch(f"/api/projects/{project['id']}",
+                                     json={"autocommit": True})
+        response.raise_for_status()
+        self.assertTrue(response.json()["autocommit"])
+        self.assertTrue(Projects(self.cfg).by_path(str(workspace))["autocommit"])
+        self.assertFalse(
+            self.client.patch(f"/api/projects/{project['id']}",
+                              json={"autocommit": "yes"}).status_code == 200)
+        self.assertEqual(
+            self.client.patch("/api/projects/nope", json={"autocommit": True}).status_code, 400)
+        state = self.client.get("/api/state").json()
+        stored = next(p for p in state["projects"] if p["id"] == project["id"])
+        self.assertTrue(stored["autocommit"])
 
 
 class AutocommitMessageTests(unittest.TestCase):
@@ -124,6 +140,12 @@ class AutocommitIntegrationTests(unittest.TestCase):
         return subprocess.run(["git", *args], cwd=self.root, capture_output=True,
                               text=True, encoding="utf-8", timeout=30)
 
+    def _enable(self, enabled: bool):
+        projects = Projects(self.cfg)
+        if not projects.by_path(str(self.root)):
+            projects.attach_folder(str(self.root))
+        projects.set_autocommit(str(self.root), enabled)
+
     def _agent(self):
         plan = SimpleNamespace(load=lambda: {"goal": "Bump app to version 2"})
         return SimpleNamespace(
@@ -131,9 +153,7 @@ class AutocommitIntegrationTests(unittest.TestCase):
             work_mode="development")
 
     def test_autocommit_stages_only_task_files(self):
-        (self.root / ".qwen").mkdir()
-        (self.root / ".qwen" / "project.yaml").write_text(
-            "git:\n  autocommit: true\n", encoding="utf-8")
+        self._enable(True)
         note = self.service._maybe_autocommit(
             self._agent(), self.session, {"text": "bump"}, "✅ Done\n- app.txt: v2")
         self.assertTrue(note and note.startswith("Auto-committed 1 file"), note)
@@ -145,21 +165,20 @@ class AutocommitIntegrationTests(unittest.TestCase):
         self.assertIn("?? extra.txt", status.stdout)      # untracked file untouched
         self.assertNotIn("app.txt", status.stdout)        # committed cleanly
 
-    def test_no_flag_no_commit(self):
+    def test_switch_off_means_no_commit(self):
+        self._enable(True)
+        self._enable(False)
         note = self.service._maybe_autocommit(
             self._agent(), self.session, {"text": "bump"}, "✅ Done")
         self.assertIsNone(note)
         self.assertIn("app.txt", self._git(["status", "--porcelain"]).stdout)
 
-    def test_wrong_mode_or_unchanged_journal_skips(self):
-        (self.root / ".qwen").mkdir()
-        (self.root / ".qwen" / "project.yaml").write_text(
-            "git:\n  autocommit: true\n", encoding="utf-8")
+    def test_wrong_mode_skips(self):
+        self._enable(True)
         agent = self._agent()
         agent.work_mode = "research"
         self.assertIsNone(self.service._maybe_autocommit(
             agent, self.session, {"text": "x"}, "✅ Done"))
-        # Research workspace (no journal changes recorded for other files) stays silent.
 
     def test_commit_tool_regression(self):
         result = GitCommitTool().run(_ctx(self.root, self.journal),

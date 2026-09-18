@@ -409,10 +409,10 @@ checks:
 ```
 - Structured Git tools operate only on the current task's files unless paths are
   given explicitly.
-- **Optional task auto-commit**: add `git:\n  autocommit: true` to `.qwen/project.yaml`
-  and every successfully completed development/computer task commits its own changed
-  files locally (subject from the task goal, body from the final summary, trailer
-  linking back to the chat). Off by default; never pushes.
+- **Optional task auto-commit**: enable "Commit each finished task automatically" in
+  the project dialog and every successfully completed development/computer task commits
+  its own changed files locally (subject from the task goal, body from the final summary,
+  trailer linking back to the chat). Off by default; never pushes.
 - Technical diff, process output and a repo map are available to the agent; the main
   user interface stays chat-based.
 
