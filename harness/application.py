@@ -396,7 +396,10 @@ class ApplicationService:
             return None
         spec = evals.EVALS.get(record["script"], {})
         mark = {"pass": "PASS", "fail": "FAIL", "error": "ERROR"}[record["state"]]
-        return (f"EVAL {mark} · {spec.get('label', record['script'])}\n{record['detail']}")
+        checked = evals.scenario_dir(self.cfg, record["script"])
+        return (f"EVAL {mark} · {spec.get('label', record['script'])}\n"
+                f"{record['detail']}\n"
+                f"Checked files in: {checked}")
 
     def _maybe_autocommit(self, agent, session, job, result_text: str) -> str | None:
         """Commit the task's changed files when the project opted into auto-commit.

@@ -35,9 +35,8 @@ class EvalCheckerTests(unittest.TestCase):
         return session
 
     def test_code_add_checker_passes_on_correct_solution(self):
-        ws = self.root / "ws1"
-        ws.mkdir()
-        (ws / "tests").mkdir()
+        ws = evals.scenario_dir(self.cfg, "code_add_function")
+        (ws / "tests").mkdir(parents=True)
         (ws / "textutils.py").write_text(
             "def word_frequency(text):\n    import string\n    out = {}\n"
             "    for raw in text.split():\n        word = raw.strip(string.punctuation).lower()\n"
@@ -55,15 +54,14 @@ class EvalCheckerTests(unittest.TestCase):
         self.assertEqual(record["state"], "pass", record["detail"])
 
     def test_code_add_checker_fails_when_files_missing(self):
-        ws = self.root / "ws2"
-        ws.mkdir()
+        ws = evals.scenario_dir(self.cfg, "code_add_function")
+        ws.mkdir(parents=True, exist_ok=True)
         record = evals.score(self.cfg, self._session(ws, "code_add_function"), None)
         self.assertEqual(record["state"], "fail")
         self.assertIn("missing files", record["detail"])
 
     def test_fix_bug_fixture_and_checker(self):
-        ws = evals._make_workspace(self.cfg, "code_fix_bug")
-        evals.EVALS["code_fix_bug"]["build_fixture"](ws)
+        ws = evals.prepare(self.cfg, "code_fix_bug")
         record = evals.score(self.cfg, self._session(ws, "code_fix_bug"), None)
         self.assertEqual(record["state"], "fail", "buggy fixture must fail")
         (ws / "calc.py").write_text(
@@ -74,8 +72,8 @@ class EvalCheckerTests(unittest.TestCase):
 
     def test_document_checker(self):
         from docx import Document
-        ws = self.root / "ws3"
-        ws.mkdir()
+        ws = evals.scenario_dir(self.cfg, "document_edit")
+        ws.mkdir(parents=True, exist_ok=True)
         session = self._session(ws, "document_edit")
         record = evals.score(self.cfg, session, None)
         self.assertEqual(record["state"], "fail")
@@ -88,8 +86,7 @@ class EvalCheckerTests(unittest.TestCase):
         self.assertEqual(record["state"], "pass", record["detail"])
 
     def test_memory_checker(self):
-        ws = self.root / "ws4"
-        ws.mkdir()
+        ws = evals.evals_root(self.cfg)
         session = self._session(ws, "chat_memory")
         record = evals.score(self.cfg, session, None)
         self.assertEqual(record["state"], "fail")
@@ -118,8 +115,7 @@ class EvalCheckerTests(unittest.TestCase):
         self.assertEqual(record["state"], "pass", record["detail"])
 
     def test_results_persist_across_instances(self):
-        ws = self.root / "ws6"
-        ws.mkdir()
+        ws = evals.evals_root(self.cfg)
         session = self._session(ws, "chat_memory")
         (ws / "QWEN_MEMORY.md").write_text("metric units fact\n", encoding="utf-8")
         evals.score(self.cfg, session, None)
@@ -165,10 +161,24 @@ class EvalEndpointTests(unittest.TestCase):
             submit.assert_called_once()
             args, kwargs = submit.call_args
             self.assertEqual(args[0], session_id)
-            self.assertIn("calc.py", args[1])
+            self.assertIn("code_fix_bug", args[1])
         session = self.service.session(session_id)
         self.assertEqual(session.meta.get("eval"), "code_fix_bug")
         self.assertEqual(session.meta.get("work_mode"), "development")
+        # The session shares the registered Evaluations workspace so it stays
+        # visible in that project's chat list.
+        root = evals.evals_root(self.cfg)
+        self.assertEqual(session.meta.get("workspace"), str(root))
+        from harness.projects import Projects
+        project = Projects(self.cfg).by_path(str(root))
+        self.assertTrue(project and project["name"] == "Evaluations")
+        # Re-running resets the scenario directory to a fresh fixture.
+        marker = evals.scenario_dir(self.cfg, "code_fix_bug") / "marker.txt"
+        marker.write_text("stale", encoding="utf-8")
+        with unittest.mock.patch.object(ApplicationService, "submit"):
+            self.client.post("/api/evals/code_fix_bug/run")
+        self.assertFalse(marker.exists())
+        self.assertTrue((evals.scenario_dir(self.cfg, "code_fix_bug") / "calc.py").is_file())
         self.assertEqual(
             self.client.post("/api/evals/nope/run").status_code, 400)
 

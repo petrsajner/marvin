@@ -26,6 +26,48 @@ def _run_tests(workspace: Path) -> tuple[bool, str]:
     return ok, tail or "(no output)"
 
 
+def evals_root(cfg) -> Path:
+    """Shared workspace for all evaluation runs; registered as the Evaluations project."""
+    root = cfg.path("paths.runtime_dir") / "eval-workspaces"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def scenario_dir(cfg, script_id: str) -> Path:
+    return evals_root(cfg) / script_id
+
+
+def ensure_project(cfg) -> Path:
+    """Register the shared Evaluations project once so every run stays visible.
+
+    Eval chats must not vanish: the sidebar lists sessions by exact workspace
+    match, so all eval sessions share this one registered path."""
+    from harness.projects import Projects
+    root = evals_root(cfg)
+    projects = Projects(cfg)
+    if not projects.by_path(str(root)):
+        import uuid
+        items = projects._load()
+        items.append({"id": uuid.uuid4().hex[:8], "name": "Evaluations",
+                      "path": str(root), "created": time.time(),
+                      "managed": False, "work_mode": "development"})
+        projects._save(items)
+    return root
+
+
+def prepare(cfg, script_id: str) -> Path:
+    """Reset the scenario directory to a fresh fixture for a clean run."""
+    import shutil
+    directory = scenario_dir(cfg, script_id)
+    shutil.rmtree(directory, ignore_errors=True)
+    directory.mkdir(parents=True, exist_ok=True)
+    EVALS[script_id]["build_fixture"](directory)
+    # Scenario artifacts that the agent may place at the shared root.
+    for stray in ("QWEN_MEMORY.md",):
+        (evals_root(cfg) / stray).unlink(missing_ok=True)
+    return directory
+
+
 def _make_workspace(cfg, script_id: str) -> Path:
     root = cfg.path("paths.runtime_dir") / "eval-workspaces" / f"{script_id}-{int(time.time())}"
     root.mkdir(parents=True, exist_ok=True)
@@ -52,11 +94,12 @@ def eval_spec(script_id, label, description, work_mode, prompt, fixture=None):
     "code_add_function", "Code: function with tests",
     "Asks the agent to create a utility module with a specified function and unit tests, then run them.",
     "development",
-    "Create a file `textutils.py` with a function `word_frequency(text)` that returns a dict "
+    "Work inside the `code_add_function/` subdirectory of this workspace. Create "
+    "`code_add_function/textutils.py` with a function `word_frequency(text)` that returns a dict "
     "mapping each lowercase word to its count (words split on whitespace, punctuation stripped "
-    "from edges). Add `tests/test_textutils.py` with standard-library `unittest` tests covering "
-    "normal text, empty input and punctuation (name test classes TestWordFrequency). "
-    "Run the tests with `python -m unittest discover -s tests` and report the real result.",
+    "from edges). Add `code_add_function/tests/test_textutils.py` with standard-library "
+    "`unittest` tests covering normal text, empty input and punctuation (name test classes "
+    "TestWordFrequency). Run the tests and report the real result.",
 )
 def _build_code_add(root: Path) -> None:
     (root / "tests").mkdir()
@@ -96,8 +139,9 @@ class TestAddClamped(unittest.TestCase):
     "code_fix_bug", "Code: fix a bug",
     "Provides a small module with a failing test suite; the agent must find and fix the bug.",
     "development",
-    "The module `calc.py` in this workspace has a bug: `tests/test_calc.py` fails. "
-    "Find the bug, fix `calc.py` so the whole suite passes, and run the checks to verify.",
+    "Work inside the `code_fix_bug/` subdirectory of this workspace. The module "
+    "`code_fix_bug/calc.py` has a bug: `code_fix_bug/tests/test_calc.py` fails. "
+    "Find the bug, fix `calc.py` so the whole suite passes, and run the tests to verify.",
 )
 def _build_fix_bug(root: Path) -> None:
     (root / "tests").mkdir(parents=True)
@@ -125,7 +169,8 @@ def _build_research(root: Path) -> None:
 _REQUIRED_HEADINGS = ["Introduction", "Methods", "Results", "Conclusion"]
 
 _DOC_PROMPT = (
-    "Create a Word document `report.docx` in this workspace about renewable energy trends. "
+    "Work inside the `document_edit/` subdirectory of this workspace. Create a Word document "
+    "`document_edit/report.docx` about renewable energy trends. "
     "It must contain exactly these level-1 headings in order: Introduction, Methods, Results, "
     "Conclusion. Under each heading write 2-3 sentences. Finish by confirming the file exists."
 )
@@ -164,8 +209,8 @@ def _build_memory(root: Path) -> None:
 
 # --- checkers ---------------------------------------------------------------
 
-def _check_code_add(session, agent) -> tuple[bool, str]:
-    workspace = Path(session.meta.get("workspace") or "")
+def _check_code_add(session, agent, cfg) -> tuple[bool, str]:
+    workspace = scenario_dir(cfg, "code_add_function")
     module = workspace / "textutils.py"
     tests = workspace / "tests" / "test_textutils.py"
     if not module.is_file() or not tests.is_file():
@@ -174,13 +219,13 @@ def _check_code_add(session, agent) -> tuple[bool, str]:
     return ok, tail
 
 
-def _check_fix_bug(session, agent) -> tuple[bool, str]:
-    workspace = Path(session.meta.get("workspace") or "")
+def _check_fix_bug(session, agent, cfg) -> tuple[bool, str]:
+    workspace = scenario_dir(cfg, "code_fix_bug")
     ok, tail = _run_tests(workspace)
     return ok, tail
 
 
-def _check_research(session, agent) -> tuple[bool, str]:
+def _check_research(session, agent, cfg) -> tuple[bool, str]:
     from harness.research import ResearchLedger
     run = ResearchLedger(session).current()
     if not run:
@@ -199,9 +244,9 @@ def _check_research(session, agent) -> tuple[bool, str]:
     return True, f"{len(sources)} sources, synthesis {len(synthesis)} chars, coverage complete"
 
 
-def _check_document(session, agent) -> tuple[bool, str]:
+def _check_document(session, agent, cfg) -> tuple[bool, str]:
     from docx import Document
-    workspace = Path(session.meta.get("workspace") or "")
+    workspace = scenario_dir(cfg, "document_edit")
     path = workspace / "report.docx"
     if not path.is_file():
         return False, "report.docx not created"
@@ -215,8 +260,8 @@ def _check_document(session, agent) -> tuple[bool, str]:
     return True, f"headings ok, {len(headings)} sections"
 
 
-def _check_memory(session, agent) -> tuple[bool, str]:
-    workspace = Path(session.meta.get("workspace") or "")
+def _check_memory(session, agent, cfg) -> tuple[bool, str]:
+    workspace = evals_root(cfg)  # The memory tool writes to the session workspace root.
     memory_file = workspace / "QWEN_MEMORY.md"
     if not memory_file.is_file():
         return False, "QWEN_MEMORY.md not created"
@@ -264,7 +309,7 @@ def score(cfg, session, agent) -> dict | None:
     started = time.time()
     state, detail = "error", ""
     try:
-        state, detail = _CHECKERS[script_id](session, agent)
+        state, detail = _CHECKERS[script_id](session, agent, cfg)
         state = "pass" if state else "fail"
     except Exception as exc:  # A broken checker must never fail the run itself.
         detail = f"{type(exc).__name__}: {exc}"

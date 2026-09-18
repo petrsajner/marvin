@@ -495,9 +495,11 @@ def create_app(cfg=None, *, service=None):
         if script_id not in evals.EVALS:
             raise ValueError("Unknown evaluation script")
         spec = evals.EVALS[script_id]
-        workspace = evals._make_workspace(cfg, script_id)
-        spec["build_fixture"](workspace)
-        session = service.new_session(workspace=str(workspace), work_mode=spec["work_mode"])
+        # One shared, registered workspace keeps every run visible as a chat of
+        # the Evaluations project; the scenario directory is reset per run.
+        root = evals.ensure_project(cfg)
+        evals.prepare(cfg, script_id)
+        session = service.new_session(workspace=str(root), work_mode=spec["work_mode"])
         session.meta["title"] = spec["label"]
         session.meta["eval"] = script_id
         session.persist()
