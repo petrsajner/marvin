@@ -42,6 +42,25 @@ def health(cfg: Config, timeout: float = 2.0) -> bool:
         return False
 
 
+_status_cache: dict = {"at": 0.0, "ok": False}
+
+
+def status(cfg: Config) -> bool:
+    """Cheap sidecar status for UI polls: no pid file means no probe at all.
+
+    A network health check must never sit on the /api/state hot path — waiting
+    out the timeout on a closed port stalled the whole interface."""
+    if _sidecar_process(cfg) is None:
+        _status_cache.update(at=time.monotonic(), ok=False)
+        return False
+    now = time.monotonic()
+    if now - _status_cache["at"] < 10:
+        return _status_cache["ok"]
+    ok = health(cfg, timeout=0.5)
+    _status_cache.update(at=now, ok=ok)
+    return ok
+
+
 def _sidecar_process(cfg: Config) -> psutil.Process | None:
     """Return the running sidecar recorded in the pid file, or None."""
     try:

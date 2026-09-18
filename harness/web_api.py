@@ -123,8 +123,8 @@ def create_app(cfg=None, *, service=None):
                         "model_ready": cfg.embeddings_model_ready(),
                         "preparing": _semantic_state["preparing"], "server": False}
             if semantic["enabled"] and semantic["model_ready"]:
-                from harness.embedding_server import health as embeddings_health
-                semantic["server"] = embeddings_health(cfg)
+                from harness.embedding_server import status as embeddings_status
+                semantic["server"] = embeddings_status(cfg)
             return {"version": APP_VERSION, "preferences": service.preferences,
                 "memory": {"vram_detected_gb": vram_total_gb(), "vram_budget_gb": budget,
                            "ram_total_gb": round(memory.total / 1024**3, 1),

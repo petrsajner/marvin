@@ -119,8 +119,13 @@ export function App() {
   }, [app?.active?.session_id, sid]);
   const cs = app?.preferences?.language === "cs";
   useEffect(() => setChatLimit(20), [chat?.meta.workspace, search]);
+  // While a chat is loading after a switch, keep the sidebar on the target
+  // project's list instead of flashing the no-project conversations.
+  const pendingSession = (app?.sessions || []).find((s: any) => s.id === sid);
   const listedChats = searchResults || (app?.sessions || []).filter(
-    (s: any) => (s.workspace || null) === (chat?.meta.workspace || null),
+    (s: any) =>
+      (s.workspace || null) ===
+      (chat?.meta.workspace ?? pendingSession?.workspace ?? null),
   );
   useEffect(() => {
     if (app?.preferences?.send_mode) setDelivery(app.preferences.send_mode);
