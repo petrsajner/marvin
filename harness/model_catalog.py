@@ -66,3 +66,18 @@ QWEN27B_MTP_DRAFT = {
          "sha256": "50d9ce5a6da381bbcfb31061cf73df94a90e6faf8efeddee379a9cb8f1501c6e"},
     ],
 }
+
+# CPU-only embedding model for semantic search. Served by a dedicated
+# llama-server sidecar with -ngl 0; never registered as a selectable model.
+EMBEDDINGS_BGE_M3 = {
+    "alias": "bge-m3 Q8_0 embedding model (635 MB, semantic search, CPU only)",
+    "repo": "gpustack/bge-m3-GGUF",
+    "revision": "2d48f1737679ad900d5c26c5aad5410e9c70fdca",
+    "download_dir": "Embeddings",
+    "download_transport": "range",
+    "optional_download": True,
+    "assets": [
+        {"path": "bge-m3-Q8_0.gguf", "size": 634553760,
+         "sha256": "950f4a8e5e19477a6d3c26d2f162233c20002c601f75e4b002e3239997821167"},
+    ],
+}

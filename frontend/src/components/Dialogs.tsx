@@ -362,6 +362,27 @@ export function DialogView(props: any) {
                 </label>
                 <p>{tr("Changing the budget restarts the model automatically when no task is running. A compatible context or smaller model is selected when needed.")}</p>
                 {app.models.find((m: any) => m.id === app.preferences.model)?.uses_system_ram && <p>{tr("This profile also uses system RAM. A smaller GPU moves more weights into RAM. Windows can reclaim memory while the model starts.")}</p>}
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={!!app.semantic_search?.enabled}
+                    onChange={(e) =>
+                      call(() => settings({ semantic_search: e.target.checked }))
+                    }
+                  />{" "}
+                  {tr("Semantic search")}
+                </label>
+                {app.semantic_search?.enabled && (
+                  <p>
+                    {app.semantic_search.preparing
+                      ? tr("Downloading the embedding model (~635 MB)…")
+                      : app.semantic_search.model_ready
+                        ? app.semantic_search.server
+                          ? tr("Semantic search is ready.")
+                          : tr("Ready; the CPU search service starts with the first search.")
+                        : tr("The embedding model will be downloaded in the background (~635 MB, CPU only).")}
+                  </p>
+                )}
                 <p>
                   VRAM: {runtime.vram || "—"} · Python {runtime.python || "—"}
                   {app.memory && <> · {tr("Free RAM")}: {app.memory.ram_available_gb} / {app.memory.ram_total_gb} GiB</>}

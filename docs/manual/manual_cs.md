@@ -199,6 +199,8 @@ Qwen Q4/Q5 nabízejí také volitelné **MTP varianty** svých Q8 profilů (nap�
 
 Když běží spekulativní profil, záhlaví zobrazuje odznak **MTP** vedle názvu modelu. Stavový řádek generování pod konverzací ukazuje aktuální rychlost (tokeny za sekundu) spolu s odhadem tokenů, takže rozdíl mezi plain a MTP profily je při práci vidět.
 
+**Sémantické vyhledávání** (Nastavení > Model a zařízení) přidává hledání podle významu v projektových souborech i minulých konverzacích — česky i anglicky, včetně parafrází — kombinované s klíčovým hledáním. Ve výchozím stavu je vypnuté; zapnutí stáhne malý embedding model (~635 MB), který běží jen na CPU a grafickou kartu vůbec nevyužívá. První hledání v projektu staví index na pozadí; agent vidí průběh a hledání podle potřeby zopakuje.
+
 Q5 používejte pro náročný vývoj, architekturu a finální kvalitu. Q4 je vhodný pro vyšší rychlost nebo kontext 256k. Ornith je extrémně rychlý, ale při reálném vývoji může být slabší než dense Qwen.
 
 

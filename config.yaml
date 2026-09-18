@@ -3,6 +3,7 @@
 server:
   host: 127.0.0.1
   port: 8080
+  embeddings_port: 8091
   n_gpu_layers: 999
   extra_args: []
 hardware:

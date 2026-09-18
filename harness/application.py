@@ -61,6 +61,9 @@ class ApplicationService:
         }
         if self.preferences["model"] not in cfg.data["models"]:
             self.preferences["model"] = cfg.model_key()
+        # Semantic search is opt-in; the runtime flag mirrors the saved preference.
+        self.preferences.setdefault("semantic_search", False)
+        cfg.data["_semantic_search"] = bool(self.preferences["semantic_search"])
         self.preferences.setdefault("vram_gb", legacy.get("vram_gb", cfg.data.get("hardware", {}).get("vram_gb", "auto")))
         from harness.gpu import normalize_vram_setting
         for setting in ("vram_gb", "last_running_vram_gb"):

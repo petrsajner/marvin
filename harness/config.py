@@ -76,6 +76,7 @@ DEFAULTS: dict[str, Any] = {
     "server": {
         "host": "127.0.0.1",
         "port": 8080,
+        "embeddings_port": 8091,
         "n_gpu_layers": 999,
         "extra_args": [],
     },
@@ -257,6 +258,23 @@ class Config:
         from harness.model_catalog import QWEN27B_MTP_DRAFT
         from harness.model_files import model_ready
         return model_ready(self.path("paths.models_dir"), QWEN27B_MTP_DRAFT)
+
+    def embeddings_model_file(self) -> Path:
+        """Path to the pinned CPU embedding model used by semantic search."""
+        from harness.model_catalog import EMBEDDINGS_BGE_M3
+        from harness.model_files import asset_path, local_model_dir
+        spec = EMBEDDINGS_BGE_M3
+        return asset_path(local_model_dir(self.path("paths.models_dir"), spec), spec["assets"][0]["path"])
+
+    def embeddings_model_ready(self) -> bool:
+        from harness.model_catalog import EMBEDDINGS_BGE_M3
+        from harness.model_files import model_ready
+        return model_ready(self.path("paths.models_dir"), EMBEDDINGS_BGE_M3)
+
+    @property
+    def embeddings_url(self) -> str:
+        s = self.data["server"]
+        return f"http://{s['host']}:{s.get('embeddings_port', 8091)}"
 
     def kv_cache_profiles(self, key: str | None = None) -> dict[str, dict[str, Any]]:
         profiles = self.model(key).get("kv_cache_profiles") or {}

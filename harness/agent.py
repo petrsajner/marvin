@@ -824,13 +824,14 @@ def build_registry(mode: str, work_mode: str | None = None) -> ToolRegistry:
     """Build the tool registry for the selected work mode.
 
     Every mode can read/write files and view images: research and discussion also need sources and saved results. Repository, Git and shell tools are limited to Development and Computer modes."""
-    from harness.tools import browser, code, computer, context, documents, fs, git, history, memory, search, shell, skills, task, vision, web
+    from harness.tools import browser, code, computer, context, documents, fs, git, history, memory, search, semantic, shell, skills, task, vision, web
     selected = normalize_work_mode(work_mode, mode)
     reg = ToolRegistry()
     memory.register_memory_tools(reg)  # Discussion mode includes memory tools.
     history.register_history_tools(reg)
     web.register_web_tools(reg)        # Web search and fetching are available in every mode.
     search.register_search_tools(reg)  # FTS5 project search is available in every mode.
+    semantic.register_semantic_tools(reg)  # Hybrid semantic search is available in every mode.
     context.register_context_tools(reg)
     skills.register_skill_tools(reg)
     documents.register_document_tools(reg)

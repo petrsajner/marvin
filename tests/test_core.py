@@ -119,8 +119,8 @@ def test_config() -> None:
     version_files = [p for p in _version_candidates() if p.exists()]
     installer_version = (version_files[0].read_text(encoding="utf-8").strip()
                          if version_files else "")
-    check(bool(installer_version) and APP_VERSION == installer_version and APP_VERSION == "1.10.2",
-          "The visible application version matches installer version 1.10.2")
+    check(bool(installer_version) and APP_VERSION == installer_version and APP_VERSION == "1.11.0",
+          "The visible application version matches installer version 1.11.0")
     invariants = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     check(all(item in invariants for item in (
         "Language servers or an LSP runtime/distribution layer",
@@ -490,7 +490,8 @@ def test_registry_modes() -> None:
                                 "list_task_changes", "undo_task_changes", "search_files",
                                 "find_files", "make_directory", "move_file", "delete_file",
                                 "view_image", "search_project", "search_chat_history", "read_chat_history",
-                                "edit_word_document", "view_document_page", "project_decisions"},
+                                "edit_word_document", "view_document_page", "project_decisions",
+                                "semantic_search"},
           f"chat mode: memory + web + context + disk tools ({len(chat.names())})")
     check({"list_dir", "run_command", "view_image"} <= set(agent.names()),
           f"agent mode: fs+patch+shell+vision ({len(agent.names())})")

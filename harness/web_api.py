@@ -8,6 +8,7 @@ import json
 import mimetypes
 import os
 from pathlib import Path
+import threading
 import time
 import uuid
 
@@ -26,6 +27,33 @@ from harness.version import APP_VERSION
 from harness.work_modes import WORK_MODES
 
 
+_semantic_state = {"preparing": False}
+_semantic_state_lock = threading.Lock()
+
+
+def _prepare_semantic_search(cfg: Config) -> None:
+    """Download the pinned embedding model in the background when semantic search is enabled."""
+    if cfg.embeddings_model_ready():
+        return
+    with _semantic_state_lock:
+        if _semantic_state["preparing"]:
+            return
+        _semantic_state["preparing"] = True
+
+    def _download():
+        try:
+            from harness.model_catalog import EMBEDDINGS_BGE_M3
+            from harness.model_files import download_pinned_model
+            download_pinned_model(cfg.path("paths.models_dir"), EMBEDDINGS_BGE_M3)
+        except Exception:
+            pass
+        finally:
+            with _semantic_state_lock:
+                _semantic_state["preparing"] = False
+
+    threading.Thread(target=_download, name="semantic-model-download", daemon=True).start()
+
+
 def create_app(cfg=None, *, service=None):
     cfg = cfg or load_config()
     service = service or ApplicationService(cfg)
@@ -36,6 +64,8 @@ def create_app(cfg=None, *, service=None):
             service.autostart_model()
         yield
         service.close()
+        from harness.embedding_server import stop as stop_embeddings
+        stop_embeddings(cfg)
 
     app = FastAPI(title="Marvin", lifespan=lifespan)
     app.state.service = service
@@ -89,13 +119,19 @@ def create_app(cfg=None, *, service=None):
             session = service.session(selected)
             if not any(item["id"] == selected for item in sessions):
                 sessions.insert(0, {**session.meta, "id": selected, "messages": len(session.messages)})
+            semantic = {"enabled": bool(cfg.data.get("_semantic_search")),
+                        "model_ready": cfg.embeddings_model_ready(),
+                        "preparing": _semantic_state["preparing"], "server": False}
+            if semantic["enabled"] and semantic["model_ready"]:
+                from harness.embedding_server import health as embeddings_health
+                semantic["server"] = embeddings_health(cfg)
             return {"version": APP_VERSION, "preferences": service.preferences,
                 "memory": {"vram_detected_gb": vram_total_gb(), "vram_budget_gb": budget,
                            "ram_total_gb": round(memory.total / 1024**3, 1),
                            "ram_available_gb": round(memory.available / 1024**3, 1)},
                 "session_id": selected, "sessions": sessions, "projects": Projects(cfg).list_all(),
                 "modes": [{"id": key, "label": value.label} for key, value in WORK_MODES.items()],
-                "models": model_options,
+                "models": model_options, "semantic_search": semantic,
                 "active": {k: service.active[k] for k in ("id", "session_id", "text")} if service.active else None,
                 "queue": service.store.jobs(), "queue_paused": service.queue_paused,
                 "commands": COMMANDS, "sequence": service.store.sequence()}
@@ -359,7 +395,14 @@ def create_app(cfg=None, *, service=None):
                     preset = candidate
                     payload["model"] = preset["model"]
                     payload["kv_cache_modes"] = {**payload.get("kv_cache_modes", {}), preset["model"]: preset["profile"]}
-            allowed = {"model", "thinking", "language", "theme", "density", "autonomy", "send_mode", "kv_cache_modes", "vram_gb"}
+            allowed = {"model", "thinking", "language", "theme", "density", "autonomy", "send_mode",
+                       "kv_cache_modes", "vram_gb", "semantic_search"}
+            if "semantic_search" in payload and not isinstance(payload["semantic_search"], bool):
+                raise ValueError("Semantic search must be enabled or disabled")
+            if payload.get("semantic_search"):
+                _prepare_semantic_search(cfg)
+            cfg.data["_semantic_search"] = bool(payload.get(
+                "semantic_search", service.preferences.get("semantic_search", False)))
             for key, profile in payload.get("kv_cache_modes", {}).items():
                 if (cfg.model(key).get("adaptive_runtime")
                         and profile != service.preferences.get("kv_cache_modes", {}).get(key)):

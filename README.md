@@ -74,6 +74,9 @@ These are product decisions, not postponed roadmap items.
 - 🧩 **Hierarchical project guidance** — `AGENTS.md`, `QWEN.md` and `CLAUDE.md`
   are applied automatically from project root to the active file
 - 🔎 **Fast repository search** — ripgrep-backed literal/regex search and file globs
+- 🧲 **Semantic search (opt-in)** — meaning-based retrieval over project files and
+  past conversations, Czech and English, hybrid with keyword FTS5; a small
+  CPU-only embedding model serves it without touching the GPU
 - ✅ **Project validation profiles** — auto-detected test/lint/typecheck/build commands,
   optionally customized in `.qwen/project.yaml`
 - 🌐 **Isolated browser session** — headless Edge with DOM refs, fill/click/keys,
@@ -376,6 +379,11 @@ TTFT ~1–2 s. Custom benchmark: `.venv/Scripts/python scripts/bench.py [--model
   `CLAUDE.md` files relevant to the files being inspected or changed.
 - `search_files` uses ripgrep when available and supports literal/regex search;
   `find_files` provides project globs.
+- `semantic_search` (opt-in in Settings) retrieves project files and past
+  conversations by meaning — Czech and English, paraphrases included — hybridized
+  with the keyword index. It runs a small pinned bge-m3 embedding model on a
+  dedicated CPU-only llama-server sidecar; the GPU is untouched. See
+  [semantic search](docs/design/semantic-search.md).
 - `find_symbol`, `document_symbols` and `find_references` provide structured
   multi-language code navigation without loading whole files into context.
 - Web applications can be opened in a separate headless Edge session. The agent uses

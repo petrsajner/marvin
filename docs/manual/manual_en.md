@@ -208,6 +208,8 @@ Qwen Q4/Q5 also offer opt-in **MTP variants** of their Q8 profiles (for example 
 
 While a speculative profile is running, the header shows an **MTP** badge next to the model name. The generation status line under the conversation shows the live token rate (tokens per second) together with the token estimate, so the speed difference between plain and MTP profiles is visible while you work.
 
+**Semantic search** (Settings > Model and device) adds meaning-based retrieval over the project files and past conversations — Czech and English, including paraphrases — combined with keyword search. It is off by default; enabling it downloads a small embedding model (~635 MB) that runs only on the CPU, without touching the graphics card. The first search in a project builds the index in the background; the agent sees the progress and repeats the search when needed.
+
 Nemotron is text-only. Qwen, Ornith, and Flash-Next use their own image support. The model list reports file availability; Flash-Next requires every shard and its projector. Qwen also offers compact profiles for smaller cards. The table does not promise that every combination will run on every PC; the selected model's settings show its exact profile choices.
 
 ## GPU memory budget and automatic recovery
