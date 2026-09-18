@@ -80,6 +80,11 @@ def build():
     target.rename(destination)
     if previous is not None:
         shutil.rmtree(previous, ignore_errors=True)
+    # Payloads are version-named, so a version bump would otherwise leave the
+    # previous release's 1.2 GB behind for good. Only the current one is useful.
+    for stale in destination.parent.glob("full-payload-*"):
+        if stale != destination:
+            shutil.rmtree(stale, ignore_errors=True)
     print(json.dumps({"path": str(destination), **manifest}, indent=2))
 
 

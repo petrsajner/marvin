@@ -137,6 +137,21 @@ Use **New chat** to create a conversation. Type into the title above the chat an
 
 The three-dot menu beside the project selector creates a new project, attaches an existing folder, or removes the selected project. Attached folders are never deleted from disk. Search in the left sidebar searches saved conversations.
 
+## What can I ask for?
+
+Beside **Attach** is **What can I ask for?**. It opens a catalogue of about twenty
+things Marvin can do, written as requests rather than as a list of functions, each
+with a ready example. **Use this** puts the example into the prompt, where it can be
+edited before sending; nothing is sent by pressing it.
+
+The catalogue shows what the current work mode offers. An entry belonging to a
+different mode is shown in grey with the mode it needs and a button that switches
+the conversation to it - proper research, for instance, is a Research-mode
+capability, not a way of phrasing a question. **Show everything** lists all of them
+regardless of mode. Where a capability already has its own place in the interface -
+memory, decisions, task changes, research sources - the entry links there instead
+of repeating it.
+
 ## Prompt, Attach, and image previews
 
 The visible **Attach** button is always below the prompt. It opens the disk file picker and accepts multiple files. Images can also be dragged into the workspace or pasted from the clipboard with Ctrl+V. Ordinary text pasting still works.
@@ -302,9 +317,34 @@ Choose **After completion** for a separate next request. A message in another ch
 
 **Stop** directly signals the independent run controller, including while no stream bytes arrive. It requests a graceful generation stop and normally allows the nearest sentence to finish. It also cancels the currently awaited browser operation or synchronous `run_command`, terminating that command's process tree. Finished partial text and captured command output are retained. A new prompt starts cleanly afterward.
 
-Long-running operating-system processes have their own termination controls in **Progress > Processes**. Stopping generation does not necessarily stop an already launched background process.
+Long-running operating-system processes have their own termination controls in **Progress > Processes**. Each is labelled **Stop this command** and ends only that background command; the task itself keeps running. Use **Stop task** beside the prompt to end the work.
+
+**Interrupting while the context is being read.** A large prompt is read once and
+then reused, so each further step only adds the new part. Cutting that read short
+discards everything already read, and the next request pays for all of it again -
+on a very large context that is minutes of work. A clarification therefore waits
+for the read to finish and is applied to the answer straight afterwards; the
+conversation says so while it waits. **Stop** is not made to wait, because it is an
+explicit instruction - but after stopping during a context read, the next message
+starts that read again from the beginning.
 
 **Stop task** beside the composer ends the current work and pauses the queue; the model can remain loaded. **stop** in **Model and device** stops the model server and releases its resources. Downloaded weights remain available for the next start.
+
+## When something fails
+
+A failed task leaves a message in **Progress > Activity history** instead of only
+a notification that fades. It shows what failed and, where Marvin recognises the
+cause, what to do about it: a project without its own virtual environment, a model
+that did not start, no model fitting the memory budget, a project folder that was
+moved, or the machine running out of memory.
+
+Where there is no known answer nothing is invented. **Work out what to do** puts a
+prepared question, including the error, into the prompt and hands it to the model,
+which can usually work the cause out. The question is not sent by itself, so it can
+be read and changed first.
+
+The same offer appears on a failed tool result in the conversation and on a project
+check that failed, timed out or could not start.
 
 ## Live progress
 

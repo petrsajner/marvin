@@ -90,6 +90,12 @@ These are product decisions, not postponed roadmap items.
   the current sentence finishes
 - 📌 **Pinned files** — selected instructions or architecture stay in the context of
   that particular chat
+- 🧭 **Capability catalogue** — "What can I ask for?" beside Attach lists what
+  Marvin can do as requests with ready examples, marks what the current work mode
+  offers, and switches mode when a capability needs another one
+- 🆘 **Advice when something fails** — a failed task, tool or project check stays
+  in the conversation with a concrete next step where one is known, and otherwise
+  offers to hand the error to the model
 - 🧰 **Optional skills** — the model sees a short catalog and loads a full SKILL.md
   only when needed
 - 🎛️ **Separate work modes** — Discussion, Research, Writing, Development and

@@ -130,6 +130,20 @@ Tlačítko **Nový chat** vytvoří konverzaci. Název nad chatem přejmenujete 
 
 Menu vedle výběru projektu vytvoří nový projekt, připojí existující složku nebo smaže projekt i jeho adresář. Vyhledávání vlevo prohledává uložené konverzace.
 
+## Co si můžu říct?
+
+Vedle tlačítka **Attach** je **Co si můžu říct?**. Otevře katalog zhruba dvaceti
+věcí, které Marvin umí, napsaných jako požadavky, ne jako seznam funkcí, a u každé
+je hotový příklad. **Použít** vloží příklad do promptu, kde ho lze upravit; samo
+o sobě nic neodešle.
+
+Katalog ukazuje, co nabízí aktuální pracovní režim. Položka z jiného režimu je
+šedá, píše, který režim potřebuje, a tlačítkem do něj konverzaci přepne — pořádná
+rešerše je například schopnost režimu Výzkum, ne způsob formulace otázky.
+**Zobrazit vše** vypíše všechny bez ohledu na režim. Kde má schopnost vlastní
+místo v rozhraní — paměť, rozhodnutí, změny úlohy, zdroje výzkumu — položka na ně
+odkáže, místo aby je zdvojovala.
+
 ## Prompt, Attach a náhledy obrázků
 
 Viditelné tlačítko **Attach** zůstává dole u promptu. Otevře výběr z disku a dovoluje vybrat více souborů. Obrázky lze také přetáhnout do pracovní plochy nebo vložit ze schránky přes Ctrl+V. Běžné vložení textu funguje dál.
@@ -253,6 +267,30 @@ Při volbě **Upřesnit nyní** další zpráva v právě běžícím chatu pře
 **Stop** obchází běžnou frontu a měkce ukončí generování po nejbližší větě. Současně zruší právě čekající browser operaci nebo synchronní `run_command` a ukončí jeho procesní strom. Samostatný proces spuštěný na pozadí zastavte zvlášť v **Průběh > Procesy**.
 
 Rozlišujte **Zastavit úlohu** u zprávy a **stop** v nastavení modelu. První ukončí aktuální práci a pozastaví frontu, ale model může zůstat připravený v paměti. Druhé zastaví modelový server a uvolní jeho prostředky. Stažené modely zůstávají na disku pro další spuštění.
+
+Tlačítka v **Průběh > Procesy** se jmenují **Zastavit tento příkaz** a ukončí jen ten jeden příkaz na pozadí — úloha běží dál. Úlohu ukončíte tlačítkem u promptu.
+
+**Přerušení během čtení kontextu.** Velký prompt se přečte jednou a pak se používá
+znovu, takže každý další krok dopočítá jen nový kousek. Zkrátit to čtení znamená
+zahodit všechno už přečtené a příští požadavek za to zaplatí znovu — u opravdu
+velkého kontextu jsou to minuty. Připomínka proto počká, až se kontext dočte, a
+uplatní se na odpověď hned potom; konverzace to po dobu čekání oznámí. **Stop**
+čekat nenechává, protože je to výslovný pokyn — ale po zastavení během čtení
+kontextu začne další zpráva to čtení od začátku.
+
+## Když něco selže
+
+Selhaná úloha po sobě nechá zprávu v **Průběh > Historie aktivit**, ne jen
+oznámení, které zmizí. Ukáže, co selhalo, a tam, kde Marvin příčinu pozná, i co
+s tím: projekt bez vlastního virtuálního prostředí, model, který se nespustil,
+žádný model do limitu paměti, přesunutá složka projektu nebo došlá paměť.
+
+Kde odpověď známa není, nic se nevymýšlí. **Zjistit, co s tím** vloží do promptu
+připravenou otázku i s chybou a předá ji modelu, který na příčinu obvykle přijde.
+Otázka se sama neodešle, takže si ji můžete přečíst a upravit.
+
+Totéž nabídne chybný výsledek nástroje v konverzaci i kontrola projektu, která
+selhala, vypršela nebo se vůbec nespustila.
 
 ## Živý průběh
 
