@@ -3,6 +3,7 @@
 Run with the project's Python interpreter: tests/test_core.py."""
 from __future__ import annotations
 
+import atexit
 import json
 import shutil
 import sys
@@ -33,6 +34,23 @@ from harness.tools.base import AgentContext, ToolRegistry
 
 PASS = 0
 FAIL = 0
+
+
+_SCRATCH_SESSIONS = Path(tempfile.mkdtemp(prefix="marvin-test-sessions-"))
+atexit.register(shutil.rmtree, _SCRATCH_SESSIONS, ignore_errors=True)
+_LIVE_SESSIONS = load_config().path("paths.sessions_dir")
+_LIVE_SESSIONS_BEFORE = ({item.name for item in _LIVE_SESSIONS.iterdir()}
+                         if _LIVE_SESSIONS.is_dir() else set())
+
+
+def scratch_sessions(config):
+    """Point a configuration at a throwaway conversation directory.
+
+    Several checks build a Session from the real configuration. Run from an
+    installed copy they wrote into the owner's own conversation history, two
+    directories per run, until this was added."""
+    config.data["paths"]["sessions_dir"] = str(_SCRATCH_SESSIONS)
+    return config
 
 
 def check(cond: bool, label: str) -> None:
@@ -2143,12 +2161,24 @@ def test_user_manuals() -> None:
               f"{filename} contains the version and key chapters")
 
 
+def test_live_sessions_untouched() -> None:
+    """The suite must never write a conversation into the real sessions directory."""
+    print("[live sessions]")
+    current = ({item.name for item in _LIVE_SESSIONS.iterdir()}
+               if _LIVE_SESSIONS.is_dir() else set())
+    leaked = sorted(current - _LIVE_SESSIONS_BEFORE)
+    check(not leaked,
+          "The suite left no conversation in the live sessions directory"
+          + (f" (leaked: {leaked})" if leaked else ""))
+
+
 def test_thinking_and_communication():
     print("[thinking and clean communication]")
     from harness.llm import ThinkStreamParser
     from harness.session import Session
     from harness.config import load_config
     import webapp
+    scratch_sessions(webapp.cfg)
 
     # 1) Parse reasoning tags split across stream chunks.
     text_accum, reason_accum = [], []
@@ -2165,7 +2195,7 @@ def test_thinking_and_communication():
           "ThinkStreamParser delivers the correct text and reasoning segments")
 
     # 2) Session reasoning persistence
-    cfg = load_config()
+    cfg = scratch_sessions(load_config())
     s = Session(cfg, transient=False)
     s.add("user", "Reasoning question")
     s.add("assistant", "Final response", reasoning="Internal model reasoning")
@@ -2214,6 +2244,7 @@ def test_harness_enhancements():
     from harness.config import load_config
     import webapp
     import tempfile
+    scratch_sessions(webapp.cfg)
 
     # 1) Head+Tail truncate
     short = "kratky text"
@@ -2242,7 +2273,7 @@ def test_harness_enhancements():
         td = Path(tmpdir)
         (td / "hello.py").write_text("def find_secret_token():\n    return 'xyz'\n", encoding="utf-8")
         (td / "doc.md").write_text("# Project Notes\nDatabase connection pooling configuration.\n", encoding="utf-8")
-        cfg = load_config()
+        cfg = scratch_sessions(load_config())
         s = Session(cfg, transient=True)
         ctx = AgentContext(cfg=cfg, session=s, workspace=td)
         tool = SearchProjectTool()
@@ -2356,7 +2387,7 @@ def test_clickable_skills_and_clipboard_images():
     import json
     import webapp
     from harness.session import Session
-    cfg = webapp.cfg
+    cfg = scratch_sessions(webapp.cfg)
 
     # 1) Verify skill-information HTML.
     info_html = webapp.skills_info_text()
@@ -2434,5 +2465,6 @@ if __name__ == "__main__":
     test_thinking_and_communication()
     test_harness_enhancements()
     test_clickable_skills_and_clipboard_images()
+    test_live_sessions_untouched()
     print(f"\n{'=' * 40}\nRESULT: {PASS} ✓ / {FAIL} ✗")
     sys.exit(1 if FAIL else 0)

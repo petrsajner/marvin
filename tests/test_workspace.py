@@ -618,5 +618,46 @@ class TransportTests(unittest.TestCase):
         timer.join()
 
 
+class AtomicWriteTests(unittest.TestCase):
+    """A reader holding the target must not turn into a failed task.
+
+    Reproduced for real in the project check runner: on Windows os.replace
+    raises while another handle has the file open, the exception left the
+    worker thread, and the whole run was lost."""
+
+    def test_replace_is_retried_while_a_reader_holds_the_file(self):
+        import os
+        from unittest.mock import patch
+        from harness.changes import atomic_write_text
+        real, calls = os.replace, []
+
+        def blocked(source, target):
+            calls.append(1)
+            if len(calls) < 3:
+                raise PermissionError(5, "used by another process")
+            return real(source, target)
+
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "status.json"
+            atomic_write_text(target, "first")
+            with patch("harness.changes.os.replace", side_effect=blocked):
+                atomic_write_text(target, "second")
+            self.assertEqual(target.read_text(encoding="utf-8"), "second")
+            self.assertEqual(len(calls), 3)
+
+    def test_a_persistent_failure_still_raises_and_leaves_no_litter(self):
+        from unittest.mock import patch
+        from harness.changes import atomic_write_text
+
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "status.json"
+            with patch("harness.changes.os.replace",
+                       side_effect=PermissionError(5, "locked")):
+                with self.assertRaises(PermissionError):
+                    atomic_write_text(target, "value")
+            # The temporary file is cleaned up even when the replace never works.
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
+
 if __name__ == "__main__":
     unittest.main()

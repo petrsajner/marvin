@@ -15,7 +15,6 @@ from pathlib import Path
 
 NO_WINDOW = 0x08000000
 SUMMARY_LINES = 30
-STATUS_WRITE_ATTEMPTS = 5
 
 _running: set[str] = set()
 _lock = threading.Lock()
@@ -81,20 +80,15 @@ def is_running(workspace: Path) -> bool:
 def _write_status(workspace: Path, rows: list[dict]) -> None:
     """Persist the status, tolerating a concurrent reader.
 
-    On Windows os.replace fails while another handle holds the target open, and
-    the UI polls this file every couple of seconds for the whole run. Losing one
-    status write must never abort the run, so retry briefly and then give up."""
+    atomic_write_text already retries a replace that a reader is blocking.
+    Losing the status anyway must still never abort the run itself."""
     from harness.changes import atomic_write_text
     payload = json.dumps({"updated": time.time(), "checks": rows},
                          ensure_ascii=False, indent=1)
-    for attempt in range(STATUS_WRITE_ATTEMPTS):
-        try:
-            atomic_write_text(status_path(workspace), payload)
-            return
-        except OSError:
-            if attempt == STATUS_WRITE_ATTEMPTS - 1:
-                return
-            time.sleep(0.1 * (attempt + 1))
+    try:
+        atomic_write_text(status_path(workspace), payload)
+    except OSError:
+        pass  # Already retried there; a lost status must never end the run.
 
 
 def _run_one(workspace: Path, definition: dict) -> dict:
