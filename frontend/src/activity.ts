@@ -41,6 +41,7 @@ function labelFor(path: string): string {
 
 export function beginActivity(path: string, method: string) {
   if (path.endsWith("/actions/draft") || path.endsWith("/select")
+      || (method === "PATCH" && /^\/api\/projects\/[^/]+$/.test(path))
       || (method === "GET" && !/preview|library|read_skill/.test(path))) return () => {};
   const id = ++sequence;
   const entry: Activity = { id, label: labelFor(path), started: Date.now() };
