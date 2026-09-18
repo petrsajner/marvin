@@ -1,0 +1,57 @@
+{
+  "version": "1.10.2",
+  "tag": "v1.10.2",
+  "application_commit": "88d4d969f8aa953850d9f02503ac013f35bccc64",
+  "release_url": "https://github.com/petrsajner/marvin/releases/tag/v1.10.2",
+  "assets": [
+    {
+      "name": "Marvin-Setup-Minimal.exe",
+      "bytes": 53461970,
+      "sha256": "35f8f5de514fcdf3bdbdb9fa32e944f962a29e7cf8617859e0d02c7104d8d04e",
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.10.2/Marvin-Setup-Minimal.exe",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Minimal.exe"
+    },
+    {
+      "name": "Marvin-Setup-Full.exe",
+      "bytes": 940743419,
+      "sha256": "b23aae66fdf83fe2c6fc168d4bddd3236ed39d41a65ee87fd97198b29f3d9245",
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.10.2/Marvin-Setup-Full.exe",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Full.exe"
+    },
+    {
+      "name": "Marvin-Windows-x64.zip",
+      "bytes": 993367266,
+      "sha256": "008076eff14f5ca71e26dcb7d80d3afe76f9532fba0dd0b3565fcbd237e654b8",
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.10.2/Marvin-Windows-x64.zip",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Windows-x64.zip"
+    },
+    {
+      "name": "Marvin-Manual-CS.pdf",
+      "bytes": 179425,
+      "sha256": "8c48dd2931b0671ac20a275bb42445b625d695af978c82e3bc9f6e542cc4c8ce",
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.10.2/Marvin-Manual-CS.pdf",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Manual-CS.pdf"
+    },
+    {
+      "name": "Marvin-Manual-EN.pdf",
+      "bytes": 185748,
+      "sha256": "f4d443c439325d00102e3ba11369d54df2e21714b0f0a416591353eed1b4cf41",
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.10.2/Marvin-Manual-EN.pdf",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Manual-EN.pdf"
+    },
+    {
+      "name": "Marvin-Workspace.jpg",
+      "bytes": 71809,
+      "sha256": "55ab38eeb260dea9aa958b417e0051fe70fc3577000acb78dc3ec70ff6c124de",
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.10.2/Marvin-Workspace.jpg",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Workspace.jpg"
+    },
+    {
+      "name": "SHA256SUMS.txt",
+      "bytes": 535,
+      "sha256": "947fb82e0ba7708fb81754f4dc26c4f3318542ce523e0c6f16a47b6b1bd1d975",
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.10.2/SHA256SUMS.txt",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/SHA256SUMS.txt"
+    }
+  ]
+}

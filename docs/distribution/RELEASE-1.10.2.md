@@ -1,6 +1,19 @@
 # Marvin 1.10.2 - safe project removal
 
-Released on 18 September 2026. GitHub tag `v1.10.2`.
+Released and published on 18 September 2026. GitHub tag `v1.10.2` resolves to
+application commit `88d4d969f8aa953850d9f02503ac013f35bccc64`. The [release
+manifest](release-1.10.2.json) records all seven public assets, their sizes,
+SHA-256 values and stable download URLs. Public link:
+https://github.com/petrsajner/marvin/releases/latest
+
+`Marvin-Offline-Backup-1.10.1` was renamed in place to
+`Marvin-Offline-Backup-1.10.2` with the Full installer and both manuals
+replaced (84 manifest entries, all SHA-256 verified; weights and runtime not
+re-copied). Manifest SHA-256: `1a642eaea6ddda7611170e3b55cfbe2250c216f42b36a2abc924aa782842736b`.
+All seven server-side asset digests matched the local values before
+publication; after publication the unauthenticated `latest` link resolves to
+1.10.2, small downloads passed full SHA-256 checks and the installer/ZIP range
+requests verified signatures and total sizes.
 
 ## The fix
 
