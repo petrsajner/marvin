@@ -388,6 +388,16 @@ class ApplicationService:
             session.add("tool", "Execution was interrupted; outcome unknown. Inspect actual state before retrying.",
                         tool_call_id=call["id"], name=call["function"]["name"])
 
+    def _score_eval(self, session, agent) -> str | None:
+        """Score an evaluation session after its run; never fails the run."""
+        from harness import evals
+        record = evals.score(self.cfg, session, agent)
+        if not record:
+            return None
+        spec = evals.EVALS.get(record["script"], {})
+        mark = {"pass": "PASS", "fail": "FAIL", "error": "ERROR"}[record["state"]]
+        return (f"EVAL {mark} · {spec.get('label', record['script'])}\n{record['detail']}")
+
     def _maybe_autocommit(self, agent, session, job, result_text: str) -> str | None:
         """Commit the task's changed files when the project opted into auto-commit.
 
@@ -718,14 +728,18 @@ class ApplicationService:
                     commit_note = self._maybe_autocommit(agent, session, job, result.text)
                 else:
                     commit_note = None
+                eval_note = None
+                if session.meta.get("eval") and status in ("complete", "stopped", "failed"):
+                    eval_note = self._score_eval(session, agent)
                 self.store.save_job(job, status)
                 if status in ("stopped", "failed") and (live["text"] or live["reasoning"]):
                     if not any(m.get("role") == "assistant" and m.get("step_id") == live["step"]
                                and m.get("run_id") == rid for m in session.messages[-8:]):
                         session.add("assistant", live["text"], reasoning=live["reasoning"])
-                if commit_note:
-                    self.store.emit(sid, "notice", {"text": commit_note,
-                                                    "run_id": rid, "created": time.time()})
+                for note in (commit_note, eval_note):
+                    if note:
+                        self.store.emit(sid, "notice", {"text": note,
+                                                        "run_id": rid, "created": time.time()})
                 self.store.emit(sid, "run_status", {"run_id": rid, "status": status,
                     "text": result.text, "pending": result.pending_summary if status == "waiting_confirmation" else [],
                     "usage": session.meta.get("last_usage", {})})

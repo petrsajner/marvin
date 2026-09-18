@@ -484,6 +484,27 @@ def create_app(cfg=None, *, service=None):
         runtime_cache["at"] = 0
         return {"ok": True, "switch": service.models.snapshot().__dict__}
 
+    @app.get("/api/evals")
+    def evals_catalog():
+        from harness import evals
+        return evals.catalog(cfg)
+
+    @app.post("/api/evals/{script_id}/run")
+    def evals_run(script_id: str):
+        from harness import evals
+        if script_id not in evals.EVALS:
+            raise ValueError("Unknown evaluation script")
+        spec = evals.EVALS[script_id]
+        workspace = evals._make_workspace(cfg, script_id)
+        spec["build_fixture"](workspace)
+        session = service.new_session(workspace=str(workspace), work_mode=spec["work_mode"])
+        session.meta["title"] = spec["label"]
+        session.meta["eval"] = script_id
+        session.persist()
+        service.submit(session.id, spec["prompt"], request_id=f"eval-{script_id}-{int(time.time())}",
+                       delivery="queue")
+        return {"session_id": session.id}
+
     @app.get("/api/backup")
     def backup_info():
         from scripts.offline_backup import backup_info

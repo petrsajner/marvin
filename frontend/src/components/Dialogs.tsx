@@ -84,6 +84,7 @@ export function DialogView(props: any) {
     [scope, setScope] = useState("global"),
     [library, setLibrary] = useState<FileItem[]>([]),
     [backup, setBackup] = useState<any>({}),
+    [evals, setEvals] = useState<any>({ scripts: [], history: [] }),
     [maintenance, setMaintenance] = useState<any[]>([]),
     [page, setPage] = useState(1),
     [format, setFormat] = useState("pdf"),
@@ -148,6 +149,9 @@ export function DialogView(props: any) {
       api("/api/backup").then(setBackup).catch(error);
       api("/api/maintenance").then(setMaintenance).catch(error);
     }
+    if (dialog.type === "settings" && section === "evals") {
+      api("/api/evals").then(setEvals).catch(error);
+    }
   }, [dialog.type, section, sid, error]);
   useEffect(() => {
     if (
@@ -193,6 +197,7 @@ export function DialogView(props: any) {
     ["model", "Model and device"],
     ["behavior", "Behavior"],
     ["memory", "Memory and skills"],
+    ["evals", "Evaluation scripts"],
     ["data", "Data and backups"],
     ["appearance", "Appearance and language"],
     ["help", "Help and manuals"],
@@ -633,6 +638,43 @@ export function DialogView(props: any) {
                   <Plus />
                   {tr("Design a skill")}
                 </button>
+              </>
+            )}
+            {dialog.type === "settings" && section === "evals" && (
+              <>
+                <p className="muted">
+                  {tr(
+                    "Each script runs a full task in a new chat and checks the result automatically. The run appears in the chat so you can watch the progress; the outcome lands in the Results panel.",
+                  )}
+                </p>
+                {(evals?.scripts || []).map((script: any) => (
+                  <div key={script.id} className="eval-script">
+                    <button
+                      className="wide"
+                      onClick={() =>
+                        call(async () =>
+                          finishSelect(
+                            await api(`/api/evals/${script.id}/run`, "POST"),
+                          ),
+                        )
+                      }
+                    >
+                      <Play />
+                      {tr(script.label)}
+                    </button>
+                    <p className="muted">{tr(script.description)}</p>
+                    {script.last ? (
+                      <p className={script.last.state === "pass" ? "eval-pass" : "eval-fail"}>
+                        {script.last.state === "pass" ? "✓" : "✗"}{" "}
+                        {tr(script.last.state === "pass" ? "passed" : script.last.state)}
+                        {" · "}
+                        {new Date(script.last.time * 1000).toLocaleString()}
+                      </p>
+                    ) : (
+                      <p className="muted">{tr("not run yet")}</p>
+                    )}
+                  </div>
+                ))}
               </>
             )}
             {dialog.type === "settings" && section === "data" && (

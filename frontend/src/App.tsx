@@ -82,7 +82,9 @@ export function App() {
   const [app, setApp] = useState<any>(null),
     [sid, setSid] = useState(""),
     [chat, setChat] = useState<Chat | null>(null),
-    [detail, setDetail] = useState<any>(null);
+    [detail, setDetail] = useState<any>(null),
+    [evalHistory, setEvalHistory] = useState<any[]>([]),
+    [evalLabels, setEvalLabels] = useState<Record<string, string>>({});
   const [runtime, setRuntime] = useState<any>({}),
     [tab, setTab] = useState("results"),
     [panel, setPanel] = useState(true),
@@ -290,6 +292,21 @@ export function App() {
     window.addEventListener("marvin-runtime-refresh", poll);
     return () => { clearInterval(timer); window.removeEventListener("marvin-runtime-refresh", poll); };
   }, [!!app, panel, tab, refreshDetail, error]);
+  useEffect(() => {
+    if (!app || !panel || tab !== "results") return;
+    let cancelled = false;
+    api("/api/evals")
+      .then((value) => {
+        if (!cancelled) {
+          setEvalHistory(value.history || []);
+          setEvalLabels(Object.fromEntries(
+            (value.scripts || []).map((s: any) => [s.id, s.label]),
+          ));
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [app, panel, tab]);
   useEffect(() => {
     if (!draftReady.current || !sid) return;
     localStorage.setItem(
@@ -1276,6 +1293,33 @@ export function App() {
                           </p>
                         )}
                       </section>
+                      {evalHistory.length > 0 && (
+                        <section>
+                          <h3>{tr("Evaluation results")}</h3>
+                          {evalHistory.slice(0, 10).map((row: any) => (
+                            <button
+                              key={row.script + row.time}
+                              className="file-diff-link"
+                              title={row.detail}
+                              onClick={() => {
+                                sidRef.current = row.session_id;
+                                setSid(row.session_id);
+                              }}
+                            >
+                              {row.state === "pass" ? (
+                                <CheckCheck className="green" />
+                              ) : (
+                                <AlertCircle className="amber" />
+                              )}
+                              {evalLabels[row.script] || row.script}
+                              <small>
+                                {row.state} ·{" "}
+                                {new Date(row.time * 1000).toLocaleString()}
+                              </small>
+                            </button>
+                          ))}
+                        </section>
+                      )}
                       <section>
                         <button
                           className="wide"
