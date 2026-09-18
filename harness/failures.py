@@ -53,3 +53,17 @@ def failure_notice(error: str, run_id: str, created: float) -> dict:
     """The durable notice a failed task leaves behind in the conversation."""
     return {"kind": "failure", "text": (error or "").strip()[:2000],
             "hint": advise(error), "run_id": run_id, "created": created}
+
+
+# What a finished check's state means when its output says nothing useful.
+STATE_HINTS: dict[str, str] = {
+    "timeout": "The check ran out of time. Give it a longer timeout in "
+               ".qwen/project.yaml, or let the agent find out why it hangs.",
+    "error": "The check could not start at all. Its command may be wrong, or the "
+             "program it needs is not installed.",
+}
+
+
+def advise_check(state: str, summary: str) -> str:
+    """Advice for a finished check: what its output says, else what its state means."""
+    return advise(summary) or STATE_HINTS.get(state, "")

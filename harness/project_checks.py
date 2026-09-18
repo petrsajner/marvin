@@ -67,6 +67,11 @@ def status(cfg, workspace: Path) -> dict:
             if field in saved.get(definition["id"], {}):
                 row[field] = saved[definition["id"]][field]
         row.setdefault("state", "never")
+        if row["state"] in ("fail", "timeout", "error"):
+            from harness.failures import advise_check
+            hint = advise_check(row["state"], row.get("summary", ""))
+            if hint:
+                row["hint"] = hint
         rows.append(row)
     return {"updated": stored.get("updated", 0), "checks": rows,
             "running": is_running(workspace), "available": bool(definitions)}

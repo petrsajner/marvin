@@ -428,6 +428,20 @@ export function App() {
       setUploading((n) => n - files.length);
     }
   };
+  // Every surface that reports a failure offers the same help, composed once.
+  const helpWith = useCallback(
+    (detail: string) =>
+      setText(
+        tr("The previous task failed with this error:") +
+          "\n\n" +
+          (detail || "").slice(0, 4000) +
+          "\n\n" +
+          tr(
+            "Work out what caused it and what I should do next. Explain it in plain language, and say what you would change before you change anything.",
+          ),
+      ),
+    [tr],
+  );
   const submit = async () => {
     if (sending || uploading || (!text.trim() && !attachments.length)) return;
     const current = sidRef.current;
@@ -820,6 +834,7 @@ export function App() {
                     openFile={openFile}
                     openSource={openSource}
                     retry={retryAnswer}
+                    helpWith={helpWith}
                   />
                 ))}
                 {chat && !chat.messages.some(visibleMessage) && (
@@ -1365,19 +1380,7 @@ export function App() {
                                 <small>{n.text}</small>
                                 {n.hint && <small>{tr(n.hint)}</small>}
                               </div>
-                              <button
-                                onClick={() =>
-                                  setText(
-                                    tr("The previous task failed with this error:") +
-                                      "\n\n" +
-                                      n.text +
-                                      "\n\n" +
-                                      tr(
-                                        "Work out what caused it and what I should do next. Explain it in plain language, and say what you would change before you change anything.",
-                                      ),
-                                  )
-                                }
-                              >
+                              <button onClick={() => helpWith(n.text)}>
                                 {tr("Work out what to do")}
                               </button>
                             </div>
@@ -1503,7 +1506,20 @@ export function App() {
                                               c.time * 1000,
                                             ).toLocaleTimeString()}`}
                                   </small>
+                                  {c.hint && <small>{tr(c.hint)}</small>}
                                 </span>
+                                {c.hint && (
+                                  <button
+                                    className="icon"
+                                    aria-label={tr("Work out what to do")}
+                                    title={tr("Work out what to do")}
+                                    onClick={() =>
+                                      helpWith(c.summary || c.command)
+                                    }
+                                  >
+                                    <Wrench />
+                                  </button>
+                                )}
                               </div>
                             ))
                           )}

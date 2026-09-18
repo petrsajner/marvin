@@ -794,7 +794,9 @@
     "The project folder was moved or removed. Attach it again, or pick another project.": "Složka projektu byla přesunuta nebo smazána. Připoj ji znovu, nebo vyber jiný projekt.",
     "The machine ran out of memory for this model. A smaller context or a smaller model will finish the task.": "Počítači došla paměť pro tenhle model. Menší kontext nebo menší model úlohu dokončí.",
     "The graphics card ran out of memory. A smaller context or a smaller model will finish the task.": "Grafické kartě došla paměť. Menší kontext nebo menší model úlohu dokončí.",
-    "This project has no tests Marvin can recognise. The agent can add them, or you can name your own in .qwen/project.yaml.": "Tenhle projekt nemá testy, které by Marvin poznal. Agent je může doplnit, nebo si vlastní pojmenuj v .qwen/project.yaml."
+    "This project has no tests Marvin can recognise. The agent can add them, or you can name your own in .qwen/project.yaml.": "Tenhle projekt nemá testy, které by Marvin poznal. Agent je může doplnit, nebo si vlastní pojmenuj v .qwen/project.yaml.",
+    "The check ran out of time. Give it a longer timeout in .qwen/project.yaml, or let the agent find out why it hangs.": "Kontrole došel čas. Dej jí delší timeout v .qwen/project.yaml, nebo nech agenta zjistit, proč se zasekává.",
+    "The check could not start at all. Its command may be wrong, or the program it needs is not installed.": "Kontrola se vůbec nespustila. Její příkaz může být špatně, nebo není nainstalovaný program, který potřebuje."
   },
   "legacy_profile_labels": {
     "16 bit - přesnější, kontext 128k": "16-bit - more precise, context 128k",

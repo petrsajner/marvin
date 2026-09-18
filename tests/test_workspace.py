@@ -636,12 +636,42 @@ class FailureAdviceTests(unittest.TestCase):
         self.assertEqual(advise(""), "")
 
     def test_every_hint_has_a_czech_translation(self):
-        from harness.failures import HINTS
+        from harness.failures import HINTS, STATE_HINTS
         locale = json.loads(
             (Path(__file__).resolve().parent.parent / "harness" / "locales"
              / "cs.json").read_text(encoding="utf-8"))["messages"]
-        missing = [hint for _, hint in HINTS if not locale.get(hint, "").strip()]
+        every = [hint for _, hint in HINTS] + list(STATE_HINTS.values())
+        missing = [hint for hint in every if not locale.get(hint, "").strip()]
         self.assertEqual(missing, [], "Missing Czech hints: %s" % missing)
+
+    def test_a_check_state_advises_when_the_output_does_not(self):
+        from harness.failures import advise_check
+        self.assertIn("longer timeout", advise_check("timeout", ""))
+        self.assertIn("could not start", advise_check("error", ""))
+        # Output the adviser recognises wins over the generic state hint.
+        self.assertIn("environment of its own",
+                      advise_check("fail", "No module named pygame"))
+        self.assertEqual(advise_check("fail", "an ordinary assertion failure"), "")
+
+    def test_a_failed_tool_result_carries_its_advice(self):
+        """The hint is stored with the message, so it survives a reload."""
+        from harness.session import Session
+        from harness.tools.base import ToolOutcome
+        with tempfile.TemporaryDirectory() as directory:
+            data = copy.deepcopy(load_config().data)
+            data["paths"]["sessions_dir"] = str(Path(directory) / "sessions")
+            cfg = Config(data, Path(directory))
+            session = Session(cfg, session_id="advice", system_prompt="SYS")
+            failed = session.add(
+                "tool",
+                ToolOutcome("ERROR: ModuleNotFoundError: No module named pygame",
+                            status="error", tool="run_command"),
+                tool_call_id="c1", name="run_command")
+            self.assertEqual(failed["tool_status"], "error")
+            self.assertIn("environment of its own", failed["hint"])
+            fine = session.add("tool", ToolOutcome("ok", tool="read_file"),
+                               tool_call_id="c2", name="read_file")
+            self.assertNotIn("hint", fine)
 
     def test_the_notice_survives_the_toast(self):
         """run_status only raises a toast; the notice is what remains."""

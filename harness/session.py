@@ -55,6 +55,11 @@ class Session:
                 msg[key] = getattr(self, key)
         if role == "tool":
             msg["tool_status"] = getattr(content, "status", "completed")
+            if msg["tool_status"] == "error":
+                from harness.failures import advise
+                hint = advise(str(content))
+                if hint:
+                    msg["hint"] = hint
         if reasoning:
             msg["reasoning"] = str(reasoning)
         if tool_calls:
