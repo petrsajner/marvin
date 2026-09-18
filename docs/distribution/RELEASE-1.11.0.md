@@ -1,8 +1,20 @@
 # Marvin 1.11.0 - semantic search
 
-Released on 18 September 2026. The first item of the approved harness roadmap:
-hybrid semantic retrieval over project files and chat history, powered by a
-pinned CPU-only embedding model.
+Released and published on 18 September 2026. GitHub tag `v1.11.0` resolves to
+application commit `6f4bdffadd01370a3dc62624b173b175d0f58c9a`. The [release
+manifest](release-1.11.0.json) records all seven public assets, their sizes,
+SHA-256 values and stable download URLs. Public link:
+https://github.com/petrsajner/marvin/releases/latest
+
+`Marvin-Offline-Backup-1.10.2` was renamed in place to
+`Marvin-Offline-Backup-1.11.0`: the Full installer and both manuals were
+replaced, the requirements metadata was refreshed, and the two new models joined
+the payload — the MTP draft (1.37 GB) and the bge-m3 embedding model (635 MB),
+each with its verification receipt. 86 manifest entries, all SHA-256 verified;
+weights, llama.cpp and WebView2 were not re-copied. All seven server-side asset
+digests matched the local values before publication; after publication the
+unauthenticated `latest` link resolves to 1.11.0, small downloads passed full
+SHA-256 checks and installer/ZIP range requests verified signatures and sizes.
 
 ## What's new
 
