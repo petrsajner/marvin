@@ -826,22 +826,23 @@ export function DialogView(props: any) {
                 </button>
                 {project && (
                   <>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={!!project.autocommit}
-                        onChange={(e) =>
+                    <div className="row">
+                      <button
+                        className={project.autocommit ? "positive" : "outline"}
+                        onClick={() =>
                           call(() =>
                             api(
                               "/api/projects/" + project.id,
                               "PATCH",
-                              { autocommit: e.target.checked },
+                              { autocommit: !project.autocommit },
                             ),
                           )
                         }
-                      />{" "}
-                      {tr("Commit each finished task automatically")}
-                    </label>
+                      >
+                        <History />
+                        {tr("Commit each finished task automatically")}
+                      </button>
+                    </div>
                     <p className="muted">
                       {tr(
                         "When enabled, every successfully finished Development or Computer task commits its own changed files in this project. Never pushes.",
