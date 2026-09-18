@@ -484,29 +484,6 @@ def create_app(cfg=None, *, service=None):
         runtime_cache["at"] = 0
         return {"ok": True, "switch": service.models.snapshot().__dict__}
 
-    @app.get("/api/evals")
-    def evals_catalog():
-        from harness import evals
-        return evals.catalog(cfg)
-
-    @app.post("/api/evals/{script_id}/run")
-    def evals_run(script_id: str):
-        from harness import evals
-        if script_id not in evals.EVALS:
-            raise ValueError("Unknown evaluation script")
-        spec = evals.EVALS[script_id]
-        # One shared, registered workspace keeps every run visible as a chat of
-        # the Evaluations project; the scenario directory is reset per run.
-        root = evals.ensure_project(cfg)
-        evals.prepare(cfg, script_id)
-        session = service.new_session(workspace=str(root), work_mode=spec["work_mode"])
-        session.meta["title"] = spec["label"]
-        session.meta["eval"] = script_id
-        session.persist()
-        service.submit(session.id, spec["prompt"], request_id=f"eval-{script_id}-{int(time.time())}",
-                       delivery="queue")
-        return {"session_id": session.id}
-
     @app.get("/api/backup")
     def backup_info():
         from scripts.offline_backup import backup_info
