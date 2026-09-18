@@ -618,6 +618,56 @@ class TransportTests(unittest.TestCase):
         timer.join()
 
 
+class FailureAdviceTests(unittest.TestCase):
+    """A failed task has to leave something the user can act on."""
+
+    def test_known_failures_get_a_next_step(self):
+        from harness.failures import advise
+        self.assertIn("environment of its own",
+                      advise("ModuleNotFoundError: No module named pygame"))
+        self.assertIn("did not start", advise("RuntimeError: Model server is not ready"))
+        self.assertIn("moved or removed",
+                      advise("Project folder is unavailable: C:/gone"))
+        self.assertIn("ran out of memory", advise("llama-server stopped: ram_pressure"))
+
+    def test_an_unknown_failure_gets_no_invented_advice(self):
+        from harness.failures import advise
+        self.assertEqual(advise("something nobody anticipated"), "")
+        self.assertEqual(advise(""), "")
+
+    def test_every_hint_has_a_czech_translation(self):
+        from harness.failures import HINTS
+        locale = json.loads(
+            (Path(__file__).resolve().parent.parent / "harness" / "locales"
+             / "cs.json").read_text(encoding="utf-8"))["messages"]
+        missing = [hint for _, hint in HINTS if not locale.get(hint, "").strip()]
+        self.assertEqual(missing, [], "Missing Czech hints: %s" % missing)
+
+    def test_the_notice_survives_the_toast(self):
+        """run_status only raises a toast; the notice is what remains."""
+        with tempfile.TemporaryDirectory() as directory:
+            data = copy.deepcopy(load_config().data)
+            data["agent"].update(workspace=None, autonomy="auto")
+            cfg = Config(data, Path(directory))
+            service = ApplicationService(cfg, llm_factory=lambda c: None,
+                                         manage_model=False)
+            try:
+                session = service.new_session(work_mode="discussion")
+                service._emit_failure(session.id, "run-1",
+                                      "ModuleNotFoundError: No module named pygame")
+                notices = service.store.notices(session.id)
+                self.assertEqual(len(notices), 1)
+                self.assertEqual(notices[0]["kind"], "failure")
+                self.assertIn("pygame", notices[0]["text"])
+                self.assertIn("environment of its own", notices[0]["hint"])
+                # An empty failure leaves nothing behind.
+                service._emit_failure(session.id, "run-2", "   ")
+                self.assertEqual(len(service.store.notices(session.id)), 1)
+            finally:
+                service.close()
+                service.models.wait(3)
+
+
 class AtomicWriteTests(unittest.TestCase):
     """A reader holding the target must not turn into a failed task.
 

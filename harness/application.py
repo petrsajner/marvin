@@ -353,6 +353,7 @@ class ApplicationService:
                 status = "stopped" if self.abort.is_set() else "failed"
                 job["error"] = str(exc) if status == "failed" else ""
                 self.store.save_job(job, status)
+                self._emit_failure(job["session_id"], job["id"], job["error"])
                 self.store.emit(job["session_id"], "run_status", {"status": status, "error": job["error"], "run_id": job["id"]})
             finally:
                 with self.wake:
@@ -387,6 +388,18 @@ class ApplicationService:
         for call in pending:
             session.add("tool", "Execution was interrupted; outcome unknown. Inspect actual state before retrying.",
                         tool_call_id=call["id"], name=call["function"]["name"])
+
+    def _emit_failure(self, session_id: str, run_id: str, error: str) -> None:
+        """Leave a failure where the user can still find it.
+
+        run_status only raises a toast, which fades; someone who does not program
+        is then left with nothing. A notice is durable and carries the next step
+        when the failure is one we recognise."""
+        if not (error or "").strip():
+            return
+        from harness.failures import failure_notice
+        self.store.emit(session_id, "notice",
+                        failure_notice(error, run_id, time.time()))
 
     def _maybe_autocommit(self, agent, session, job, result_text: str) -> str | None:
         """Commit the task's changed files when the project opted into auto-commit.
@@ -726,6 +739,8 @@ class ApplicationService:
                 if commit_note:
                     self.store.emit(sid, "notice", {"text": commit_note,
                                                     "run_id": rid, "created": time.time()})
+                if status == "failed":
+                    self._emit_failure(sid, rid, job.get("error") or result.text)
                 self.store.emit(sid, "run_status", {"run_id": rid, "status": status,
                     "text": result.text, "pending": result.pending_summary if status == "waiting_confirmation" else [],
                     "usage": session.meta.get("last_usage", {})})

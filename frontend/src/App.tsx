@@ -1356,9 +1356,35 @@ export function App() {
                       </section>
                       <section>
                         <h3>{tr("Activity history")}</h3>
-                        {detail?.notices?.map((n: any) => (
-                          <p key={n.seq}>{n.text}</p>
-                        ))}
+                        {detail?.notices?.map((n: any) =>
+                          n.kind === "failure" ? (
+                            <div className="file-row" key={n.seq}>
+                              <AlertCircle className="amber" />
+                              <div>
+                                <strong>{tr("The task did not finish")}</strong>
+                                <small>{n.text}</small>
+                                {n.hint && <small>{tr(n.hint)}</small>}
+                              </div>
+                              <button
+                                onClick={() =>
+                                  setText(
+                                    tr("The previous task failed with this error:") +
+                                      "\n\n" +
+                                      n.text +
+                                      "\n\n" +
+                                      tr(
+                                        "Work out what caused it and what I should do next. Explain it in plain language, and say what you would change before you change anything.",
+                                      ),
+                                  )
+                                }
+                              >
+                                {tr("Work out what to do")}
+                              </button>
+                            </div>
+                          ) : (
+                            <p key={n.seq}>{n.text}</p>
+                          ),
+                        )}
                       </section>
                       <section>
                         <h3>{tr("Processes")}</h3>

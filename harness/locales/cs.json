@@ -781,7 +781,20 @@
     "Pictures and screen": "Obrázky a obrazovka",
     "Working on a project": "Práce na projektu",
     "Longer work": "Dlouhá práce",
-    "Ask for these in your own words; the example is only a starting point.": "Říkej si o ně vlastními slovy; příklad je jen výchozí bod."
+    "Ask for these in your own words; the example is only a starting point.": "Říkej si o ně vlastními slovy; příklad je jen výchozí bod.",
+    "The task did not finish": "Úloha nedoběhla",
+    "The previous task failed with this error:": "Předchozí úloha selhala s touto chybou:",
+    "Work out what caused it and what I should do next. Explain it in plain language, and say what you would change before you change anything.": "Zjisti, co to způsobilo a co mám udělat dál. Vysvětli to běžnou řečí a nejdřív řekni, co bys změnil, než cokoli změníš.",
+    "Work out what to do": "Zjistit, co s tím",
+    "The project has no environment of its own, so the packages it needs are missing. Let the agent set one up.": "Projekt nemá vlastní prostředí, takže mu chybí balíčky, které potřebuje. Nech agenta, ať ho založí.",
+    "This model cannot see pictures. Switch to a model marked as vision-capable and send the attachment again.": "Tenhle model nevidí obrázky. Přepni na model označený jako vision a pošli přílohu znovu.",
+    "The model did not start. Check the model and the memory budget in Settings, then start it again.": "Model se nespustil. Zkontroluj model a limit paměti v Nastavení a spusť ho znovu.",
+    "No model fits the current memory budget. Raise the budget in Settings or choose a smaller model.": "Do současného limitu paměti se nevejde žádný model. Zvyš limit v Nastavení nebo zvol menší model.",
+    "The model stopped responding. Restarting it in Settings usually clears this.": "Model přestal odpovídat. Obvykle pomůže restartovat ho v Nastavení.",
+    "The project folder was moved or removed. Attach it again, or pick another project.": "Složka projektu byla přesunuta nebo smazána. Připoj ji znovu, nebo vyber jiný projekt.",
+    "The machine ran out of memory for this model. A smaller context or a smaller model will finish the task.": "Počítači došla paměť pro tenhle model. Menší kontext nebo menší model úlohu dokončí.",
+    "The graphics card ran out of memory. A smaller context or a smaller model will finish the task.": "Grafické kartě došla paměť. Menší kontext nebo menší model úlohu dokončí.",
+    "This project has no tests Marvin can recognise. The agent can add them, or you can name your own in .qwen/project.yaml.": "Tenhle projekt nemá testy, které by Marvin poznal. Agent je může doplnit, nebo si vlastní pojmenuj v .qwen/project.yaml."
   },
   "legacy_profile_labels": {
     "16 bit - přesnější, kontext 128k": "16-bit - more precise, context 128k",
