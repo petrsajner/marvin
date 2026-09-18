@@ -124,5 +124,79 @@ class LocalizationTests(unittest.TestCase):
         self.assertEqual(errors, [], "Move translations into a locale resource: " + ", ".join(errors))
 
 
+class HarnessMessageTests(unittest.TestCase):
+    """Messages the harness itself produces reached the Czech interface in English:
+    set_language was only ever called by the legacy Gradio surface."""
+
+    # Every message the harness emits to the user as a notice.
+    HARNESS_MESSAGES = (
+        "Adjusting the memory profile and continuing the task.",
+        "Auto-commit failed: {error}",
+        "Auto-committed as {hash} ({count} files)",
+        "📦 Context ~{est} tokens (over 85% of {limit}) - summarizing the earlier conversation ...",
+        "📦 Context trimmed: ~{est} to ~{new} tokens",
+        "📦 Context compressed: ~{est} to ~{new} tokens; the full history is kept",
+        "📦 Summarization failed ({error}) - applied a hard trim",
+        "Preparing the research plan before searching...",
+        "Context overflow: compressing and retrying...",
+        "Preparing the final synthesis from all loaded sources...",
+    )
+
+    def tearDown(self):
+        from harness.i18n import set_language
+        set_language("en")
+
+    def test_every_harness_message_has_a_czech_translation(self):
+        import json
+        locale = json.loads(
+            (Path(__file__).resolve().parent.parent / "harness" / "locales"
+             / "cs.json").read_text(encoding="utf-8"))["messages"]
+        missing = [text for text in self.HARNESS_MESSAGES
+                   if not locale.get(text, "").strip()]
+        self.assertEqual(missing, [], "Missing Czech: %s" % missing)
+
+    def test_the_translation_keeps_every_placeholder(self):
+        import json
+        import re
+        locale = json.loads(
+            (Path(__file__).resolve().parent.parent / "harness" / "locales"
+             / "cs.json").read_text(encoding="utf-8"))["messages"]
+        for text in self.HARNESS_MESSAGES:
+            expected = set(re.findall(r"{(\w+)}", text))
+            actual = set(re.findall(r"{(\w+)}", locale[text]))
+            self.assertEqual(actual, expected,
+                             "Placeholders differ for %r" % text)
+
+    def test_the_workspace_sets_the_catalogue_language(self):
+        """Constructing the service must move the catalogue, not just the UI."""
+        import copy
+        import tempfile
+        from harness.application import ApplicationService
+        from harness.config import Config, load_config
+        from harness.i18n import get_language, t
+        with tempfile.TemporaryDirectory() as directory:
+            data = copy.deepcopy(load_config().data)
+            data["agent"].update(workspace=None, autonomy="auto")
+            cfg = Config(data, Path(directory))
+            service = ApplicationService(cfg, llm_factory=lambda c: None,
+                                         manage_model=False)
+            try:
+                service.preferences["language"] = "cs"
+                from harness.i18n import set_language
+                set_language("cs")
+                self.assertEqual(get_language(), "cs")
+                # Compared against the catalogue, so no Czech lives in the source.
+                import json
+                catalogue = json.loads(
+                    (Path(__file__).resolve().parent.parent / "harness" / "locales"
+                     / "cs.json").read_text(encoding="utf-8"))["messages"]
+                key = "Adjusting the memory profile and continuing the task."
+                self.assertEqual(t(key), catalogue[key])
+                self.assertNotEqual(t(key), key)
+            finally:
+                service.close()
+                service.models.wait(3)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -67,6 +67,10 @@ class ApplicationService:
             self.preferences["model"] = cfg.model_key()
         # Semantic search is opt-in; the runtime flag mirrors the saved preference.
         self.preferences.setdefault("semantic_search", False)
+        # Where new projects are created. Empty means the folder beside the
+        # installation, which is all that used to be possible.
+        self.preferences.setdefault("projects_root", "")
+        self.apply_projects_root(self.preferences["projects_root"])
         cfg.data["_semantic_search"] = bool(self.preferences["semantic_search"])
         self.preferences.setdefault("vram_gb", legacy.get("vram_gb", cfg.data.get("hardware", {}).get("vram_gb", "auto")))
         from harness.gpu import normalize_vram_setting
@@ -95,9 +99,12 @@ class ApplicationService:
             self.models.remember_configuration(previous, previous_key)
         if manage_model:
             self.fit_hardware()
-        from harness.i18n import detect_language
+        from harness.i18n import detect_language, set_language
         if not legacy.get("language") and not self.preferences_path.exists():
             self.preferences["language"] = detect_language(cfg.root) or "en"
+        # Only the legacy Gradio surface used to do this, so every message the
+        # harness itself produced stayed English in the Czech interface.
+        set_language(self.preferences["language"])
         for job in self.store.jobs(("running", "steering")):
             payload = job["payload"]
             if job["status"] == "running":
@@ -107,6 +114,19 @@ class ApplicationService:
             self.store.save_job(payload, "interrupted" if job["status"] == "running" else "queued")
         self.worker = threading.Thread(target=self._work, name="marvin-run-controller", daemon=True)
         self.worker.start()
+
+    def apply_projects_root(self, value: str) -> str:
+        """Point new projects at a folder, or back at the built-in one.
+
+        Projects reads projects.root_dir from the live configuration, which every
+        request shares, so this is the one place that has to set it."""
+        if not str(value or "").strip():
+            self.cfg.data.setdefault("projects", {}).pop("root_dir", None)
+            return ""
+        from harness.projects import validate_root
+        resolved = validate_root(value, self.cfg)
+        self.cfg.data.setdefault("projects", {})["root_dir"] = str(resolved)
+        return str(resolved)
 
     def save_preferences(self):
         atomic_write_text(self.preferences_path, json.dumps(self.preferences, ensure_ascii=False, indent=2))
@@ -434,11 +454,13 @@ class ApplicationService:
         message = self._autocommit_message(agent, session, job, result_text)
         if not message:
             return None
+        from harness.i18n import t
         result = commit_files(agent.ctx, paths, message)
         if not result.get("ok"):
-            return f"Auto-commit failed: {str(result.get('error'))[:300]}"
-        return (f"Auto-committed {len(paths)} file{'s' if len(paths) != 1 else ''} "
-                f"as {result.get('hash') or 'HEAD'}.")
+            return t("Auto-commit failed: {error}", error=str(result.get("error"))[:300])
+        # Phrased so it needs no plural agreement in either language.
+        return t("Auto-committed as {hash} ({count} files)",
+                 hash=result.get("hash") or "HEAD", count=len(paths))
 
     @staticmethod
     def _autocommit_message(agent, session, job, result_text: str) -> str:
@@ -496,7 +518,8 @@ class ApplicationService:
         if live.get("text") or live.get("reasoning"):
             session.add("assistant", live.get("text", ""), reasoning=live.get("reasoning", ""))
         self._seal_interrupted_tools(session)
-        self.store.emit(session.id, "notice", {"text": "Adjusting the memory profile and continuing the task.",
+        from harness.i18n import t
+        self.store.emit(session.id, "notice", {"text": t("Adjusting the memory profile and continuing the task."),
                                               "run_id": job["id"], "created": time.time()})
         live.update(phase="loading_model", phase_started=time.time(), text="", reasoning="", prompt_progress=None)
         self.models.request(key, restart=True, kv_profile=profile, config=cfg,

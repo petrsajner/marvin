@@ -618,6 +618,84 @@ class TransportTests(unittest.TestCase):
         timer.join()
 
 
+class ProjectsRootTests(unittest.TestCase):
+    """New projects always landed beside the installation; the folder is a choice now."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        data = copy.deepcopy(load_config().data)
+        data["hardware"]["vram_gb"] = 32
+        data["agent"].update(workspace=None, autonomy="auto")
+        self.cfg = Config(data, self.root)
+        self.service = ApplicationService(self.cfg, llm_factory=lambda c: None,
+                                          manage_model=False)
+        self.client = TestClient(create_app(self.cfg, service=self.service))
+
+    def tearDown(self):
+        self.service.close()
+        self.service.models.wait(3)
+        self.temp.cleanup()
+
+    def test_a_new_project_is_created_in_the_chosen_folder(self):
+        chosen = self.root / "Elsewhere"
+        chosen.mkdir()
+        self.client.patch("/api/settings", json={"projects_root": str(chosen)}).raise_for_status()
+        self.assertEqual(self.client.get("/api/state").json()["projects_root"],
+                         str(chosen.resolve()))
+        project = self.client.post("/api/projects", json={"name": "Somewhere"}).json()["project"]
+        self.assertEqual(Path(project["path"]).parent, chosen.resolve())
+
+    def test_an_existing_project_keeps_its_folder(self):
+        """Changing the setting must not move anything already on disk."""
+        first = self.client.post("/api/projects", json={"name": "First"}).json()["project"]
+        chosen = self.root / "Elsewhere"
+        chosen.mkdir()
+        self.client.patch("/api/settings", json={"projects_root": str(chosen)}).raise_for_status()
+        listed = {item["name"]: item["path"]
+                  for item in self.client.get("/api/state").json()["projects"]}
+        self.assertEqual(listed["First"], first["path"])
+        self.assertTrue(Path(first["path"]).is_dir())
+
+    def test_the_default_can_be_restored(self):
+        chosen = self.root / "Elsewhere"
+        chosen.mkdir()
+        self.client.patch("/api/settings", json={"projects_root": str(chosen)})
+        self.client.patch("/api/settings", json={"projects_root": ""}).raise_for_status()
+        self.assertEqual(self.client.get("/api/state").json()["projects_root"],
+                         str(self.root / "projects"))
+
+    def test_an_unusable_folder_is_refused_and_nothing_is_stored(self):
+        from harness.projects import validate_root
+        before = self.client.get("/api/state").json()["projects_root"]
+        for value in ("", "projects", str(self.root / "missing"),
+                      str(self.cfg.path("paths.runtime_dir"))):
+            with self.assertRaises(ValueError):
+                validate_root(value, self.cfg)
+        self.assertEqual(
+            self.client.patch("/api/settings",
+                              json={"projects_root": str(self.root / "missing")}).status_code,
+            400)
+        self.assertEqual(self.client.get("/api/state").json()["projects_root"], before)
+
+    def test_the_choice_survives_a_restart(self):
+        chosen = self.root / "Elsewhere"
+        chosen.mkdir()
+        self.client.patch("/api/settings", json={"projects_root": str(chosen)})
+        self.service.close()
+        self.service.models.wait(3)
+        revived = ApplicationService(Config(copy.deepcopy(self.cfg.data), self.root),
+                                     llm_factory=lambda c: None, manage_model=False)
+        try:
+            self.assertEqual(revived.preferences["projects_root"], str(chosen.resolve()))
+            from harness.projects import Projects
+            self.assertEqual(Projects(revived.cfg).root_dir, chosen.resolve())
+        finally:
+            revived.close()
+            revived.models.wait(3)
+            self.service = revived
+
+
 class PrefillInterruptionTests(unittest.TestCase):
     """Measured on a 109k context: interrupting the prompt read cost the whole
     cached prefix and a quarter of an hour to rebuild it. A clarification has to

@@ -12,7 +12,7 @@ StepResult.status values:
   ERROR: API or parsing failure."""
 from __future__ import annotations
 
-from .i18n import input_pattern
+from .i18n import input_pattern, t
 
 import enum
 import json
@@ -536,7 +536,8 @@ class Agent:
         est = self.estimate_context_tokens()
         if not force and est < int(limit * COMPRESS_AT):
             return
-        self.emit("info", f"📦 Context ~{est} tokens (>85% of {limit}) - summarizing the earlier conversation ...")
+        self.emit("info", t("📦 Context ~{est} tokens (over 85% of {limit}) - summarizing the earlier conversation ...",
+                            est=est, limit=limit))
         try:
             from harness.context import summarize_messages
             keep_tokens = int(limit * 0.35)
@@ -545,7 +546,8 @@ class Agent:
                 self.session.trim_to_budget(int(limit * 0.5))
                 new_est = self.estimate_context_tokens()
                 self.refresh_system_prompt()
-                self.emit("info", f"📦 Context trimmed: ~{est} → ~{new_est} tokens")
+                self.emit("info", t("📦 Context trimmed: ~{est} to ~{new} tokens",
+                                    est=est, new=new_est))
                 return
             start = self.session.compression["cut"] if self.session.compression else (
                 1 if self.session.messages and self.session.messages[0].get("role") == "system" else 0
@@ -565,12 +567,14 @@ class Agent:
             new_est = self.estimate_context_tokens()
             # Refresh current persistent memory after compression.
             self.refresh_system_prompt()
-            self.emit("info", f"📦 Context compressed: ~{est} → ~{new_est} tokens (the UI retains the full history)")
+            self.emit("info", t("📦 Context compressed: ~{est} to ~{new} tokens; the full history is kept",
+                                est=est, new=new_est))
         except Exception as e:
             if self.abort_flag.is_set():
                 return
             self.session.trim_to_budget(int(limit * 0.5))
-            self.emit("info", f"📦 Summarization failed ({type(e).__name__}: {e}) - applied a hard trim")
+            self.emit("info", t("📦 Summarization failed ({error}) - applied a hard trim",
+                                error=f"{type(e).__name__}: {e}"))
 
     def _step(self, approve: bool | None = None) -> StepResult:
         # 1) Pending confirmations.
@@ -616,7 +620,7 @@ class Agent:
         if self.work_mode == "research":
             run = self.ctx.research.current()
             if run and not run.get("plan"):
-                self.emit("info", "Preparing the research plan before searching...")
+                self.emit("info", t("Preparing the research plan before searching..."))
                 try:
                     plan = plan_research(
                         self.llm, run.get("question", ""),
@@ -652,7 +656,7 @@ class Agent:
             # Context overflow: compress immediately and retry once per task.
             if not self._overflow_retried and OVERFLOW_RE.search(str(e)):
                 self._overflow_retried = True
-                self.emit("info", "Context overflow: compressing and retrying...")
+                self.emit("info", t("Context overflow: compressing and retrying..."))
                 self._maybe_compress(force=True)
                 return StepResult(Status.CONTINUE,
                                   text="The context was compressed after an overflow; continuing the task.")
@@ -734,7 +738,7 @@ class Agent:
             if run and run.get("status") == "collecting" and run.get("sources"):
                 if (res.content or "").strip():
                     self.session.add("assistant", res.content, reasoning=res.reasoning)
-                self.emit("info", "Preparing the final synthesis from all loaded sources...")
+                self.emit("info", t("Preparing the final synthesis from all loaded sources..."))
                 try:
                     res.content = synthesize_research(
                         self.llm, run, should_stop=self.abort_flag.is_set,

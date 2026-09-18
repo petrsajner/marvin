@@ -126,6 +126,7 @@ def create_app(cfg=None, *, service=None):
                 from harness.embedding_server import status as embeddings_status
                 semantic["server"] = embeddings_status(cfg)
             return {"version": APP_VERSION, "preferences": service.preferences,
+                "projects_root": str(Projects(cfg).root_dir),
                 "memory": {"vram_detected_gb": vram_total_gb(), "vram_budget_gb": budget,
                            "ram_total_gb": round(memory.total / 1024**3, 1),
                            "ram_available_gb": round(memory.available / 1024**3, 1)},
@@ -462,8 +463,11 @@ def create_app(cfg=None, *, service=None):
                     preset = candidate
                     payload["model"] = preset["model"]
                     payload["kv_cache_modes"] = {**payload.get("kv_cache_modes", {}), preset["model"]: preset["profile"]}
+            if "projects_root" in payload:
+                # Validated before it is stored, so a bad folder never persists.
+                payload["projects_root"] = service.apply_projects_root(payload["projects_root"])
             allowed = {"model", "thinking", "language", "theme", "density", "autonomy", "send_mode",
-                       "kv_cache_modes", "vram_gb", "semantic_search"}
+                       "kv_cache_modes", "vram_gb", "semantic_search", "projects_root"}
             if "semantic_search" in payload and not isinstance(payload["semantic_search"], bool):
                 raise ValueError("Semantic search must be enabled or disabled")
             if payload.get("semantic_search"):
@@ -474,6 +478,9 @@ def create_app(cfg=None, *, service=None):
                 if (cfg.model(key).get("adaptive_runtime")
                         and profile != service.preferences.get("kv_cache_modes", {}).get(key)):
                     service.preferences.setdefault("adaptive_kv_requests", {})[key] = profile
+            if "language" in payload:
+                from harness.i18n import set_language
+                set_language(payload["language"])
             service.preferences.update({key: value for key, value in payload.items() if key in allowed and key != "kv_cache_modes"})
             service.preferences.setdefault("kv_cache_modes", {}).update(payload.get("kv_cache_modes", {}))
             if (preset and cfg.model(preset["model"]).get("adaptive_runtime")

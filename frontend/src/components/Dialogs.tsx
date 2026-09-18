@@ -686,6 +686,40 @@ export function DialogView(props: any) {
             )}
             {dialog.type === "settings" && section === "data" && (
               <>
+                <h3>{tr("Where new projects are created")}</h3>
+                <p className="muted">{app.projects_root}</p>
+                <p className="muted">
+                  {tr(
+                    "Projects that already exist keep their own folder; this only decides where the next one is created.",
+                  )}
+                </p>
+                <div className="row">
+                  <button
+                    onClick={() =>
+                      call(async () => {
+                        const chosen = await pick(true);
+                        if (!chosen) return;
+                        await settings({ projects_root: chosen });
+                        await refresh();
+                      })
+                    }
+                  >
+                    <FolderOpen />
+                    {tr("Choose a folder")}
+                  </button>
+                  <button
+                    className="outline"
+                    disabled={!app.preferences?.projects_root}
+                    onClick={() =>
+                      call(async () => {
+                        await settings({ projects_root: "" });
+                        await refresh();
+                      })
+                    }
+                  >
+                    {tr("Use the default folder")}
+                  </button>
+                </div>
                 <h3>
                   {tr("Projects and conversations")}
                 </h3>

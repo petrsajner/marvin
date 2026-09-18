@@ -5,6 +5,7 @@ The model uses pixels in the image it receives, which may be downscaled. Tools c
 The pyautogui failsafe stays enabled: moving the pointer to the upper-left corner interrupts an action."""
 from __future__ import annotations
 
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -30,6 +31,94 @@ def _pyautogui():
     pyautogui.FAILSAFE = True  # Keep the corner-triggered failsafe enabled.
     pyautogui.FAILSAFE_POINTS = [(0, 0)]
     return pyautogui
+
+
+# Virtual-key codes for the names the model uses. pyautogui presses keys with
+# keybd_event(vk, 0, ...) - the second argument is the scancode and it passes
+# zero. SDL and DirectInput identify keys by scancode, so a game receives
+# SDL_SCANCODE_UNKNOWN and drops the event: synthetic keys never arrive. The
+# scancode is looked up from the virtual key and sent through SendInput instead.
+_VK: dict[str, int] = {
+    "enter": 0x0D, "esc": 0x1B, "escape": 0x1B, "tab": 0x09, "space": 0x20,
+    "backspace": 0x08, "delete": 0x2E, "insert": 0x2D, "home": 0x24, "end": 0x23,
+    "pageup": 0x21, "pagedown": 0x22, "up": 0x26, "down": 0x28, "left": 0x25,
+    "right": 0x27, "ctrl": 0x11, "control": 0x11, "shift": 0x10, "alt": 0x12,
+    "win": 0x5B, "capslock": 0x14, "printscreen": 0x2C, "pause": 0x13,
+    "numlock": 0x90, "scrolllock": 0x91, "apps": 0x5D,
+}
+_VK.update({f"f{index}": 0x6F + index for index in range(1, 13)})
+_VK.update({letter: ord(letter.upper()) for letter in "abcdefghijklmnopqrstuvwxyz"})
+_VK.update({digit: ord(digit) for digit in "0123456789"})
+# Keys the keyboard reports with the extended prefix.
+_EXTENDED = {0x2E, 0x2D, 0x24, 0x23, 0x21, 0x22, 0x26, 0x28, 0x25, 0x27,
+             0x5B, 0x5D, 0x2C, 0x90}
+
+
+def _scancode(vk: int) -> int:
+    """The hardware scancode for a virtual key, or 0 when there is none.
+
+    A few keys - Pause among them - have no single scancode, and sending zero is
+    the very thing that makes a game ignore the event, so they take the old path."""
+    if sys.platform != "win32":
+        return 0
+    import ctypes
+    return int(ctypes.windll.user32.MapVirtualKeyW(vk, 0))
+
+
+def _failsafe_triggered() -> bool:
+    """The upper-left corner aborts, exactly as it does for pyautogui.
+
+    SendInput bypasses pyautogui entirely, so the promise has to be kept here."""
+    import ctypes
+    from ctypes import wintypes
+    point = wintypes.POINT()
+    ctypes.windll.user32.GetCursorPos(ctypes.byref(point))
+    return point.x <= 0 and point.y <= 0
+
+
+def _send_scancodes(parts: list[str], hold: float) -> int:
+    """Press a combination with real scancodes; returns the events accepted."""
+    import ctypes
+    from ctypes import wintypes
+
+    INPUT_KEYBOARD, KEYEVENTF_EXTENDEDKEY = 1, 0x0001
+    KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE = 0x0002, 0x0008
+    MAPVK_VK_TO_VSC = 0
+    user32 = ctypes.windll.user32
+
+    class KEYBDINPUT(ctypes.Structure):
+        _fields_ = [("wVk", wintypes.WORD), ("wScan", wintypes.WORD),
+                    ("dwFlags", wintypes.DWORD), ("time", wintypes.DWORD),
+                    ("dwExtraInfo", ctypes.c_void_p)]
+
+    class INPUT(ctypes.Structure):
+        class _VALUE(ctypes.Union):
+            _fields_ = [("ki", KEYBDINPUT), ("raw", ctypes.c_byte * 32)]
+        _anonymous_ = ("value",)
+        _fields_ = [("type", wintypes.DWORD), ("value", _VALUE)]
+
+    def event(vk: int, release: bool) -> INPUT:
+        flags = KEYEVENTF_SCANCODE | (KEYEVENTF_KEYUP if release else 0)
+        if vk in _EXTENDED:
+            flags |= KEYEVENTF_EXTENDEDKEY
+        item = INPUT(type=INPUT_KEYBOARD)
+        # With KEYEVENTF_SCANCODE the virtual key must be zero and the scancode
+        # carries the key, which is the part SDL actually reads.
+        item.ki = KEYBDINPUT(wVk=0, wScan=user32.MapVirtualKeyW(vk, MAPVK_VK_TO_VSC),
+                             dwFlags=flags, time=0, dwExtraInfo=None)
+        return item
+
+    codes = [_VK[name] for name in parts]
+    accepted = 0
+    press = (INPUT * len(codes))(*[event(code, False) for code in codes])
+    accepted += user32.SendInput(len(codes), ctypes.byref(press), ctypes.sizeof(INPUT))
+    # Games poll once a frame, so a key pressed and released in the same batch can
+    # pass between two polls and be missed entirely.
+    if hold > 0:
+        time.sleep(hold)
+    release = (INPUT * len(codes))(*[event(code, True) for code in reversed(codes)])
+    accepted += user32.SendInput(len(codes), ctypes.byref(release), ctypes.sizeof(INPUT))
+    return accepted
 
 
 class ScreenshotTool(Tool):
@@ -94,7 +183,8 @@ class ClickTool(Tool):
 class TypeTextTool(Tool):
     name = "type_text"
     description = ("Type text at the current cursor position. Handles unicode (Czech diacritics etc.) "
-                   "via clipboard paste automatically. Click the target field first!")
+                   "via clipboard paste automatically. Click the target field first! "
+                   "Game windows usually ignore this; use press_key for them.")
     parameters = {"text": {"type": "string", "description": "Text to type"}}
     required = ["text"]
     risk = Risk.WRITE
@@ -120,25 +210,55 @@ class TypeTextTool(Tool):
 
 class PressKeyTool(Tool):
     name = "press_key"
-    description = ("Press a key or key combination. Examples: 'enter', 'esc', 'tab', 'win', 'ctrl+s', "
-                   "'ctrl+shift+t', 'alt+f4', 'win+d'. Use lowercase key names.")
-    parameters = {"keys": {"type": "string", "description": "Key or combo, joined with '+'"}}
+    description = (
+        "Press a key or key combination. Examples: 'enter', 'esc', 'tab', 'win', 'ctrl+s', "
+        "'ctrl+shift+t', 'alt+f4', 'win+d'. Use lowercase key names. "
+        "Sends real hardware scancodes, which games and other SDL/DirectInput windows "
+        "require - they ignore keys sent without one. If a game still does not react, "
+        "raise 'hold' so the key stays down across a frame, and only then try "
+        "method='virtual', which some accessibility-aware windows prefer.")
+    parameters = {
+        "keys": {"type": "string", "description": "Key or combo, joined with '+'"},
+        "hold": {"type": "number",
+                 "description": "Seconds to hold the key down (default 0.05; raise for games)"},
+        "method": {"type": "string", "enum": ["auto", "scancode", "virtual"],
+                   "description": "auto and scancode send hardware scancodes; virtual is the old path"},
+    }
     required = ["keys"]
     risk = Risk.WRITE
 
     KEY_ALIASES = {"windows": "win", "super": "win", "return": "enter", "del": "delete", "space": "space"}
 
-    def run(self, ctx: AgentContext, keys: str) -> str:
-        pag = _pyautogui()
-        pag.PAUSE = float(ctx.cfg.computer.get("pause_between_actions", 0.15))
-        parts = [self.KEY_ALIASES.get(k.strip().lower(), k.strip().lower()) for k in keys.split("+") if k.strip()]
+    def run(self, ctx: AgentContext, keys: str, hold: float = 0.05,
+            method: str = "auto") -> str:
+        parts = [self.KEY_ALIASES.get(k.strip().lower(), k.strip().lower())
+                 for k in keys.split("+") if k.strip()]
         if not parts:
             return "ERROR: empty key combo"
+        combo = "+".join(parts)
+        unknown = [name for name in parts
+                   if name not in _VK or not _scancode(_VK[name])]
+        if method in ("auto", "scancode") and sys.platform == "win32" and not unknown:
+            if ctx.cfg.computer.get("failsafe", True) and _failsafe_triggered():
+                return "ERROR: failsafe - pointer in the upper-left corner, nothing sent"
+            accepted = _send_scancodes(parts, max(0.0, float(hold)))
+            if accepted == 2 * len(parts):
+                return f"Pressed: {combo} (hardware scancodes, held {hold:g}s)"
+            if method == "scancode":
+                return (f"ERROR: the system accepted {accepted} of {2 * len(parts)} key "
+                        f"events for {combo}")
+            # Fall through to the older path rather than leaving the key unpressed.
+        elif method == "scancode":
+            reason = (f"no hardware scancode for: {unknown}" if unknown
+                      else "not supported on this platform")
+            return f"ERROR: cannot send scancodes for {combo} ({reason})"
+        pag = _pyautogui()
+        pag.PAUSE = float(ctx.cfg.computer.get("pause_between_actions", 0.15))
         if len(parts) == 1:
             pag.press(parts[0])
         else:
             pag.hotkey(*parts)
-        return f"Pressed: {'+'.join(parts)}"
+        return f"Pressed: {combo} (virtual keys; a game window may not see these)"
 
 
 class ScrollTool(Tool):

@@ -155,6 +155,8 @@ def main() -> int:
             f"Marvin v{APP_VERSION} - {model}",
             url, width=1440, height=920, min_size=(960, 640),
             background_color="#0b0e14",
+            # pywebview disables selection unless asked for.
+            text_select=True,
         )
         print(f"[APP] Window opened: {url}")
         webview.start(_focus_window)  # Block until the window closes.

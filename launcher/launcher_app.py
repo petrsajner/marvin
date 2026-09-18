@@ -458,7 +458,10 @@ def main() -> int:
         import webview
         webview.create_window(f"Marvin v{APP_VERSION}", url,
                                width=1440, height=920, min_size=(960, 640),
-                               background_color="#0b0e14")
+                               background_color="#0b0e14",
+                               # pywebview disables selection unless asked: without
+                               # this nothing in the conversation can be copied.
+                               text_select=True)
         _log(f"Window opened: {url} (model may still be loading in the background)")
         webview.start(_focus_window)
     except ImportError:

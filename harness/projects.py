@@ -14,6 +14,35 @@ from harness.config import Config
 from harness.work_modes import normalize_work_mode
 
 
+def validate_root(value: str, cfg: Config) -> Path:
+    """Check a chosen location for new projects, or raise ValueError.
+
+    Existing projects keep the absolute path they were created with, so changing
+    this moves nothing on disk; it only decides where the next one goes."""
+    if not str(value).strip():
+        raise ValueError("Choose a folder for new projects")
+    path = Path(str(value).strip().strip('"')).expanduser()
+    if not path.is_absolute():
+        raise ValueError("The project folder must be an absolute path")
+    path = path.resolve()
+    if not path.is_dir():
+        raise ValueError(f"Folder does not exist: {path}")
+    for reserved in ("paths.runtime_dir", "paths.sessions_dir"):
+        guarded = cfg.path(reserved).resolve()
+        if path == guarded or guarded in path.parents or path in guarded.parents:
+            raise ValueError(
+                "Projects cannot live inside the model runtime or the "
+                f"conversation history: {guarded}")
+    probe = path / f".marvin-write-probe-{id(path):x}"
+    try:
+        probe.write_text("", encoding="utf-8")
+    except OSError as exc:
+        raise ValueError(f"Folder is not writable: {path}") from exc
+    finally:
+        probe.unlink(missing_ok=True)
+    return path
+
+
 def _safe_name(name: str) -> str:
     name = re.sub(r'[<>:"/\\|?*]', "-", name).strip(". ")
     return name or "projekt"
