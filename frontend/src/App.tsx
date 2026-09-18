@@ -117,16 +117,34 @@ export function App() {
   const project = (app?.projects || []).find(
     (p: any) => p.path === chat?.meta.workspace,
   );
+  const projectId = project?.id;
   const [projectChecks, setProjectChecks] = useState<any>(null);
+  // Keyed on the project id, not the project object: the identity of `app`
+  // changes on every state refresh and would recreate this callback constantly.
   const refreshProjectChecks = useCallback(() => {
-    if (!app || !project) {
+    if (!projectId) {
       setProjectChecks(null);
       return Promise.resolve();
     }
-    return api(`/api/projects/${project.id}/checks`)
+    return api(`/api/projects/${projectId}/checks`)
       .then(setProjectChecks)
       .catch(() => {});
-  }, [app, project]);
+  }, [projectId]);
+  // Checks poll on their own interval and depend on the running flag rather than
+  // the status object. A fresh object on every poll would retrigger the effect,
+  // which polls immediately on entry, and turn this into a tight request loop.
+  const checksRunning = !!projectChecks?.running;
+  useEffect(() => {
+    if (!projectId) {
+      setProjectChecks(null);
+      return;
+    }
+    if (!panel || tab !== "progress") return;
+    refreshProjectChecks();
+    if (!checksRunning) return;
+    const timer = setInterval(refreshProjectChecks, 2000);
+    return () => clearInterval(timer);
+  }, [projectId, panel, tab, checksRunning, refreshProjectChecks]);
   useEffect(() => {
     if (app?.active?.session_id !== sid) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -294,11 +312,7 @@ export function App() {
         .then((value) => {
           if (generation !== runtimeGeneration.current) return;
           setRuntime(value);
-          if (panel && tab === "progress") {
-            refreshDetail().catch(error);
-            if (projectChecks?.running || projectChecks === null)
-              refreshProjectChecks();
-          }
+          if (panel && tab === "progress") refreshDetail().catch(error);
         })
         .catch(() => {})
         .finally(() => { pending = false; })
@@ -308,7 +322,7 @@ export function App() {
     const timer = setInterval(poll, 2000);
     window.addEventListener("marvin-runtime-refresh", poll);
     return () => { clearInterval(timer); window.removeEventListener("marvin-runtime-refresh", poll); };
-  }, [!!app, panel, tab, refreshDetail, refreshProjectChecks, projectChecks, error]);
+  }, [!!app, panel, tab, refreshDetail, error]);
   useEffect(() => {
     if (!draftReady.current || !sid) return;
     localStorage.setItem(
@@ -1437,21 +1451,23 @@ export function App() {
                                   <LoaderCircle className="spin" />
                                 ) : c.state === "pass" ? (
                                   <CheckCheck className="green" />
-                                ) : c.state === "never" ? (
+                                ) : c.state === "never" || c.state === "queued" ? (
                                   <CircleDashed />
                                 ) : (
                                   <AlertCircle className="amber" />
                                 )}
                                 <span>
-                                  {c.label}
+                                  {tr(c.label)}
                                   <small>
                                     {c.state === "never"
                                       ? tr("not run yet")
-                                      : c.state === "running"
-                                        ? tr("running…")
-                                        : `${tr(c.state)} · ${new Date(
-                                            c.time * 1000,
-                                          ).toLocaleTimeString()}`}
+                                      : c.state === "queued"
+                                        ? tr("queued…")
+                                        : c.state === "running"
+                                          ? tr("running…")
+                                          : `${tr(c.state)} · ${new Date(
+                                              c.time * 1000,
+                                            ).toLocaleTimeString()}`}
                                   </small>
                                 </span>
                               </div>
@@ -1464,7 +1480,9 @@ export function App() {
                               api(
                                 `/api/projects/${project.id}/checks/run`,
                                 "POST",
-                              ).then(refreshProjectChecks)
+                              )
+                                .then(refreshProjectChecks)
+                                .catch(error)
                             }
                           >
                             <Play />

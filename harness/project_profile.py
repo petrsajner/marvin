@@ -1,10 +1,30 @@
 """Project-specific validation commands with conservative auto-detection."""
 from __future__ import annotations
 
+import functools
 import json
+import subprocess
+import sys
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Any
+
+NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
+
+
+@functools.lru_cache(maxsize=16)
+def _module_available(python: str, module: str) -> bool:
+    """Whether the resolved interpreter can import a tool module.
+
+    A detected command that cannot even start is worse than no command at all,
+    so detection only offers runners that are actually installed. Cached per
+    interpreter because detection runs on every status poll."""
+    try:
+        proc = subprocess.run([python, "-c", f"import {module}"], capture_output=True,
+                              timeout=30, creationflags=NO_WINDOW)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return proc.returncode == 0
 
 
 @dataclass(frozen=True)
@@ -80,27 +100,66 @@ class ProjectProfile:
             ))
         return checks
 
+    def _reads(self, name: str) -> str:
+        path = self.workspace / name
+        try:
+            return path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return ""
+
+    def _pytest_configured(self) -> bool:
+        """Whether the project itself asks for pytest rather than the stdlib runner."""
+        if ((self.workspace / "pytest.ini").is_file()
+                or (self.workspace / "conftest.py").is_file()
+                or (self.workspace / "tests" / "conftest.py").is_file()):
+            return True
+        return ("[tool.pytest" in self._reads("pyproject.toml")
+                or "[tool:pytest]" in self._reads("setup.cfg"))
+
+    def _python_test_check(self) -> ProjectCheck | None:
+        """Detect a Python test command that can actually run here.
+
+        Marvin's own entry script wins. Otherwise the discovery form is chosen by
+        what imports in practice: `-s tests` for a tests directory (works with and
+        without __init__.py) and `-s . -p 'test_*.py'` for test modules kept in the
+        project root. pytest is used only when the project configures it and the
+        interpreter can import it; the stdlib runner keeps the check usable
+        everywhere else."""
+        if (self.workspace / "tests" / "test_core.py").is_file():
+            return ProjectCheck("tests", "Core tests",
+                                f"& '{self.python}' 'tests/test_core.py'", primary=True)
+        tests_dir = self.workspace / "tests"
+        has_tests_dir = tests_dir.is_dir() and any(tests_dir.rglob("test_*.py"))
+        root_tests = any(self.workspace.glob("test_*.py"))
+        if self._pytest_configured() and _module_available(self.python, "pytest"):
+            target = " tests" if has_tests_dir else ""
+            return ProjectCheck("tests", "Pytest suite",
+                                f"& '{self.python}' -m pytest -q{target}", primary=True)
+        if has_tests_dir:
+            return ProjectCheck("tests", "Unittest suite",
+                                f"& '{self.python}' -m unittest discover -s tests",
+                                primary=True)
+        if root_tests:
+            return ProjectCheck(
+                "tests", "Unittest suite",
+                f"& '{self.python}' -m unittest discover -s . -p 'test_*.py'",
+                primary=True)
+        return None
+
     def _detected_checks(self) -> list[ProjectCheck]:
         checks: list[ProjectCheck] = []
-        if (self.workspace / "tests" / "test_core.py").is_file():
-            checks.append(ProjectCheck(
-                "tests", "Core tests", f"& '{self.python}' 'tests/test_core.py'",
-                primary=True))
-        elif ((self.workspace / "pyproject.toml").is_file()
-              or (self.workspace / "pytest.ini").is_file()
-              or (self.workspace / "tests").is_dir()):
-            checks.append(ProjectCheck(
-                "tests", "Python tests", f"& '{self.python}' -m pytest",
-                primary=True))
+        python_tests = self._python_test_check()
+        if python_tests:
+            checks.append(python_tests)
 
         pyproject = self.workspace / "pyproject.toml"
         if pyproject.is_file():
             text = pyproject.read_text(encoding="utf-8", errors="replace").lower()
-            if "ruff" in text:
+            if "ruff" in text and _module_available(self.python, "ruff"):
                 checks.append(ProjectCheck(
                     "lint", "Ruff lint", f"& '{self.python}' -m ruff check .",
                     kind="lint"))
-            if "mypy" in text:
+            if "mypy" in text and _module_available(self.python, "mypy"):
                 checks.append(ProjectCheck(
                     "typecheck", "Mypy", f"& '{self.python}' -m mypy .",
                     kind="typecheck"))

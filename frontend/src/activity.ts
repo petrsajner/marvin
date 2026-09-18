@@ -9,6 +9,9 @@ export const getActivities = () => snapshot;
 
 function labelFor(path: string): string {
   const labels: [RegExp, string][] = [
+    // Ahead of the generic /run/ and /projects/ patterns below.
+    [/checks\/run/, "Running project checks"],
+    [/checks\/fix/, "Starting check repair"],
     [/runtime\/start/, "Starting model"],
     [/runtime\/restart/, "Restarting model"],
     [/runtime\/stop/, "Stopping model"],

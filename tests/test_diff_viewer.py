@@ -146,5 +146,109 @@ class DiffEndpointTests(unittest.TestCase):
                             params={"path": "missing.txt"}).status_code, 400)
 
 
+class CheckpointDiffTests(unittest.TestCase):
+    """A restore point must be inspectable without the agent having changed anything."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        data = copy.deepcopy(load_config().data)
+        data["agent"].update(workspace=None, autonomy="auto")
+        self.cfg = Config(data, self.root)
+        self.workspace = self.root / "project"
+        self.workspace.mkdir()
+        (self.workspace / "app.py").write_text("one\ntwo\n", encoding="utf-8")
+        (self.workspace / "gone.txt").write_text("bye\n", encoding="utf-8")
+        self.session = Session(self.cfg, system_prompt="SYS",
+                               workspace=str(self.workspace))
+        self.journal = ChangeJournal(self.session, self.workspace)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_changed_since_reports_live_drift_against_a_checkpoint(self):
+        task_id = self.journal.create_checkpoint("before edits")
+        self.assertEqual(self.journal.changed_since(task_id)["files"], [])
+        (self.workspace / "app.py").write_text("one\nTWO\n", encoding="utf-8")
+        (self.workspace / "gone.txt").unlink()
+        (self.workspace / "added.txt").write_text("new\n", encoding="utf-8")
+        drift = self.journal.changed_since(task_id)
+        self.assertEqual(drift["task_id"], task_id)
+        changes = {item["path"]: item["change"] for item in drift["files"]}
+        self.assertEqual(changes.get("app.py"), "modified")
+        self.assertEqual(changes.get("gone.txt"), "deleted")
+        self.assertEqual(changes.get("added.txt"), "created")
+
+    def test_every_drift_row_can_be_opened_as_a_diff(self):
+        task_id = self.journal.create_checkpoint("before edits")
+        (self.workspace / "app.py").write_text("one\nTWO\n", encoding="utf-8")
+        (self.workspace / "added.txt").write_text("new\n", encoding="utf-8")
+        for item in self.journal.changed_since(task_id)["files"]:
+            diff = self.journal.file_diff(item["path"], task_id)
+            self.assertEqual(diff["task_id"], task_id)
+            self.assertEqual(diff["restorable"], item["restorable"])
+        modified = self.journal.file_diff("app.py", task_id)
+        tags = [(line["tag"], line["text"]) for line in modified["lines"]
+                if line["tag"] != "gap"]
+        self.assertIn(("-", "two"), tags)
+        self.assertIn(("+", "TWO"), tags)
+        # A file that post-dates the snapshot has no backup to restore from.
+        self.assertFalse(self.journal.file_diff("added.txt", task_id)["restorable"])
+
+    def test_harness_state_is_not_attributed_to_the_task(self):
+        """.qwen holds harness state; it must not become a task change or auto-commit."""
+        qwen = self.workspace / ".qwen"
+        qwen.mkdir()
+        (qwen / "check-status.json").write_text("{}", encoding="utf-8")
+        task_id = self.journal.create_checkpoint("snapshot")
+        recorded = [item["path"] for item in self.journal.summary(task_id)["files"]]
+        self.assertNotIn(str(Path(".qwen") / "check-status.json"), recorded)
+        (qwen / "check-status.json").write_text('{"checks": []}', encoding="utf-8")
+        (qwen / "decisions.json").write_text("[]", encoding="utf-8")
+        self.journal.reconcile_workspace()
+        summary = self.journal.summary()
+        self.assertEqual(
+            [item for item in summary["files"] if item["path"].startswith(".qwen")], [])
+        self.assertEqual(
+            [item["path"] for item in self.journal.changed_since(task_id)["files"]
+             if item["path"].startswith(".qwen")], [])
+
+    def test_checkpoint_changes_endpoint(self):
+        service = ApplicationService(self.cfg, llm_factory=lambda cfg: None,
+                                     manage_model=False)
+        client = TestClient(create_app(self.cfg, service=service))
+        try:
+            session = service.new_session(workspace=str(self.workspace),
+                                          work_mode="development")
+            journal = ChangeJournal(session, self.workspace)
+            task_id = journal.create_checkpoint("endpoint checkpoint")
+            (self.workspace / "app.py").write_text("one\nTHREE\n", encoding="utf-8")
+            response = client.get(f"/api/sessions/{session.id}/checkpoint-changes",
+                                  params={"task_id": task_id})
+            response.raise_for_status()
+            drift = response.json()
+            self.assertEqual(drift["task_id"], task_id)
+            self.assertIn("app.py", [item["path"] for item in drift["files"]])
+            diff = client.get(f"/api/sessions/{session.id}/diff",
+                              params={"path": "app.py", "task_id": task_id}).json()
+            self.assertEqual(diff["change"], "modified")
+            # Drift against a checkpoint is by definition a post-task change, so
+            # the guard reports it first and the UI confirms before forcing.
+            guarded = client.post(
+                f"/api/sessions/{session.id}/actions/restore_file",
+                json={"path": "app.py", "task_id": task_id}).json()
+            self.assertEqual(guarded["restored"], [])
+            self.assertIn("changed after this task", guarded["errors"][0])
+            restored = client.post(
+                f"/api/sessions/{session.id}/actions/restore_file",
+                json={"path": "app.py", "task_id": task_id, "force": True}).json()
+            self.assertEqual(restored["restored"], ["app.py"])
+            self.assertEqual((self.workspace / "app.py").read_text(encoding="utf-8"),
+                             "one\ntwo\n")
+        finally:
+            service.close()
+            service.models.wait(3)
+
+
 if __name__ == "__main__":
     unittest.main()

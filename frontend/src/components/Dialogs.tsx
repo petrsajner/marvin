@@ -22,6 +22,7 @@ import {
   FileText,
   Download,
   History,
+  GitCompare,
   Brain,
   HardDrive,
   ChevronDown,
@@ -89,9 +90,13 @@ export function DialogView(props: any) {
     [page, setPage] = useState(1),
     [format, setFormat] = useState("pdf"),
     [diff, setDiff] = useState<any>(null),
+    [drift, setDrift] = useState<any>(null),
     [diffMode, setDiffMode] = useState("split"),
     [busy, setBusy] = useState(false);
   const memoryDirty = useRef(false);
+  useEffect(() => {
+    if (dialog.type !== "checkpoints") setDrift(null);
+  }, [dialog.type]);
   const section = dialog.section || "model";
   const project = app.projects.find(
     (p: any) => p.path === chat?.meta.workspace,
@@ -1216,6 +1221,23 @@ export function DialogView(props: any) {
                       </small>
                     </div>
                     <button
+                      className="icon"
+                      aria-label={tr("Show changes")}
+                      title={tr("Show changes since this restore point")}
+                      onClick={() =>
+                        call(async () =>
+                          setDrift(
+                            await api(
+                              `/api/sessions/${sid}/checkpoint-changes?task_id=` +
+                                encodeURIComponent(cp.id),
+                            ),
+                          ),
+                        )
+                      }
+                    >
+                      <GitCompare />
+                    </button>
+                    <button
                       disabled={cp.restored}
                       onClick={() =>
                         call(async () => {
@@ -1234,6 +1256,35 @@ export function DialogView(props: any) {
                     </button>
                   </div>
                 ))}
+                {drift && (
+                  <>
+                    <h3>
+                      {tr("Changes since")} {drift.label || drift.task_id}
+                    </h3>
+                    {!drift.files?.length && (
+                      <p className="muted">
+                        {tr("Nothing changed since this restore point.")}
+                      </p>
+                    )}
+                    {(drift.files || []).map((f: any) => (
+                      <button
+                        key={f.path}
+                        className="file-diff-link"
+                        title={tr("Show changes")}
+                        onClick={() =>
+                          setDialog({
+                            type: "diff",
+                            data: { path: f.path, task_id: drift.task_id },
+                          })
+                        }
+                      >
+                        <GitCompare />
+                        {f.path}
+                        <small>{tr(f.change)}</small>
+                      </button>
+                    ))}
+                  </>
+                )}
               </>
             )}
             {dialog.type === "queue-edit" && (
@@ -1284,7 +1335,7 @@ export function DialogView(props: any) {
                   <span className="spacer" />
                   <button
                     className="danger"
-                    disabled={!diff || diff.undone}
+                    disabled={!diff || diff.undone || diff.restorable === false}
                     onClick={() =>
                       call(async () => {
                         const result = await act("restore_file", {

@@ -161,6 +161,12 @@ def create_app(cfg=None, *, service=None):
         journal = ChangeJournal(session, workspace)
         return journal.file_diff(path, task_id)
 
+    @app.get("/api/sessions/{sid}/checkpoint-changes")
+    def checkpoint_changes(sid: str, task_id: str | None = None):
+        session = service.session(sid)
+        workspace = Path(session.meta.get("workspace") or session.dir)
+        return ChangeJournal(session, workspace).changed_since(task_id)
+
     @app.post("/api/sessions")
     def new_session(payload: dict):
         project = next((p for p in Projects(cfg).list_all() if p["id"] == payload.get("project_id")), None)
@@ -346,10 +352,7 @@ def create_app(cfg=None, *, service=None):
     def project_checks_status(project_id: str):
         from harness import project_checks
         project = _project_or_error(project_id)
-        workspace = Path(project["path"])
-        status = project_checks.read_status(workspace)
-        status["available"] = bool(project_checks.check_definitions(cfg, workspace))
-        return status
+        return project_checks.status(cfg, Path(project["path"]))
 
     @app.post("/api/projects/{project_id}/checks/run")
     def project_checks_run(project_id: str):
@@ -366,7 +369,13 @@ def create_app(cfg=None, *, service=None):
     def project_checks_fix(project_id: str):
         from harness import project_checks
         project = _project_or_error(project_id)
+        if not project_checks.check_definitions(cfg, Path(project["path"])):
+            raise ValueError("No project checks detected; add .qwen/project.yaml to define them")
         session = service.select_project(project["id"])
+        if session.meta.get("work_mode") != "development":
+            # The repair task needs the development toolset; start_project_check
+            # is not registered in discussion, research or writing chats.
+            session = service.new_session(project["path"], "development")
         service.submit(session.id, project_checks.FIX_PROMPT,
                        request_id=f"fix-{project['id']}-{int(time.time())}", delivery="queue")
         return {"session_id": session.id}

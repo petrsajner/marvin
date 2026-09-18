@@ -16,6 +16,7 @@ from pathlib import Path
 
 NO_WINDOW = 0x08000000
 SUMMARY_LINES = 30
+STATUS_WRITE_ATTEMPTS = 5
 
 _running: set[str] = set()
 _lock = threading.Lock()
@@ -43,18 +44,39 @@ def check_definitions(cfg, workspace: Path) -> list[dict]:
     return [item.as_dict() for item in ProjectProfile(workspace, python).checks()]
 
 
+# Outcome fields carried over from a persisted run onto the current definition.
+_OUTCOME_FIELDS = ("state", "exit_code", "time", "duration", "summary")
+
+
 def read_status(workspace: Path) -> dict:
+    """Raw persisted status, without merging in the current check definitions."""
     try:
         data = json.loads(status_path(workspace).read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        data = {}
-    key = str(Path(workspace).resolve()).lower()
-    with _lock:
-        running = key in _running
-    for row in data.get("checks", []):
-        if running and row.get("state") in ("pass", "fail", "timeout", "error", "never"):
-            continue
-    return {"updated": data.get("updated", 0), "checks": data.get("checks", []), "running": running}
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def status(cfg, workspace: Path) -> dict:
+    """Current check definitions merged with each check's persisted outcome.
+
+    A check that has never run reports state "never" so the UI can list the
+    detected checks before the first run; a stored outcome whose check no longer
+    exists is dropped instead of lingering in the panel."""
+    workspace = Path(workspace)
+    definitions = check_definitions(cfg, workspace)
+    stored = read_status(workspace)
+    saved = {row.get("id"): row for row in stored.get("checks", [])}
+    rows = []
+    for definition in definitions:
+        row = dict(definition)
+        for field in _OUTCOME_FIELDS:
+            if field in saved.get(definition["id"], {}):
+                row[field] = saved[definition["id"]][field]
+        row.setdefault("state", "never")
+        rows.append(row)
+    return {"updated": stored.get("updated", 0), "checks": rows,
+            "running": is_running(workspace), "available": bool(definitions)}
 
 
 def is_running(workspace: Path) -> bool:
@@ -63,9 +85,22 @@ def is_running(workspace: Path) -> bool:
 
 
 def _write_status(workspace: Path, rows: list[dict]) -> None:
+    """Persist the status, tolerating a concurrent reader.
+
+    On Windows os.replace fails while another handle holds the target open, and
+    the UI polls this file every couple of seconds for the whole run. Losing one
+    status write must never abort the run, so retry briefly and then give up."""
     from harness.changes import atomic_write_text
-    atomic_write_text(status_path(workspace),
-                      json.dumps({"updated": time.time(), "checks": rows}, ensure_ascii=False, indent=1))
+    payload = json.dumps({"updated": time.time(), "checks": rows},
+                         ensure_ascii=False, indent=1)
+    for attempt in range(STATUS_WRITE_ATTEMPTS):
+        try:
+            atomic_write_text(status_path(workspace), payload)
+            return
+        except OSError:
+            if attempt == STATUS_WRITE_ATTEMPTS - 1:
+                return
+            time.sleep(0.1 * (attempt + 1))
 
 
 def _run_one(workspace: Path, definition: dict) -> dict:
@@ -91,26 +126,40 @@ def _run_one(workspace: Path, definition: dict) -> dict:
 
 
 def run_checks(cfg, workspace: Path) -> bool:
-    """Start a background run of all project checks; False if one is already running."""
+    """Start a background run of all project checks; False if nothing can start.
+
+    Detection runs before the slot is claimed: a failure while detecting would
+    otherwise leave the project marked as running for the rest of the session,
+    rejecting every later run."""
     workspace = Path(workspace).resolve()
     key = str(workspace).lower()
+    definitions = check_definitions(cfg, workspace)
+    if not definitions:
+        return False
     with _lock:
         if key in _running:
             return False
         _running.add(key)
 
-    definitions = check_definitions(cfg, workspace)
-
     def worker() -> None:
         try:
-            rows = []
-            for definition in definitions:
-                _write_status(workspace, rows + [{**definition, "state": "running", "time": time.time()}])
-                rows.append(_run_one(workspace, definition))
+            # Every write carries all rows, so a poll during the run always sees
+            # each detected check with its real state.
+            rows = [{**definition, "state": "queued"} for definition in definitions]
             _write_status(workspace, rows)
+            for index, definition in enumerate(definitions):
+                rows[index] = {**definition, "state": "running", "time": time.time()}
+                _write_status(workspace, rows)
+                rows[index] = _run_one(workspace, definition)
+                _write_status(workspace, rows)
         finally:
             with _lock:
                 _running.discard(key)
 
-    threading.Thread(target=worker, name="project-checks", daemon=True).start()
+    try:
+        threading.Thread(target=worker, name="project-checks", daemon=True).start()
+    except RuntimeError:
+        with _lock:
+            _running.discard(key)
+        raise
     return True
