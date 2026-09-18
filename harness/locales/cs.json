@@ -660,7 +660,10 @@
     "Q8 · 128k · MTP": "Q8 · 128k · MTP",
     "Q8 · 96k · MTP": "Q8 · 96k · MTP",
     "Q8 · 64k · MTP": "Q8 · 64k · MTP",
-    "The MTP profile generates faster using the draft model. It needs about 2.6 GB of extra VRAM; the 1.4 GB draft model is downloaded automatically on the first start.": "Profil MTP generuje rychleji pomocí draft modelu. Potřebuje asi 2,6 GB dodatečné VRAM; 1,4 GB draft model se při prvním spuštění stáhne automaticky."
+    "The MTP profile generates faster using the draft model. It needs about 2.6 GB of extra VRAM; the 1.4 GB draft model is downloaded automatically on the first start.": "Profil MTP generuje rychleji pomocí draft modelu. Potřebuje asi 2,6 GB dodatečné VRAM; 1,4 GB draft model se při prvním spuštění stáhne automaticky.",
+    "Delete project": "Smazat projekt",
+    "Remove this project and its conversations? The folder stays on disk.": "Odebrat tento projekt a jeho konverzace? Složka zůstane na disku.",
+    "Remove project": "Odebrat projekt"
   },
   "legacy_profile_labels": {
     "16 bit - přesnější, kontext 128k": "16-bit - more precise, context 128k",

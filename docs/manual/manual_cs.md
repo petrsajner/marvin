@@ -282,9 +282,7 @@ Projekt může mít libovolný počet chatů. Každý má vlastní historii, re�
 
 ## Smazání projektu
 
-Klikněte **Smazat projekt i složku**, ověřte zobrazenou cestu a potvrďte v dialogu. Smaže se registrace, všechny chaty projektu, složka i veškerý obsah.
-
-> VAROVÁNÍ: Potvrzením se smaže i připojená externí složka. Nejde o odpojení. Kritické systémové cesty jsou blokované, ale cestu vždy zkontrolujte.
+Klikněte **Smazat projekt**, ověřte zobrazenou cestu a potvrďte v dialogu. U projektu vytvořeného v Marvinu se smaže registrace, všechny chaty projektu, složka i její obsah. U projektu připojeného z vlastní složky se smaže jen registrace a chaty projektu — **vaše složka a její obsah vždy zůstávají na disku**. Pokud by složku nešlo smazat, nic se neodebere a zobrazí se srozumitelná chyba.
 
 # 8. Správa chatů
 

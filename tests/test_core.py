@@ -119,8 +119,8 @@ def test_config() -> None:
     version_files = [p for p in _version_candidates() if p.exists()]
     installer_version = (version_files[0].read_text(encoding="utf-8").strip()
                          if version_files else "")
-    check(bool(installer_version) and APP_VERSION == installer_version and APP_VERSION == "1.10.1",
-          "The visible application version matches installer version 1.10.1")
+    check(bool(installer_version) and APP_VERSION == installer_version and APP_VERSION == "1.10.2",
+          "The visible application version matches installer version 1.10.2")
     invariants = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     check(all(item in invariants for item in (
         "Language servers or an LSP runtime/distribution layer",
@@ -1927,13 +1927,24 @@ def test_projects() -> None:
         check(s2.meta["workspace"] == str(ext), "Adoption preserves an existing project assignment")
         (ext / "external.txt").write_text("data", encoding="utf-8")
         pj.delete_by_path(str(ext.resolve()))
-        check(not ext.exists(), "Explicitly deleting an attached project removes its directory")
+        check(not pj.by_path(str(ext.resolve())) and (ext / "external.txt").is_file(),
+              "Removing an attached project keeps its folder and files on disk")
         protected = pj.attach_folder(str(tmp))
-        try:
-            pj.delete_by_path(protected["path"])
-            check(False, "The application root cannot be deleted as a project")
-        except ValueError:
-            check(tmp.exists(), "The application root cannot be deleted as a project")
+        pj.delete_by_path(protected["path"])
+        check(tmp.exists() and pj.by_path(str(tmp)) is None,
+              "Removing a project on a protected path unregisters it without touching disk")
+        # A locked managed folder reports a readable error and stays registered.
+        from unittest.mock import patch
+        locked = pj.create_new("Locked")
+        (Path(locked["path"]) / "file.txt").write_text("x", encoding="utf-8")
+        with patch("harness.projects.shutil.rmtree", side_effect=PermissionError(5, "Access is denied")):
+            try:
+                pj.delete_by_path(locked["path"])
+                check(False, "A locked project folder raises a readable error")
+            except ValueError as exc:
+                check("locked" in str(exc), f"A locked project folder raises a readable error ({exc})")
+        check(pj.by_path(locked["path"]) is not None,
+              "A failed folder deletion keeps the project registered")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

@@ -176,6 +176,7 @@ export function DialogView(props: any) {
               project: tr("Project"),
               chat: tr("Conversation"),
               "delete-chat": tr("Delete conversation"),
+              "delete-project": tr("Delete project"),
               library: tr("Project documents"),
               sources: tr("Sources"),
               checkpoints: tr("Restore points"),
@@ -782,7 +783,9 @@ export function DialogView(props: any) {
                       }
                     >
                       <Trash2 />
-                      {tr("Delete project and folder")}
+                      {project.managed
+                        ? tr("Delete project and folder")
+                        : tr("Remove project")}
                     </button>
                   </div>
                 )}
@@ -791,7 +794,9 @@ export function DialogView(props: any) {
             {dialog.type === "delete-project" && (
               <>
                 <p>
-                  {tr("Delete this project, its files and conversations?")}
+                  {dialog.data.managed
+                    ? tr("Delete this project, its files and conversations?")
+                    : tr("Remove this project and its conversations? The folder stays on disk.")}
                 </p>
                 <p className="path">{dialog.data.path}</p>
                 <button

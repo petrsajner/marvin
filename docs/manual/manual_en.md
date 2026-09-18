@@ -135,7 +135,7 @@ Work modes always appear in this order: **Discussion, Research, Writing, Develop
 
 Use **New chat** to create a conversation. Type into the title above the chat and press Enter to rename it. The chat's three-dot menu contains Move, Undo last turn, Branch, Export, and Delete. Selecting a destination moves the chat and updates its project context. Stop the chat's task before moving or deleting it.
 
-The three-dot menu beside the project selector creates a new project, attaches an existing folder, or deletes the selected project and its folder. Search in the left sidebar searches saved conversations.
+The three-dot menu beside the project selector creates a new project, attaches an existing folder, or removes the selected project. Attached folders are never deleted from disk. Search in the left sidebar searches saved conversations.
 
 ## Prompt, Attach, and image previews
 
@@ -376,13 +376,11 @@ In the chat's three-dot menu, open **Move to project** and select a target proje
 
 1. Select the project.
 2. Open the three-dot project menu.
-3. Click **Delete project + folder**.
+3. Click **Delete project**.
 4. Read the exact path shown.
 5. Click again within eight seconds to confirm.
 
-Deletion removes the project registry entry, every chat belonging to the project, the project folder, and all files inside it.
-
-> WARNING: Attached external folders are also deleted from disk when you confirm project deletion. This is not a detach operation. Critical paths such as the application root, projects root, filesystem root, and home directory are blocked, but you must still verify the displayed path.
+For a project created inside Marvin, deletion removes the project registry entry, every chat belonging to the project, the project folder and all files inside it. For a project attached from your own folder, deletion only removes the registry entry and the project's chats — **your folder and its contents always stay on disk**. If such a folder cannot be deleted for another reason, nothing is removed and a readable error is shown.
 
 If a folder was removed outside the application, the project is marked missing. Reattach or remove the stale project entry as appropriate.
 

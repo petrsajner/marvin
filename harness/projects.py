@@ -103,23 +103,32 @@ class Projects:
                 return
 
     def delete_by_path(self, path: str) -> dict:
-        """Remove a registered project and its entire workspace directory."""
+        """Unregister a project. Only Marvin-created project folders are deleted from disk.
+
+        Attached folders belong to the user; removing such a project never touches
+        their contents, whatever they contain (a repository, personal documents)."""
         items = self._load()
         project = next((item for item in items if item.get("path") == path), None)
         if project is None:
             raise ValueError("The project is not registered")
-        target = Path(project["path"]).resolve()
-        protected = [self.cfg.root.resolve(), self.root_dir.resolve(), Path.home().resolve()]
-        anchor = Path(target.anchor).resolve()
-        if target == anchor or any(target == item or item.is_relative_to(target)
-                                   for item in protected):
-            raise ValueError(f"Refusing to delete a protected directory: {target}")
-        if target.exists():
-            if target.is_symlink() or (hasattr(target, "is_junction") and target.is_junction()):
-                target.unlink() if target.is_symlink() else target.rmdir()
-            elif target.is_dir():
-                shutil.rmtree(target)
-            else:
-                raise ValueError(f"Project path is not a directory: {target}")
+        if project.get("managed"):
+            target = Path(project["path"]).resolve()
+            protected = [self.cfg.root.resolve(), self.root_dir.resolve(), Path.home().resolve()]
+            anchor = Path(target.anchor).resolve()
+            if target == anchor or any(target == item or item.is_relative_to(target)
+                                       for item in protected):
+                raise ValueError(f"Refusing to delete a protected directory: {target}")
+            if target.exists():
+                try:
+                    if target.is_symlink() or (hasattr(target, "is_junction") and target.is_junction()):
+                        target.unlink() if target.is_symlink() else target.rmdir()
+                    elif target.is_dir():
+                        shutil.rmtree(target)
+                    else:
+                        raise ValueError(f"Project path is not a directory: {target}")
+                except OSError as exc:
+                    raise ValueError(
+                        "The project folder could not be deleted because a file is locked "
+                        "or read-only; the project was not removed.") from exc
         self._save([item for item in items if item is not project])
         return project
