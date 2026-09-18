@@ -411,6 +411,99 @@ def attach_installer(backup: Path, installer: Path) -> dict[str, Any]:
     return manifest
 
 
+# Application-level files that a version bump replaces. Weights, llama.cpp and
+# WebView2 do not follow the application version and are deliberately excluded:
+# re-copying them would mean hours of I/O for identical bytes.
+APPLICATION_FILES = (
+    ("Marvin-Manual-EN.pdf", "output/pdf/Marvin-Manual-EN.pdf"),
+    ("Marvin-Manual-CS.pdf", "output/pdf/Marvin-Manual-CS.pdf"),
+    ("INSTALL-EN.md", "docs/distribution/INSTALL-EN.md"),
+    ("INSTALL-CS.md", "docs/distribution/INSTALL-CS.md"),
+    ("requirements.txt", "requirements.txt"),
+    ("requirements-windows-py312.lock", "requirements-windows-py312.lock"),
+)
+
+
+def refresh_backup(root: Path, backup: Path) -> dict[str, Any]:
+    """Bring an existing offline backup up to the application's current version.
+
+    Replaces only what a version bump actually changes and says which files those
+    were, so the answer is measured rather than assumed. The Python dependency
+    archive is rebuilt only when requirements or the lock really moved; leaving a
+    stale archive beside new requirements would make the backup inconsistent."""
+    root, backup = root.resolve(), backup.resolve()
+    manifest = load_manifest(backup)
+    version = _version(root)
+    records = {item["path"]: item for item in manifest["files"]}
+    changed: list[str] = []
+
+    def put(relative: str, source: Path, component: str) -> None:
+        digest = sha256_file(source)
+        current = records.get(relative)
+        if current and current.get("sha256") == digest and (backup / relative).is_file():
+            return
+        _copy_with_hash(source, backup / relative)
+        records[relative] = {"path": relative, "size": source.stat().st_size,
+                             "sha256": digest, "component": component}
+        changed.append(relative)
+
+    installer = root / "dist" / f"Marvin-Setup-{version}-Full.exe"
+    if not installer.is_file():
+        installer = root / "dist" / f"Marvin-Setup-{version}-Minimal.exe"
+    if not installer.is_file():
+        raise FileNotFoundError(f"No Setup executable for {version} in {root / 'dist'}")
+    for stale in sorted(backup.glob("Marvin-Setup-*.exe")):
+        if stale.name != installer.name:
+            stale.unlink()
+            records.pop(stale.name, None)
+            changed.append("removed " + stale.name)
+    put(installer.name, installer, "installer")
+
+    for relative, source in APPLICATION_FILES:
+        candidate = root / source
+        if candidate.is_file():
+            put(relative, candidate, "metadata")
+
+    requirements = root / "requirements.txt"
+    lock = root / "requirements-windows-py312.lock"
+    requirements_digest = sha256_file(requirements)
+    lock_digest = sha256_file(lock) if lock.is_file() else None
+    if (manifest.get("requirements_sha256") != requirements_digest
+            or manifest.get("lock_sha256") != lock_digest):
+        site_packages = root / ".venv" / "Lib" / "site-packages"
+        if not site_packages.is_dir():
+            raise FileNotFoundError(f"Installed Python dependencies not found: {site_packages}")
+        print("[REFRESH] Dependencies moved - rebuilding the archive ...")
+        size, digest = _create_dependency_archive(site_packages, backup / DEPENDENCY_ARCHIVE)
+        records[DEPENDENCY_ARCHIVE.as_posix()] = {
+            "path": DEPENDENCY_ARCHIVE.as_posix(), "size": size, "sha256": digest,
+            "component": "python-dependencies"}
+        changed.append(DEPENDENCY_ARCHIVE.as_posix())
+    else:
+        print("[REFRESH] Requirements and lock unchanged - dependency archive kept")
+
+    readme = backup / "README-OFFLINE.txt"
+    _write_readme(readme)
+    readme_digest = sha256_file(readme)
+    if records.get("README-OFFLINE.txt", {}).get("sha256") != readme_digest:
+        changed.append("README-OFFLINE.txt")
+    records["README-OFFLINE.txt"] = {"path": "README-OFFLINE.txt",
+                                     "size": readme.stat().st_size,
+                                     "sha256": readme_digest, "component": "metadata"}
+
+    manifest.update(app_version=version, requirements_sha256=requirements_digest,
+                    lock_sha256=lock_digest,
+                    updated=time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                    files=list(records.values()))
+    path = backup / MANIFEST_NAME
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(temporary, path)
+    print(f"[DONE] Offline backup refreshed to {version}; changed: "
+          + (", ".join(changed) if changed else "nothing"))
+    return manifest
+
+
 def _main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -426,6 +519,9 @@ def _main() -> int:
                          help="comma-separated components (models,llama,python-dependencies)")
     info = sub.add_parser("info")
     info.add_argument("--backup", required=True)
+    refresh = sub.add_parser("refresh")
+    refresh.add_argument("--backup", required=True)
+    refresh.add_argument("--root", default=str(Path(__file__).resolve().parent.parent))
     attach = sub.add_parser("attach-installer")
     attach.add_argument("--backup", required=True)
     attach.add_argument("--installer", required=True)
@@ -441,6 +537,8 @@ def _main() -> int:
             restore_backup(Path(args.root), Path(args.backup), selected)
         elif args.command == "info":
             print(json.dumps(backup_info(Path(args.backup)), ensure_ascii=False, indent=2))
+        elif args.command == "refresh":
+            refresh_backup(Path(args.root), Path(args.backup))
         elif args.command == "attach-installer":
             attach_installer(Path(args.backup), Path(args.installer))
         return 0

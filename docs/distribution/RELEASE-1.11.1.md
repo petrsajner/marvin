@@ -102,5 +102,22 @@ a tight loop over the runtime, check and session-detail endpoints.
 | Full | 940,780,529 | `92344cba6d94c736249e103a3d61647111ea6164a1a79ce26a9f6ec99a61daf6` |
 | ZIP | 993,440,032 | `004a6d48b18ae660060f8a0f2a4d1768f1fde1627ee18b1239260f27b1e53fc0` |
 
-The offline backup still carries the 1.11.0 Full installer and manuals
-(`app_version: 1.11.0`); refreshing it to 1.11.1 is a separate step.
+## Applied
+
+- The owner's installation was upgraded with `Marvin-Setup-1.11.1-Full.exe`
+  (`/VERYSILENT`, exit 0). Conversations, projects, configuration and the
+  downloaded models were retained; the installed code matches the source tree and
+  the installation passes 368 core checks plus 101 service tests with its own
+  interpreter.
+- `Marvin-Offline-Backup-1.11.0` was renamed in place to
+  `Marvin-Offline-Backup-1.11.1` and refreshed. A version bump was previously an
+  ad hoc copy, which left it unclear what actually needed replacing, so
+  `offline_backup.py` gained a `refresh` command that does exactly the
+  application-level files and reports which ones it touched. For 1.11.1 that was
+  four: the 1.11.0 Full installer removed, the 1.11.1 Full installer added, and
+  both manuals replaced. `requirements.txt` and the lock are byte-identical, so
+  the Python dependency archive was deliberately kept; weights, llama.cpp and
+  WebView2 were never candidates. 86 manifest entries with nothing missing and no
+  orphan files; every replaced file plus an untouched anchor re-hashed correctly.
+  A full 210 GiB verification pass was not run - it is available as
+  `offline_backup.py verify --backup <path>`.
