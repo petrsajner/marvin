@@ -18,6 +18,7 @@ import {
   Play,
   RotateCw,
   CircleDashed,
+  Lightbulb,
   Wrench,
   X,
   Copy,
@@ -1088,7 +1089,7 @@ export function App() {
                       onClick={() => fileRef.current?.click()}
                     >
                       <Paperclip />
-                      Attach
+                      {tr("Attach")}
                     </button>
                     <input
                       ref={fileRef}
@@ -1100,6 +1101,13 @@ export function App() {
                         e.target.value = "";
                       }}
                     />
+                    <button
+                      className="attach"
+                      onClick={() => setDialog({ type: "capabilities" })}
+                    >
+                      <Lightbulb />
+                      {tr("What can I ask for?")}
+                    </button>
                     <select
                       aria-label={tr("Thinking")}
                       value={app.preferences.thinking}
@@ -1674,6 +1682,11 @@ export function App() {
           pick={pick}
           runtime={runtime}
           runtimeCommand={runtimeCommand}
+          setText={setText}
+          openPanel={(name: string) => {
+            setTab(name);
+            setPanel(true);
+          }}
         />
       )}
       <ActivityFeedback cs={cs} />

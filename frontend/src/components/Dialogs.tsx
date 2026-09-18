@@ -23,6 +23,7 @@ import {
   Download,
   History,
   GitCompare,
+  Lightbulb,
   Brain,
   HardDrive,
   ChevronDown,
@@ -61,6 +62,21 @@ import { DecisionEditor } from "./Decisions";
 import { ModelStatus } from "./ModelStatus";
 import { OperationProgress } from "./OperationProgress";
 
+const CAPABILITY_CATEGORIES: Record<string, string> = {
+  documents: "Documents",
+  finding: "Finding and memory",
+  web: "Internet",
+  images: "Pictures and screen",
+  project: "Working on a project",
+  long_work: "Longer work",
+  skills: "Skills",
+};
+
+function modeLabel(app: any, id: string, tr: (value: string) => string): string {
+  const found = (app?.modes || []).find((m: any) => m.id === id);
+  return found ? tr(found.label) : id;
+}
+
 export function DialogView(props: any) {
   const {
     dialog,
@@ -80,6 +96,8 @@ export function DialogView(props: any) {
     pick,
     runtime,
     runtimeCommand,
+    setText,
+    openPanel,
   } = props;
   const [content, setContent] = useState(""),
     [name, setName] = useState(""),
@@ -91,16 +109,40 @@ export function DialogView(props: any) {
     [format, setFormat] = useState("pdf"),
     [diff, setDiff] = useState<any>(null),
     [drift, setDrift] = useState<any>(null),
+    [capabilities, setCapabilities] = useState<any>(null),
+    [everyMode, setEveryMode] = useState(false),
     [diffMode, setDiffMode] = useState("split"),
     [busy, setBusy] = useState(false);
   const memoryDirty = useRef(false);
   useEffect(() => {
     if (dialog.type !== "checkpoints") setDrift(null);
   }, [dialog.type]);
+  useEffect(() => {
+    if (dialog.type !== "capabilities") return;
+    setEveryMode(false);
+    api("/api/capabilities?mode=" + (chat?.meta.work_mode || "discussion"))
+      .then(setCapabilities)
+      .catch(error);
+  }, [dialog.type, chat?.meta.work_mode, error]);
   const section = dialog.section || "model";
   const project = app.projects.find(
     (p: any) => p.path === chat?.meta.workspace,
   );
+  const useExample = (example: string) => {
+    setText((previous: string) =>
+      previous.trim() ? previous.trimEnd() + "\n" + example : example,
+    );
+    close();
+  };
+  const openTarget = (opens: string) => {
+    const [kind, name] = opens.split(":");
+    if (kind === "settings") setDialog({ type: "settings", section: name });
+    else if (kind === "dialog") setDialog({ type: name });
+    else if (kind === "panel") {
+      openPanel(name);
+      close();
+    }
+  };
   const call = async (fn: () => Promise<any>) => {
     setBusy(true);
     try {
@@ -193,6 +235,7 @@ export function DialogView(props: any) {
               decisions: tr("Project decisions"),
               "queue-edit": tr("Queued message"),
               diff: (dialog.data?.path || "").split(/[\\/]/).pop() || tr("Changes"),
+              capabilities: tr("What can I ask for?"),
             } as any
           )[dialog.type] || dialog.type;
   const settingsSections = [
@@ -1316,6 +1359,74 @@ export function DialogView(props: any) {
             )}
             {dialog.type === "process-output" && (
               <pre className="document-preview">{content}</pre>
+            )}
+            {dialog.type === "capabilities" && (
+              <>
+                <p className="muted">
+                  {tr(
+                    "Ask for these in your own words; the example is only a starting point.",
+                  )}
+                </p>
+                <button
+                  className="outline"
+                  onClick={() => setEveryMode(!everyMode)}
+                >
+                  {everyMode ? tr("Only this mode") : tr("Show everything")}
+                </button>
+                {(capabilities?.categories || []).map((category: string) => {
+                  const rows = (capabilities?.capabilities || []).filter(
+                    (c: any) =>
+                      c.category === category && (everyMode || c.available),
+                  );
+                  if (!rows.length) return null;
+                  return (
+                    <div key={category}>
+                      <h3>{tr(CAPABILITY_CATEGORIES[category] || category)}</h3>
+                      {rows.map((c: any) => (
+                        <div className="file-row" key={c.id}>
+                          <Lightbulb />
+                          <div>
+                            <strong>{tr(c.title)}</strong>
+                            <small>{tr(c.summary)}</small>
+                            <small>
+                              {c.available
+                                ? tr(c.example)
+                                : tr("Available in another work mode") +
+                                  ": " +
+                                  modeLabel(app, c.modes[0], tr)}
+                            </small>
+                          </div>
+                          {c.opens && c.available && (
+                            <button
+                              className="icon"
+                              aria-label={tr("Open")}
+                              title={tr("Open")}
+                              onClick={() => openTarget(c.opens)}
+                            >
+                              <ExternalLink />
+                            </button>
+                          )}
+                          <button
+                            onClick={() =>
+                              c.available
+                                ? useExample(tr(c.example))
+                                : call(async () => {
+                                    await act("mode", { mode: c.modes[0] });
+                                    await refresh();
+                                    close();
+                                  })
+                            }
+                          >
+                            {c.available
+                              ? tr("Use this")
+                              : tr("Switch the chat to this mode")}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </>
             )}
             {dialog.type === "diff" && (
               <>

@@ -71,6 +71,41 @@ from an invisible omission into a failing test.
 Availability is computed against `build_registry` at request time, not stored, so
 an entry whose tools are missing reports as unavailable instead of lying.
 
+**What the tests do not catch.** They detect structural drift - a tool vanishing,
+or a new tool nobody decided to advertise. They cannot detect semantic drift: a
+tool that still exists but now behaves differently, leaving the description
+quietly wrong. No test can. The mitigation is editorial: entries describe an
+outcome ("find something in your files"), never a mechanism ("hybrid FTS5 and
+vector retrieval"). Outcomes age far more slowly.
+
+## A directory, not a second door
+
+Where a capability already has its own place in the interface, the entry links to
+it and never reimplements it. Memory has its editor in Settings; task changes and
+restore points have the Results and Progress panels; skills have their list in
+Settings. The catalogue points at those.
+
+This is what keeps the catalogue from colliding with what already works: a second
+implementation never appears, so there is nothing for the existing one to fight
+with. The `opens` field on an entry carries that target.
+
+## Capabilities that are really modes
+
+Some capabilities are not produced by phrasing a request differently - they are
+produced by the work mode. Research is the clear case. Asking for research in
+Discussion yields web search and a good answer; Research mode additionally opens a
+source ledger, plans sub-questions *before* the first search, and forces a final
+synthesis that must cite every source it loaded (`agent.py` lines 351, 613, 728).
+
+An entry whose modes exclude the current one therefore must not insert a prompt -
+that would promise a result the current mode cannot deliver. It offers the mode
+switch instead.
+
+This falls out of the availability rule rather than needing a special case, and it
+turns the overlap into the most useful entry in the catalogue: work modes are
+themselves undiscovered, and a user who does not program has no reason to guess
+why they would leave Discussion.
+
 ## Backend
 
 `harness/capabilities.py`

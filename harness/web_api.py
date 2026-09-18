@@ -150,6 +150,11 @@ def create_app(cfg=None, *, service=None):
                     "before": start if start else None, "total": len(messages), "live": live,
                     "draft": read_json(session.dir / "draft.json"), "jobs": jobs}
 
+    @app.get("/api/capabilities")
+    def capabilities(mode: str = "discussion"):
+        from harness import capabilities as catalogue
+        return catalogue.catalogue(mode)
+
     @app.get("/api/sessions/{sid}/detail")
     def detail(sid: str):
         return session_detail(service, service.session(sid))
