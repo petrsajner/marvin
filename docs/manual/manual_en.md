@@ -187,7 +187,7 @@ Click the settings icon or the model status in the top bar. Settings are grouped
 - **Model and device**: model, KV profile, vision capability, GPU memory choice, runtime diagnostics, Start / Stop / Restart.
 - **Behavior**: autonomy and default handling of messages sent during work.
 - **Memory and skills**: edit global, mode, and project memory; read or use a skill; design a skill; open user and project skill folders.
-- **Data and backups**: export/import a complete project, import chat JSONL, create/select/verify the local runtime backup, and monitor maintenance operations.
+- **Data and backups**: choose where new projects are created, export/import a complete project, import chat JSONL, create/select/verify the local runtime backup, and monitor maintenance operations.
 - **Appearance and language**: dark, light, or system appearance; spacing; English or Czech.
 - **Help and manuals**: both PDF manuals and the slash command reference.
 
@@ -397,6 +397,17 @@ Choose **No project** for conversations that should not access a project folder.
 3. Enter a project name and confirm.
 
 The application creates a new folder under its `projects` directory, registers it, creates project memory when needed, and uses it as the workspace.
+
+## Where new projects are created
+
+**Settings > Data and backups** chooses the folder for projects created by name.
+Until it is set they are created beside the installation. The folder has to exist,
+be writable, and lie outside the model runtime and the conversation history;
+anything else is refused with the reason.
+
+Changing it moves nothing. Projects that already exist keep the folder they were
+created in and continue to work from there - only the next one goes to the new
+place.
 
 ## Attaching an existing folder
 
@@ -773,6 +784,13 @@ The harness maps screenshot coordinates back to the real display resolution.
 - Scroll up/down at an optional location.
 - Type ASCII directly or paste Unicode/long text through the clipboard.
 - Press keys and combinations such as Enter, Escape, Ctrl+S, Alt+F4, or Win+D.
+  Keys go out as hardware scancodes, which games and other SDL or DirectInput
+  windows require: they identify keys by scancode and ignore a key sent without
+  one, which is why such a window used to react to nothing at all. A key is also
+  held down briefly so it cannot pass between two of the window's checks. If a
+  game still does not respond, ask for a longer hold; the older delivery path
+  stays available for the rare window that prefers it. The upper-left-corner
+  failsafe applies to both.
 
 ## Failsafe
 

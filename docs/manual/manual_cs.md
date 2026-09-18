@@ -179,7 +179,7 @@ Klikněte na ikonu nastavení nebo stav modelu nahoře. Nastavení je rozdělen�
 - **Model a zařízení**: model, KV profil, vision, paměť GPU, provozní diagnostika a Start / Stop / Restart.
 - **Chování**: autonomie a výchozí zacházení se zprávou přidanou během práce.
 - **Paměť a skilly**: úprava globální, režimové a projektové paměti; čtení, použití a návrh skillu; otevření uživatelské i projektové složky skillů.
-- **Data a zálohy**: export/import celého projektu, import JSONL chatu, vytvoření/výběr/kontrola lokální zálohy prostředí a stav údržby.
+- **Data a zálohy**: volba složky pro nové projekty, export/import celého projektu, import JSONL chatu, vytvoření/výběr/kontrola lokální zálohy prostředí a stav údržby.
 - **Vzhled a jazyk**: tmavý, světlý nebo systémový vzhled, rozestupy, angličtina a čeština.
 - **Nápověda a manuály**: oba PDF manuály a reference lomítkových příkazů.
 
@@ -315,6 +315,16 @@ Každý chat si pamatuje vlastní režim. Režimy jsou profily schopností stejn
 V třítečkovém menu vedle projektu vytvořte spravovaný projekt nebo pomocí **Připojit existující složku** zaregistrujte adresář bez kopírování.
 
 Projekt může mít libovolný počet chatů. Každý má vlastní historii, režim, kompresi, pins, research a task state; sdílejí složku a projektovou paměť.
+
+## Kde se zakládají nové projekty
+
+V **Nastavení > Data a zálohy** zvolíte složku pro projekty zakládané podle jména.
+Dokud není nastavená, vznikají vedle instalace. Složka musí existovat, být
+zapisovatelná a ležet mimo modelový runtime i historii konverzací; cokoli jiného
+se odmítne s uvedeným důvodem.
+
+Změna nic nepřesouvá. Už existující projekty si svou složku nechají a dál z ní
+fungují — nové místo platí až pro další projekt.
 
 ## Bez projektu a přesun chatu
 
@@ -546,7 +556,14 @@ Harness přepočítá souřadnice obrázku na skutečné rozlišení primárníh
 - Levé, pravé, prostřední kliknutí a dvojklik.
 - Scroll na volitelné pozici.
 - Přímé psaní ASCII nebo vložení Unicode/dlouhého textu přes schránku.
-- Klávesy a kombinace jako Enter, Escape, Ctrl+S, Alt+F4 nebo Win+D.
+- Klávesy a kombinace jako Enter, Escape, Ctrl+S, Alt+F4 nebo Win+D. Klávesy
+  odcházejí jako hardwarové scancody, které hry a další okna na SDL nebo
+  DirectInput vyžadují: rozlišují klávesy podle scancodu a klávesu bez něj
+  ignorují, což je důvod, proč takové okno dřív nereagovalo na nic. Klávesa se
+  navíc chvíli drží stisknutá, aby neproletěla mezi dvěma dotazy okna. Když hra
+  pořád nereaguje, lze si vyžádat delší podržení; pro vzácné okno, které to
+  preferuje, zůstává k dispozici i starší způsob. Failsafe levého horního rohu
+  platí pro oba.
 
 ## Failsafe
 
