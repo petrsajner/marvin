@@ -1,4 +1,4 @@
-"""Validate the release ZIP and restore backup dependencies into a fresh venv."""
+"""Validate the staged release assets and restore backup dependencies into a fresh venv."""
 from __future__ import annotations
 
 import argparse
@@ -9,11 +9,41 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from scripts.offline_backup import load_manifest, restore_backup
+
+# Exactly what a release publishes. A ZIP holding the same installers and manuals
+# used to be published beside them; it compressed by 0.1% and doubled the upload.
+RELEASE_ASSETS = ("Marvin-Setup-Minimal.exe", "Marvin-Setup-Full.exe",
+                  "Marvin-Manual-EN.pdf", "Marvin-Manual-CS.pdf",
+                  "Marvin-Workspace.jpg", "SHA256SUMS.txt")
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def check_release_assets(version: str) -> Path:
+    """The staged directory must be what gets published, and hash to its own sums."""
+    staged = ROOT / "dist" / f"release-{version}"
+    assert staged.is_dir(), f"Run scripts/package_distribution.ps1 first: {staged}"
+    present = sorted(item.name for item in staged.iterdir() if item.is_file())
+    assert present == sorted(RELEASE_ASSETS), f"Unexpected release payload: {present}"
+    listed = {}
+    for line in (staged / "SHA256SUMS.txt").read_text(encoding="ascii").splitlines():
+        digest, name = line.split("  ", 1)
+        listed[name] = digest
+    expected = sorted(name for name in RELEASE_ASSETS if name != "SHA256SUMS.txt")
+    assert sorted(listed) == expected, "SHA256SUMS does not cover exactly the assets"
+    for name, digest in listed.items():
+        assert sha256_file(staged / name) == digest, name
+    return staged
 
 
 def main():
@@ -21,13 +51,7 @@ def main():
     parser.add_argument("--backup", type=Path, required=True)
     args = parser.parse_args()
     version = (ROOT / "installer/version.txt").read_text().strip()
-    archive_path = ROOT / "dist" / f"Marvin-{version}-Windows-x64.zip"
-    with zipfile.ZipFile(archive_path) as archive:
-        assert archive.testzip() is None, "Release ZIP CRC failure"
-        for line in archive.read("SHA256SUMS.txt").decode("ascii").splitlines():
-            digest, filename = line.split("  ", 1)
-            assert hashlib.sha256(archive.read(filename)).hexdigest() == digest, filename
-        assert len(archive.namelist()) == 7, "Unexpected distribution payload"
+    staged = check_release_assets(version)
     manifest = load_manifest(args.backup)
     assert manifest["requirements_sha256"] == hashlib.sha256((ROOT / "requirements.txt").read_bytes()).hexdigest()
     assert manifest.get("lock_sha256"), "Backup must include the current dependency lock"
@@ -78,7 +102,9 @@ print(json.dumps({'clean_venv': True, 'locked_packages': True, 'api': True, 'com
         completed = subprocess.run([str(stage / ".venv/Scripts/python.exe"), "-c", probe],
                                    cwd=stage, text=True, capture_output=True, check=True)
         print(completed.stdout)
-        report = {"version": version, "distribution_zip": "verified", "backup_dependencies": "restored",
+        report = {"version": version, "release_assets": sorted(
+                      item.name for item in staged.iterdir() if item.is_file()),
+                  "backup_dependencies": "restored",
                   "fresh_environment": json.loads(completed.stdout.strip().splitlines()[-1]),
                   "scope": "Fresh venv and staged app API, not a clean Windows VM or actual installer execution"}
         (ROOT / "runtime" / f"distribution-check-{version}.json").write_text(json.dumps(report, indent=2), encoding="utf-8")

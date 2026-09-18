@@ -151,13 +151,14 @@ and harness intelligence, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## Installation (one time)
 
 For a Windows installer distribution, see the [English installation guide](docs/distribution/INSTALL-EN.md)
-or [Czech installation guide](docs/distribution/INSTALL-CS.md). The release ZIP contains Setup,
-both PDF manuals and SHA-256 checksums. Model weights are downloaded during setup or
-restored from the separate `QwenHarness-Offline-Backup` directory; no personal data
-is included in the distribution.
+or [Czech installation guide](docs/distribution/INSTALL-CS.md). Each release publishes
+both installers, both PDF manuals and a SHA-256 checksum file. Model weights are
+downloaded during setup or restored from the separate `QwenHarness-Offline-Backup`
+directory; no personal data is included in the distribution.
 
-Release packaging after `installer/release.bat`: run `scripts/package_distribution.ps1`.
-Validate the ZIP and a clean Python dependency restore with
+Release packaging after `installer/release.bat`: run `scripts/package_distribution.ps1`,
+which stages the published assets under their release names and writes their checksums.
+Validate the staged assets and a clean Python dependency restore with
 `python tests/check_distribution.py --backup <backup-directory>`.
 
 **Minimal installer prerequisite:** install 64-bit **Python 3.12** from
