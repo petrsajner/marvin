@@ -136,7 +136,8 @@ class Agent:
                  abort_flag: threading.Event | None = None,
                  process_manager: ProcessManager | None = None,
                  browser_manager: Any | None = None,
-                 work_mode: str | None = None):
+                 work_mode: str | None = None,
+                 may_abort_prefill: Callable[[], bool] | None = None):
         self.cfg = cfg
         self.llm = llm
         self.session = session
@@ -150,6 +151,8 @@ class Agent:
             llm.on_prompt_progress = lambda progress: self.emit("prompt_progress", progress)
             llm.on_generation_started = lambda: self.emit("generation_started", None)
         self.abort_flag = abort_flag or threading.Event()
+        # Whether an interruption may cut the prompt read short. See llm.stream.
+        self.may_abort_prefill = may_abort_prefill
         configured_workspace = cfg.agent.get("workspace")
         candidate_workspace = (Path(configured_workspace).resolve()
                                if configured_workspace else None)
@@ -641,6 +644,7 @@ class Agent:
                 on_tool_delta=lambda name, args: self.emit("tool_delta", (name, args)),
                 on_prompt_progress=lambda progress: self.emit("prompt_progress", progress),
                 should_stop=self.abort_flag.is_set,
+                may_abort_prefill=self.may_abort_prefill,
             )
         except KeyboardInterrupt:
             raise

@@ -44,6 +44,10 @@ class ApplicationService:
         self.live: dict[str, dict] = {}
         self.active: dict | None = None
         self.abort = threading.Event()
+        # Why the current run was interrupted: "stop", "steer" or nothing. A stop
+        # takes effect at once; a clarification waits for the prompt read so the
+        # cached prefix survives.
+        self.abort_reason = ""
         self.models = ModelSwitchController(cfg)
         self.store = EventStore(cfg.path("paths.runtime_dir") / "application.sqlite3")
         self.preferences_path = cfg.path("paths.runtime_dir") / "workspace-settings.json"
@@ -283,7 +287,13 @@ class ApplicationService:
             if (self.active and self.active["session_id"] == session_id
                     and delivery == "steer" and kind == "message" and not text.startswith("/")):
                 status = "steering"
+                self.abort_reason = "steer"
                 self.abort.set()
+                if (self.live.get(session_id) or {}).get("phase") == "reading_context":
+                    # Say so, or the silence looks like the message was lost.
+                    self.store.emit(session_id, "notice", {
+                        "kind": "steer_deferred", "text": "",
+                        "run_id": self.active["id"], "created": time.time()})
             self.store.save_job(job, status)
             self.store.emit(session_id, "submission", {"id": request_id, "status": status, **job})
             self.wake.notify_all()
@@ -304,6 +314,7 @@ class ApplicationService:
         with self.lock:
             if self.active and (not session_id or self.active["session_id"] == session_id):
                 self.queue_paused = True
+                self.abort_reason = "stop"
                 self.abort.set()
                 self.store.emit(self.active["session_id"], "run_status", {"status": "stopping", "run_id": self.active["id"]})
                 return True
@@ -346,6 +357,7 @@ class ApplicationService:
                 job = jobs[0]["payload"]
                 self.active = job
                 self.abort = threading.Event()
+                self.abort_reason = ""
                 self.store.save_job(job, "running")
             try:
                 self._drive(job)
@@ -625,6 +637,7 @@ class ApplicationService:
         agent = Agent(cfg, llm, session, build_registry(spec.agent_mode, mode),
                       SafetyPolicy(autonomy=cfg.agent["autonomy"]), mode=spec.agent_mode,
                       work_mode=mode, abort_flag=self.abort, on_event=event,
+                      may_abort_prefill=lambda: self.abort_reason != "steer",
                       process_manager=previous_agent.ctx.processes if previous_agent else None,
                       browser_manager=previous_agent.ctx.browser if previous_agent else None)
         if not session.meta.get("workspace"):
@@ -709,6 +722,7 @@ class ApplicationService:
                         self.store.save_job(addition, "complete")
                     capture_context()
                     self.abort.clear()
+                    self.abort_reason = ""
                     continue
                 if result.status is Status.CONTINUE:
                     continue
@@ -782,6 +796,7 @@ class ApplicationService:
     def close(self):
         with self.wake:
             self.closed = True
+            self.abort_reason = "stop"
             self.abort.set()
             self.wake.notify_all()
         self.worker.join(timeout=3)

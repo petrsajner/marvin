@@ -618,6 +618,125 @@ class TransportTests(unittest.TestCase):
         timer.join()
 
 
+class PrefillInterruptionTests(unittest.TestCase):
+    """Measured on a 109k context: interrupting the prompt read cost the whole
+    cached prefix and a quarter of an hour to rebuild it. A clarification has to
+    wait for the prefill; an explicit stop must not."""
+
+    @staticmethod
+    def _chunk(text=None, progress=None):
+        delta = SimpleNamespace(content=text, tool_calls=None,
+                                reasoning_content=None, reasoning=None)
+        return SimpleNamespace(
+            choices=[SimpleNamespace(delta=delta)] if text is not None else [],
+            prompt_progress=progress, timings=None, usage=None)
+
+    def _client(self, chunks, interrupt_after=1):
+        """A client whose interruption arrives while the prompt is being read."""
+        from harness.config import Config, load_config
+        from harness.llm import LLMClient
+        cfg = Config(copy.deepcopy(load_config().data), Path("."))
+        client = LLMClient(cfg)
+        state = {"stop": False, "delivered": 0, "closed": False}
+
+        class Stream:
+            """Closeable like the SDK response the client expects."""
+
+            def __iter__(self):
+                for chunk in chunks:
+                    state["delivered"] += 1
+                    if state["delivered"] >= interrupt_after:
+                        state["stop"] = True
+                    yield chunk
+
+            def close(self):
+                state["closed"] = True
+
+        def create(**params):
+            return Stream()
+
+        client.client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+        return client, state
+
+    def test_a_clarification_waits_for_the_prompt_read(self):
+        chunks = [self._chunk(progress={"total": 100, "processed": 50}),
+                  self._chunk(progress={"total": 100, "processed": 100}),
+                  self._chunk("Hello."),
+                  self._chunk(" More.")]
+        client, state = self._client(chunks)
+        result = client.stream([{"role": "user", "content": "x"}],
+                               should_stop=lambda: state["stop"],
+                               may_abort_prefill=lambda: False)
+        # The read was allowed to finish, so the answer actually started.
+        self.assertTrue(result.stopped)
+        self.assertIn("Hello.", result.content)
+
+    def test_an_explicit_stop_does_not_wait(self):
+        chunks = [self._chunk(progress={"total": 100, "processed": 50}),
+                  self._chunk(progress={"total": 100, "processed": 100}),
+                  self._chunk("Hello.")]
+        client, state = self._client(chunks)
+        result = client.stream([{"role": "user", "content": "x"}],
+                               should_stop=lambda: state["stop"],
+                               may_abort_prefill=lambda: True)
+        self.assertTrue(result.stopped)
+        self.assertEqual(result.content, "")
+
+    def test_without_a_policy_nothing_changes(self):
+        chunks = [self._chunk(progress={"total": 100, "processed": 50}),
+                  self._chunk("Hello.")]
+        client, state = self._client(chunks)
+        result = client.stream([{"role": "user", "content": "x"}],
+                               should_stop=lambda: state["stop"])
+        self.assertTrue(result.stopped)
+        self.assertEqual(result.content, "")
+
+
+class StopReasonTests(unittest.TestCase):
+    """The reason for an interruption decides whether the prefill may be cut."""
+
+    def _service(self, directory):
+        data = copy.deepcopy(load_config().data)
+        data["agent"].update(workspace=None, autonomy="auto")
+        return ApplicationService(Config(data, Path(directory)),
+                                  llm_factory=lambda c: None, manage_model=False)
+
+    def test_stop_and_steer_record_different_reasons(self):
+        with tempfile.TemporaryDirectory() as directory:
+            service = self._service(directory)
+            try:
+                self.assertEqual(service.abort_reason, "")
+                session = service.new_session(work_mode="discussion")
+                service.active = {"id": "run-1", "session_id": session.id, "text": ""}
+
+                service.submit(session.id, "a clarification", delivery="steer")
+                self.assertEqual(service.abort_reason, "steer")
+                self.assertTrue(service.abort.is_set())
+
+                service.stop(session.id)
+                self.assertEqual(service.abort_reason, "stop")
+            finally:
+                service.active = None
+                service.close()
+                service.models.wait(3)
+
+    def test_a_steering_message_during_the_prompt_read_says_it_is_waiting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            service = self._service(directory)
+            try:
+                session = service.new_session(work_mode="discussion")
+                service.active = {"id": "run-1", "session_id": session.id, "text": ""}
+                service.live[session.id] = {"phase": "reading_context"}
+                service.submit(session.id, "a clarification", delivery="steer")
+                kinds = [n.get("kind") for n in service.store.notices(session.id)]
+                self.assertIn("steer_deferred", kinds)
+            finally:
+                service.active = None
+                service.close()
+                service.models.wait(3)
+
+
 class FailureAdviceTests(unittest.TestCase):
     """A failed task has to leave something the user can act on."""
 

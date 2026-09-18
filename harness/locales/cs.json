@@ -796,7 +796,11 @@
     "The graphics card ran out of memory. A smaller context or a smaller model will finish the task.": "Grafické kartě došla paměť. Menší kontext nebo menší model úlohu dokončí.",
     "This project has no tests Marvin can recognise. The agent can add them, or you can name your own in .qwen/project.yaml.": "Tenhle projekt nemá testy, které by Marvin poznal. Agent je může doplnit, nebo si vlastní pojmenuj v .qwen/project.yaml.",
     "The check ran out of time. Give it a longer timeout in .qwen/project.yaml, or let the agent find out why it hangs.": "Kontrole došel čas. Dej jí delší timeout v .qwen/project.yaml, nebo nech agenta zjistit, proč se zasekává.",
-    "The check could not start at all. Its command may be wrong, or the program it needs is not installed.": "Kontrola se vůbec nespustila. Její příkaz může být špatně, nebo není nainstalovaný program, který potřebuje."
+    "The check could not start at all. Its command may be wrong, or the program it needs is not installed.": "Kontrola se vůbec nespustila. Její příkaz může být špatně, nebo není nainstalovaný program, který potřebuje.",
+    "Stopping the background process": "Zastavuji proces na pozadí",
+    "Stop this command": "Zastavit tento příkaz",
+    "This stops the background command only, not the task": "Zastaví jen příkaz na pozadí, ne úlohu",
+    "Your message is waiting for the context to finish loading. Interrupting now would discard it and reload it from the start.": "Tvoje zpráva čeká, až se dočte kontext. Přerušit ho teď by znamenalo zahodit ho a načítat celý znovu."
   },
   "legacy_profile_labels": {
     "16 bit - přesnější, kontext 128k": "16-bit - more precise, context 128k",

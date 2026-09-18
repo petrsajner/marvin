@@ -160,7 +160,8 @@ class LLMClient:
                on_reasoning: Callable[[str], None] | None = None,
                on_tool_delta: Callable[[str, str], None] | None = None,
                on_prompt_progress: Callable[[dict], None] | None = None,
-               should_stop: Callable[[], bool] | None = None) -> AssistantResult:
+               should_stop: Callable[[], bool] | None = None,
+               may_abort_prefill: Callable[[], bool] | None = None) -> AssistantResult:
         """Stream a model response and return the assembled text and tool calls."""
         on_prompt_progress = on_prompt_progress or getattr(self, "on_prompt_progress", None)
         s = dict(sampling or self.cfg.sampling())
@@ -232,13 +233,19 @@ class LLMClient:
         try:
             while True:
                 if should_stop and should_stop():
-                    stop_started = stop_started or time.monotonic()
-                    visible = "".join(text_parts)
-                    if (not visible or parser.in_think or tc_acc
-                            or SENTENCE_END_RE.search(visible)
-                            or time.monotonic() - stop_started >= 0.75):
-                        res.stopped = True
-                        break
+                    # Interrupting while the prompt is still being read discards the
+                    # cached prefix, and the next request pays for all of it again -
+                    # measured at a quarter of an hour on a 109k context. A
+                    # clarification can wait for the prefill; a stop cannot.
+                    if (generation_started or may_abort_prefill is None
+                            or may_abort_prefill()):
+                        stop_started = stop_started or time.monotonic()
+                        visible = "".join(text_parts)
+                        if (not visible or parser.in_think or tc_acc
+                                or SENTENCE_END_RE.search(visible)
+                                or time.monotonic() - stop_started >= 0.75):
+                            res.stopped = True
+                            break
                 now = time.monotonic()
                 if now - last_chunk_at > 90 and now - last_probe_at > 10:
                     from harness.servermgmt import slots_processing

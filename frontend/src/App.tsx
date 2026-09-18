@@ -1372,7 +1372,13 @@ export function App() {
                       <section>
                         <h3>{tr("Activity history")}</h3>
                         {detail?.notices?.map((n: any) =>
-                          n.kind === "failure" ? (
+                          n.kind === "steer_deferred" ? (
+                            <p className="muted" key={n.seq}>
+                              {tr(
+                                "Your message is waiting for the context to finish loading. Interrupting now would discard it and reload it from the start.",
+                              )}
+                            </p>
+                          ) : n.kind === "failure" ? (
                             <div className="file-row" key={n.seq}>
                               <AlertCircle className="amber" />
                               <div>
@@ -1411,6 +1417,7 @@ export function App() {
                             {p.status === "running" && (
                               <button
                                 className="danger"
+                                title={tr("This stops the background command only, not the task")}
                                 onClick={() =>
                                   act("stop_process", {
                                     id: p.process_id,
@@ -1418,7 +1425,7 @@ export function App() {
                                 }
                               >
                                 <Square />
-                                {tr("Stop")}
+                                {tr("Stop this command")}
                               </button>
                             )}
                           </div>
