@@ -679,7 +679,16 @@
     "Loading…": "Načítání…",
     "Show changes": "Zobrazit změny",
     "Commit each finished task automatically": "Automaticky commitnout každou dokončenou úlohu",
-    "When enabled, every successfully finished Development or Computer task commits its own changed files in this project. Never pushes.": "Pokud je zapnuto, každá úspěšně dokončená úloha ve Vývoji nebo Počítači commitne právě své změněné soubory v tomto projektu. Nikdy nepushuje."
+    "When enabled, every successfully finished Development or Computer task commits its own changed files in this project. Never pushes.": "Pokud je zapnuto, každá úspěšně dokončená úloha ve Vývoji nebo Počítači commitne právě své změněné soubory v tomto projektu. Nikdy nepushuje.",
+    "Project status": "Stav projektu",
+    "Fix failures with agent": "Nech agenta opravit selhání",
+    "No checks detected — add .qwen/project.yaml to define them.": "Nebyly detekovány žádné kontroly — definuj je v .qwen/project.yaml.",
+    "not run yet": "dosud neběželo",
+    "running…": "běží…",
+    "pass": "prošlo",
+    "fail": "selhalo",
+    "timeout": "vypršel čas",
+    "error": "chyba"
   },
   "legacy_profile_labels": {
     "16 bit - přesnější, kontext 128k": "16-bit - more precise, context 128k",

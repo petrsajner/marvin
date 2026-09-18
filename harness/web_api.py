@@ -336,6 +336,41 @@ def create_app(cfg=None, *, service=None):
         service.store.emit(None, "settings_changed", service.preferences)
         return Projects(cfg).by_path(project["path"])
 
+    def _project_or_error(project_id: str) -> dict:
+        project = next((p for p in Projects(cfg).list_all() if p["id"] == project_id), None)
+        if not project:
+            raise ValueError("Unknown project")
+        return project
+
+    @app.get("/api/projects/{project_id}/checks")
+    def project_checks_status(project_id: str):
+        from harness import project_checks
+        project = _project_or_error(project_id)
+        workspace = Path(project["path"])
+        status = project_checks.read_status(workspace)
+        status["available"] = bool(project_checks.check_definitions(cfg, workspace))
+        return status
+
+    @app.post("/api/projects/{project_id}/checks/run")
+    def project_checks_run(project_id: str):
+        from harness import project_checks
+        project = _project_or_error(project_id)
+        workspace = Path(project["path"])
+        if not project_checks.check_definitions(cfg, workspace):
+            raise ValueError("No project checks detected; add .qwen/project.yaml to define them")
+        if not project_checks.run_checks(cfg, workspace):
+            raise ValueError("Project checks are already running")
+        return {"started": True}
+
+    @app.post("/api/projects/{project_id}/checks/fix")
+    def project_checks_fix(project_id: str):
+        from harness import project_checks
+        project = _project_or_error(project_id)
+        session = service.select_project(project["id"])
+        service.submit(session.id, project_checks.FIX_PROMPT,
+                       request_id=f"fix-{project['id']}-{int(time.time())}", delivery="queue")
+        return {"session_id": session.id}
+
     @app.delete("/api/projects/{project_id}")
     def delete_project(project_id: str):
         project = next((p for p in Projects(cfg).list_all() if p["id"] == project_id), None)

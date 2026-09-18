@@ -38,6 +38,7 @@ import {
   BookmarkCheck,
   Monitor,
   ListChecks,
+  Wrench,
   AlertCircle,
   Globe,
   Archive,
@@ -826,6 +827,36 @@ export function DialogView(props: any) {
                 </button>
                 {project && (
                   <>
+                    <button
+                      className="wide"
+                      onClick={() =>
+                        call(() =>
+                          api(`/api/projects/${project.id}/checks/run`, "POST"),
+                        )
+                      }
+                    >
+                      <ListChecks />
+                      {tr("Run project checks")}
+                    </button>
+                    <button
+                      className="wide"
+                      onClick={() =>
+                        call(async () => {
+                          const value = await api(
+                            `/api/projects/${project.id}/checks/fix`,
+                            "POST",
+                          );
+                          if (value?.session_id) {
+                            setSid(value.session_id);
+                            await refresh();
+                          }
+                          close();
+                        })
+                      }
+                    >
+                      <Wrench />
+                      {tr("Fix failures with agent")}
+                    </button>
                     <div className="row">
                       <button
                         className={project.autocommit ? "positive" : "outline"}

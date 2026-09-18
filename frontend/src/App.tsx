@@ -17,6 +17,8 @@ import {
   Square,
   Play,
   RotateCw,
+  CircleDashed,
+  Wrench,
   X,
   Copy,
   FileText,
@@ -112,6 +114,19 @@ export function App() {
     liveRate = useRef<{ run: string; chars: number; at: number; rate: number } | null>(null),
     loadGeneration = useRef(0);
   const [now, setNow] = useState(Date.now());
+  const project = (app?.projects || []).find(
+    (p: any) => p.path === chat?.meta.workspace,
+  );
+  const [projectChecks, setProjectChecks] = useState<any>(null);
+  const refreshProjectChecks = useCallback(() => {
+    if (!app || !project) {
+      setProjectChecks(null);
+      return Promise.resolve();
+    }
+    return api(`/api/projects/${project.id}/checks`)
+      .then(setProjectChecks)
+      .catch(() => {});
+  }, [app, project]);
   useEffect(() => {
     if (app?.active?.session_id !== sid) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -279,7 +294,11 @@ export function App() {
         .then((value) => {
           if (generation !== runtimeGeneration.current) return;
           setRuntime(value);
-          if (panel && tab === "progress") refreshDetail().catch(error);
+          if (panel && tab === "progress") {
+            refreshDetail().catch(error);
+            if (projectChecks?.running || projectChecks === null)
+              refreshProjectChecks();
+          }
         })
         .catch(() => {})
         .finally(() => { pending = false; })
@@ -289,7 +308,7 @@ export function App() {
     const timer = setInterval(poll, 2000);
     window.addEventListener("marvin-runtime-refresh", poll);
     return () => { clearInterval(timer); window.removeEventListener("marvin-runtime-refresh", poll); };
-  }, [!!app, panel, tab, refreshDetail, error]);
+  }, [!!app, panel, tab, refreshDetail, refreshProjectChecks, projectChecks, error]);
   useEffect(() => {
     if (!draftReady.current || !sid) return;
     localStorage.setItem(
@@ -486,9 +505,6 @@ export function App() {
   );
   const active = app?.active?.session_id === sid,
     mode = chat?.meta.work_mode || "discussion";
-  const project = app?.projects?.find(
-    (p: any) => p.path === chat?.meta.workspace,
-  );
   const queued: Job[] = (app?.queue || []).filter(
     (j: Job) =>
       j.session_id === sid && ["queued", "steering"].includes(j.status),
@@ -1401,6 +1417,75 @@ export function App() {
                           {tr("Revert task changes")}
                         </button>
                       </section>
+                      {project && (
+                        <section>
+                          <h3>{tr("Project status")}</h3>
+                          {projectChecks?.available === false ? (
+                            <p className="muted">
+                              {tr(
+                                "No checks detected — add .qwen/project.yaml to define them.",
+                              )}
+                            </p>
+                          ) : (
+                            (projectChecks?.checks || []).map((c: any) => (
+                              <div
+                                className="check-row"
+                                key={c.id}
+                                title={c.summary || c.command}
+                              >
+                                {c.state === "running" ? (
+                                  <LoaderCircle className="spin" />
+                                ) : c.state === "pass" ? (
+                                  <CheckCheck className="green" />
+                                ) : c.state === "never" ? (
+                                  <CircleDashed />
+                                ) : (
+                                  <AlertCircle className="amber" />
+                                )}
+                                <span>
+                                  {c.label}
+                                  <small>
+                                    {c.state === "never"
+                                      ? tr("not run yet")
+                                      : c.state === "running"
+                                        ? tr("running…")
+                                        : `${tr(c.state)} · ${new Date(
+                                            c.time * 1000,
+                                          ).toLocaleTimeString()}`}
+                                  </small>
+                                </span>
+                              </div>
+                            ))
+                          )}
+                          <button
+                            className="wide"
+                            disabled={projectChecks?.running}
+                            onClick={() =>
+                              api(
+                                `/api/projects/${project.id}/checks/run`,
+                                "POST",
+                              ).then(refreshProjectChecks)
+                            }
+                          >
+                            <Play />
+                            {tr("Run project checks")}
+                          </button>
+                          <button
+                            className="wide"
+                            onClick={() =>
+                              api(`/api/projects/${project.id}/checks/fix`, "POST")
+                                .then((value) => {
+                                  sidRef.current = value.session_id;
+                                  setSid(value.session_id);
+                                })
+                                .catch(error)
+                            }
+                          >
+                            <Wrench />
+                            {tr("Fix failures with agent")}
+                          </button>
+                        </section>
+                      )}
                     </>
                   ) : (
                     <>
