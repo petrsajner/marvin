@@ -1,10 +1,14 @@
 # Marvin 1.11.1 - project checks and the diff viewer on real projects
 
-Built locally on 18 September 2026 from application commit `423c025`. **Not
-published to GitHub**: the artifacts below exist only in the local `dist`
-directory, so there is no `release-1.11.1.json` asset manifest yet. That file is
-written when the release is actually uploaded and its server-side digests can be
-compared.
+Released and published on 18 September 2026. GitHub tag `v1.11.1` resolves to
+application commit `423c0251ca5289ff0116db3c76f08493616b115a`. The [release
+manifest](release-1.11.1.json) records all seven public assets, their sizes,
+SHA-256 values and stable download URLs. Public link:
+https://github.com/petrsajner/marvin/releases/latest
+
+All seven server-side asset digests were compared against the local files after
+publication and matched, and the unauthenticated `latest` link resolves to
+v1.11.1.
 
 This is a correctness release for the three features 1.11.0 shipped that had only
 ever been exercised against this repository's own layout.
