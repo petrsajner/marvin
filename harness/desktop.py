@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import ctypes
 import sys
+import time
 from ctypes import wintypes
 
 SW_RESTORE = 9
+WM_KEYDOWN, WM_KEYUP = 0x0100, 0x0101
 PW_RENDERFULLCONTENT = 0x00000002     # Include layers a plain PrintWindow leaves out.
 DWMWA_CLOAKED = 14                    # Windows keeps invisible shells around; skip them.
 DIB_RGB_COLORS = 0
@@ -143,6 +145,37 @@ def focus(handle: int) -> tuple[bool, str]:
     if int(user32.GetForegroundWindow()) == handle:
         return True, "AttachThreadInput"
     return False, "the system kept the current window in front"
+
+
+def post_keys(handle: int, codes: list[tuple[int, bool]], hold: float = 0.05) -> bool:
+    """Post a key combination to one window, leaving the foreground alone.
+
+    Every (virtual key, extended) pair is pressed in order and released in
+    reverse. SDL and other programs that pump the Windows message queue see these
+    as ordinary key events; programs that read the keyboard directly, as some
+    games do, will not, which is why the caller reports what it did rather than
+    claiming success."""
+    if not supported() or not codes:
+        return False
+    user32 = ctypes.windll.user32
+    hwnd = wintypes.HWND(handle)
+
+    def send(message: int, vk: int, extended: bool, release: bool) -> bool:
+        scan = user32.MapVirtualKeyW(vk, 0)
+        lparam = 1 | (scan << 16) | ((1 << 24) if extended else 0)
+        if release:
+            lparam |= 3 << 30          # Previous state down, transition to up.
+        return bool(user32.PostMessageW(hwnd, message, vk, lparam))
+
+    ok = True
+    for vk, extended in codes:
+        ok &= send(WM_KEYDOWN, vk, extended, False)
+    # Held briefly, so a program polling once a frame cannot miss the press.
+    if hold > 0:
+        time.sleep(hold)
+    for vk, extended in reversed(codes):
+        ok &= send(WM_KEYUP, vk, extended, True)
+    return ok
 
 
 def capture(handle: int):

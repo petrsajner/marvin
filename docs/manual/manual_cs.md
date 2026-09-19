@@ -591,9 +591,18 @@ Harness přepočítá souřadnice obrázku na skutečné rozlišení primárníh
 - Vypsat otevřená okna a vyfotit jedno z nich podle jména, i když ho zakrývá jiný
   program. Tak model sleduje program, který spustil, aniž by vám bral obrazovku:
   běžný screenshot ukazuje to, co je vpředu, což obvykle není testovaný program.
+- Poslat klávesy přímo do jednoho programu podle titulku okna, bez přepnutí do
+  popředí. Změřeno na zakrytém herním okně: stisky, uvolnění i kombinace jako
+  Ctrl+S dorazí, zatímco okno, ve kterém pracujete, nedostane nic. Tak model
+  ovládá program, který spustil, a vy můžete dělat něco jiného.
 - Přepnout okno do popředí podle jména a obnovit ho, pokud bylo minimalizované.
-  Klávesy vždy míří do okna vpředu, takže tohle předchází jejich stisku. Když
-  systém přepnutí odmítne, model se to dozví, místo aby hlásil úspěch.
+  To je záloha pro programy, které čtou klávesnici přímo místo přes okenní zprávy
+  a jde k nim dostat jen ve popředí — bere vám to obrazovku, takže model zkouší
+  nejdřív cestu výše. Když systém přepnutí odmítne, model se to dozví, místo aby
+  hlásil úspěch.
+- Spustit program na SDL nebo pygame úplně bez okna, když jde o chování a ne
+  o vzhled: kreslí do paměti, uloží snímek jako obrázek, na který se model
+  podívá, a vaší obrazovky se nedotkne.
 - Klávesy a kombinace jako Enter, Escape, Ctrl+S, Alt+F4 nebo Win+D. Klávesy
   odcházejí jako hardwarové scancody, které hry a další okna na SDL nebo
   DirectInput vyžadují: rozlišují klávesy podle scancodu a klávesu bez něj

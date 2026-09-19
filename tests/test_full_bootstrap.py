@@ -29,6 +29,33 @@ def digest_of(requirements: Path, lock: Path) -> str:
     return hashlib.sha256(requirements.read_bytes() + b"\nLOCK\n" + lock.read_bytes()).hexdigest()
 
 
+class HousekeepingTests(unittest.TestCase):
+    """Rebuilt environments were moved aside and kept for ever."""
+
+    def setUp(self):
+        self.bootstrap = load_bootstrap()
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+
+    def test_only_the_newest_previous_environment_is_kept(self):
+        history = self.root / "runtime" / "environment-history"
+        for name in ("1000", "2000", "3000"):
+            (history / name / "Lib").mkdir(parents=True)
+        for name in ("failed-environment-1000", "failed-environment-2000"):
+            (self.root / "runtime" / name).mkdir(parents=True)
+        self.bootstrap._forget_old_environments(self.root)
+        self.assertEqual(sorted(item.name for item in history.iterdir()), ["3000"])
+        self.assertEqual(
+            sorted(item.name for item in (self.root / "runtime").glob("failed-environment-*")),
+            ["failed-environment-2000"])
+
+    def test_it_does_nothing_when_there_is_nothing_to_forget(self):
+        (self.root / "runtime").mkdir()
+        self.bootstrap._forget_old_environments(self.root)      # Must not raise.
+        self.assertFalse((self.root / "runtime" / "environment-history").exists())
+
+
 class StalePayloadTests(unittest.TestCase):
     def setUp(self):
         self.bootstrap = load_bootstrap()

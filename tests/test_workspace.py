@@ -618,6 +618,58 @@ class TransportTests(unittest.TestCase):
         timer.join()
 
 
+class OfflineBackupPointerTests(unittest.TestCase):
+    """A release renames the backup folder to the version it now holds, and the
+    recorded pointer used to be corrected by hand - which is how it came to name
+    a version that no longer existed."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        data = copy.deepcopy(load_config().data)
+        data["hardware"]["vram_gb"] = 32
+        self.cfg = Config(data, self.root)
+        self.service = ApplicationService(self.cfg, llm_factory=lambda c: None,
+                                          manage_model=False)
+        self.addCleanup(self.service.models.wait, 3)
+        self.addCleanup(self.service.close)
+        self.client = TestClient(create_app(self.cfg, service=self.service))
+        self.marker = self.cfg.path("paths.runtime_dir") / "offline-backup-path.txt"
+        self.marker.parent.mkdir(parents=True, exist_ok=True)
+
+    def make_backup(self, name: str, version: str) -> Path:
+        backup = self.root / name
+        backup.mkdir()
+        from scripts.offline_backup import FORMAT_VERSION
+        (backup / "manifest.json").write_text(json.dumps({
+            "format_version": FORMAT_VERSION,
+            "app_version": version, "created": "2026-09-19T00:00:00+1200",
+            "files": [{"path": "payload/runtime/models/x.gguf", "size": 10,
+                       "sha256": "0" * 64, "component": "models"}]}), encoding="utf-8")
+        return backup
+
+    def test_a_renamed_backup_is_found_and_the_pointer_corrected(self):
+        backup = self.make_backup("Marvin-Offline-Backup-1.12.1", "1.12.1")
+        self.marker.write_text(str(self.root / "Marvin-Offline-Backup-1.11.1"), encoding="utf-8")
+        answer = self.client.get("/api/backup").json()
+        self.assertTrue(answer["selected"])
+        self.assertEqual(Path(answer["path"]), backup.resolve())
+        self.assertEqual(self.marker.read_text(encoding="utf-8").strip(), str(backup))
+
+    def test_a_pointer_that_still_resolves_is_left_alone(self):
+        backup = self.make_backup("Marvin-Offline-Backup-1.12.1", "1.12.1")
+        self.marker.write_text(str(backup), encoding="utf-8")
+        self.assertTrue(self.client.get("/api/backup").json()["selected"])
+        self.assertEqual(self.marker.read_text(encoding="utf-8").strip(), str(backup))
+
+    def test_nothing_is_invented_when_no_backup_exists(self):
+        self.marker.write_text(str(self.root / "Marvin-Offline-Backup-1.11.1"), encoding="utf-8")
+        answer = self.client.get("/api/backup").json()
+        self.assertFalse(answer["selected"])
+        self.assertIn("error", answer)
+
+
 class ProjectsRootTests(unittest.TestCase):
     """New projects always landed beside the installation; the folder is a choice now."""
 

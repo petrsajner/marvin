@@ -522,7 +522,33 @@ def refresh_backup(root: Path, backup: Path) -> dict[str, Any]:
     os.replace(temporary, path)
     print(f"[DONE] Offline backup refreshed to {version}; changed: "
           + (", ".join(changed) if changed else "nothing"))
+    renamed = _rename_for_version(backup, version)
+    if renamed != backup:
+        manifest["path"] = str(renamed)
+        print(f"[DONE] Renamed to {renamed.name}")
     return manifest
+
+
+def _rename_for_version(backup: Path, version: str) -> Path:
+    """Keep the folder name honest about what is inside it.
+
+    The name carries the version, and it was corrected by hand after every
+    release - which is exactly how the pointer inside an installation came to
+    name a version that no longer existed."""
+    import re
+    match = re.fullmatch(r"(?i)(Marvin-Offline-Backup-)(\d+(?:\.\d+)*)", backup.name)
+    if not match or match.group(2) == version:
+        return backup
+    target = backup.with_name(match.group(1) + version)
+    if target.exists():
+        print(f"[WARN] {target.name} already exists; the folder keeps its name")
+        return backup
+    try:
+        backup.rename(target)
+    except OSError as error:
+        print(f"[WARN] Could not rename the backup folder: {error}")
+        return backup
+    return target
 
 
 def _main() -> int:

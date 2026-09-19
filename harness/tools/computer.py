@@ -313,6 +313,9 @@ class PressKeyTool(Tool):
                  "description": "Seconds to hold the key down (default 0.05; raise for games)"},
         "method": {"type": "string", "enum": ["auto", "scancode", "virtual"],
                    "description": "auto and scancode send hardware scancodes; virtual is the old path"},
+        "window": {"type": "string",
+                   "description": "Part of a window title: sends the key to that window without "
+                                  "bringing it to the front, so the user keeps working undisturbed"},
     }
     required = ["keys"]
     risk = Risk.WRITE
@@ -320,12 +323,32 @@ class PressKeyTool(Tool):
     KEY_ALIASES = {"windows": "win", "super": "win", "return": "enter", "del": "delete", "space": "space"}
 
     def run(self, ctx: AgentContext, keys: str, hold: float = 0.05,
-            method: str = "auto") -> str:
+            method: str = "auto", window: str = "") -> str:
         parts = [self.KEY_ALIASES.get(k.strip().lower(), k.strip().lower())
                  for k in keys.split("+") if k.strip()]
         if not parts:
             return "ERROR: empty key combo"
         combo = "+".join(parts)
+        if window:
+            # Posted straight to the window, so nothing is taken from the
+            # foreground and the user can keep working while a program is driven.
+            from harness import desktop
+            missing = [name for name in parts if name not in _VK]
+            if missing:
+                return f"ERROR: unknown key names: {missing}"
+            target = desktop.find(window)
+            if target is None:
+                open_titles = ", ".join(repr(w["title"]) for w in desktop.windows()[:12])
+                return (f"ERROR: no open window matches {window!r}. "
+                        f"Currently open: {open_titles or 'nothing with a title'}")
+            codes = [(_VK[name], _VK[name] in _EXTENDED) for name in parts]
+            if not desktop.post_keys(target["handle"], codes, max(0.0, float(hold))):
+                return (f"ERROR: {target['title']!r} did not accept {combo}. "
+                        f"Use focus_window and press the key normally.")
+            return (f"Sent {combo} to {target['title']!r} without bringing it to the front. "
+                    f"Programs that read the keyboard directly instead of through window "
+                    f"messages ignore this, so verify with screenshot(window=...); if nothing "
+                    f"happened, use focus_window and press the key normally.")
         unknown = [name for name in parts
                    if name not in _VK or not _scancode(_VK[name])]
         if method in ("auto", "scancode") and sys.platform == "win32" and not unknown:

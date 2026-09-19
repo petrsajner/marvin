@@ -578,14 +578,39 @@ def create_app(cfg=None, *, service=None):
         runtime_cache["at"] = 0
         return {"ok": True, "switch": service.models.snapshot().__dict__}
 
+    def _recorded_backup() -> Path | None:
+        """The chosen offline backup, following it if a release renamed it.
+
+        A refresh renames the folder to the version it now holds, so a recorded
+        path can point at a name that no longer exists while the backup itself
+        sits right beside it."""
+        marker = cfg.path("paths.runtime_dir") / "offline-backup-path.txt"
+        if not marker.is_file():
+            return None
+        recorded = Path(marker.read_text(encoding="utf-8-sig").strip())
+        if (recorded / "manifest.json").is_file():
+            return recorded
+        import re
+        match = re.fullmatch(r"(?i)(Marvin-Offline-Backup-)(\d+(?:\.\d+)*)", recorded.name)
+        if not match or not recorded.parent.is_dir():
+            return recorded
+        siblings = sorted(
+            (item for item in recorded.parent.glob(match.group(1) + "*")
+             if (item / "manifest.json").is_file()),
+            key=lambda item: item.stat().st_mtime, reverse=True)
+        if not siblings:
+            return recorded
+        atomic_write_text(marker, str(siblings[0]))
+        return siblings[0]
+
     @app.get("/api/backup")
     def backup_info():
         from scripts.offline_backup import backup_info
-        path = cfg.path("paths.runtime_dir") / "offline-backup-path.txt"
-        if not path.is_file():
+        selected = _recorded_backup()
+        if selected is None:
             return {"selected": False}
         try:
-            return {"selected": True, **backup_info(Path(path.read_text(encoding="utf-8-sig").strip()))}
+            return {"selected": True, **backup_info(selected)}
         except Exception as exc:
             return {"selected": False, "error": str(exc)}
 

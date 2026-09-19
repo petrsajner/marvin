@@ -168,6 +168,36 @@ class ModelFileTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             local_model_dir(Path.cwd(), {"download_dir": "../outside"})
 
+    def test_the_backup_folder_is_renamed_to_the_version_it_holds(self):
+        """It was renamed by hand after every release, which is how the pointer
+        inside an installation came to name a version that no longer existed."""
+        from scripts.offline_backup import _rename_for_version
+        with tempfile.TemporaryDirectory() as temporary:
+            backup = Path(temporary) / "Marvin-Offline-Backup-1.11.2"
+            backup.mkdir()
+            renamed = _rename_for_version(backup, "1.12.1")
+            self.assertEqual(renamed.name, "Marvin-Offline-Backup-1.12.1")
+            self.assertTrue(renamed.is_dir())
+            # Already current: left alone rather than touched for nothing.
+            self.assertEqual(_rename_for_version(renamed, "1.12.1"), renamed)
+            # A folder that is not named after a version keeps its name.
+            plain = Path(temporary) / "my backup"
+            plain.mkdir()
+            self.assertEqual(_rename_for_version(plain, "1.12.1"), plain)
+
+    def test_an_existing_folder_is_never_overwritten_by_the_rename(self):
+        from scripts.offline_backup import _rename_for_version
+        with tempfile.TemporaryDirectory() as temporary:
+            backup = Path(temporary) / "Marvin-Offline-Backup-1.11.2"
+            backup.mkdir()
+            (backup / "manifest.json").write_text("{}", encoding="utf-8")
+            occupied = Path(temporary) / "Marvin-Offline-Backup-1.12.1"
+            occupied.mkdir()
+            (occupied / "keep-me.txt").write_text("other backup", encoding="utf-8")
+            self.assertEqual(_rename_for_version(backup, "1.12.1"), backup)
+            self.assertEqual((occupied / "keep-me.txt").read_text(encoding="utf-8"),
+                             "other backup")
+
     def test_backup_excludes_in_progress_ranges_but_keeps_nested_model_files(self):
         from scripts.offline_backup import _runtime_sources
         with tempfile.TemporaryDirectory() as temporary:

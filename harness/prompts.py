@@ -92,7 +92,8 @@ Your tools for this, and what each one is for:
 | screenshot(window="...") | see one program by window title | works while the window is covered by something else; coordinates then belong to that window |
 | list_windows | find what is open: titles, programs, position, size | the way to learn the title before using the two tools above |
 | focus_window(title) | bring a window forward, restoring it if minimised | keys only ever reach the window in front, so do this before pressing keys |
-| press_key(keys, hold, method) | keys and combinations | sends hardware scancodes, which games require; raise hold for a game that misses a tap |
+| press_key(keys, hold) | keys and combinations to the window in front | sends hardware scancodes, which games require; raise hold for a game that misses a tap |
+| press_key(keys, window="...") | keys straight into one program | it does not come to the front and the user keeps working; ignored by programs that read the keyboard directly |
 | type_text | typing words into a field | pastes through the clipboard, handles diacritics; game windows usually ignore it - use press_key |
 | click / move_mouse / scroll | the pointer, in IMAGE coordinates | the coordinates come from your latest screenshot |
 | get_screen_info | the real screen size and how the last screenshot maps to it | |
@@ -100,8 +101,11 @@ Your tools for this, and what each one is for:
 Testing a program you started - the order that works:
 1. list_windows to find its title. It is rarely the window in front; the user is working in other programs.
 2. screenshot(window="its title") to watch it without disturbing the user.
-3. focus_window before sending keys, because keys follow the foreground. Verify with a screenshot afterwards.
-4. If a game ignores a key, ask for a longer hold rather than repeating the same press.
+3. press_key(keys, window="its title") to drive it, also without disturbing the user. Verify with another screenshot(window=...).
+4. Only if that does nothing: focus_window, then press the key normally. Some programs read the keyboard
+   directly instead of through window messages and can only be reached while they are in front - which takes
+   the screen away from the user, so it is the second choice, not the first.
+5. If a game misses a tap, ask for a longer hold rather than repeating the same press.
 
 Action rules:
 - After every action, take a screenshot to verify the effect before continuing.

@@ -146,6 +146,69 @@ class ToolTests(unittest.TestCase):
         self.assertIn("AttachThreadInput", answer)
 
 
+class BackgroundKeyTests(unittest.TestCase):
+    """Keys can reach one window without taking the screen from the user.
+
+    Measured against two real pygame windows with the target covered: enter, a,
+    left arrow, space and ctrl+s all arrived with the modifier registered, and the
+    window in front received nothing."""
+
+    def test_the_keys_are_posted_to_the_matched_window(self):
+        sent = {}
+
+        def record(handle, codes, hold):
+            sent.update(handle=handle, codes=codes, hold=hold)
+            return True
+
+        with patch.object(desktop, "windows", return_value=OPEN), \
+                patch.object(desktop, "post_keys", side_effect=record):
+            answer = computer.PressKeyTool().run(context(), keys="ctrl+s",
+                                                 window="Space Invaders", hold=0.2)
+        self.assertEqual(sent["handle"], 1)
+        self.assertEqual(sent["codes"], [(computer._VK["ctrl"], False),
+                                         (computer._VK["s"], False)])
+        self.assertEqual(sent["hold"], 0.2)
+        self.assertIn("without bringing it to the front", answer)
+
+    def test_an_arrow_key_is_marked_extended(self):
+        sent = {}
+        with patch.object(desktop, "windows", return_value=OPEN), \
+                patch.object(desktop, "post_keys",
+                             side_effect=lambda h, c, hold: sent.update(codes=c) or True):
+            computer.PressKeyTool().run(context(), keys="left", window="Space Invaders")
+        self.assertEqual(sent["codes"], [(computer._VK["left"], True)])
+
+    def test_the_foreground_is_never_touched_for_this_path(self):
+        with patch.object(desktop, "windows", return_value=OPEN), \
+                patch.object(desktop, "post_keys", return_value=True), \
+                patch.object(desktop, "focus") as focus:
+            computer.PressKeyTool().run(context(), keys="enter", window="Space Invaders")
+        focus.assert_not_called()
+
+    def test_a_window_that_refuses_the_keys_says_what_to_do_instead(self):
+        with patch.object(desktop, "windows", return_value=OPEN), \
+                patch.object(desktop, "post_keys", return_value=False):
+            answer = computer.PressKeyTool().run(context(), keys="enter", window="Space Invaders")
+        self.assertTrue(answer.startswith("ERROR"))
+        self.assertIn("focus_window", answer)
+
+    def test_an_unknown_window_lists_what_is_open(self):
+        with patch.object(desktop, "windows", return_value=OPEN):
+            answer = computer.PressKeyTool().run(context(), keys="enter", window="Arkanoid")
+        self.assertTrue(answer.startswith("ERROR"))
+        self.assertIn("Space Invaders", answer)
+
+    def test_an_unknown_key_name_is_refused_before_anything_is_sent(self):
+        with patch.object(desktop, "windows", return_value=OPEN), \
+                patch.object(desktop, "post_keys") as post:
+            answer = computer.PressKeyTool().run(context(), keys="dvorak", window="Space Invaders")
+        post.assert_not_called()
+        self.assertTrue(answer.startswith("ERROR"))
+
+    def test_nothing_is_posted_without_a_key(self):
+        self.assertFalse(desktop.post_keys(1, [], 0.05))
+
+
 class PromptTests(unittest.TestCase):
     """The model used to learn these tools by trying them one after another."""
 
@@ -163,8 +226,11 @@ class PromptTests(unittest.TestCase):
     def test_the_order_that_works_is_stated(self):
         prompt = system_prompt("computer", "computer")
         self.assertIn("list_windows", prompt)
-        self.assertIn("keys follow the foreground", prompt)
         self.assertIn("covered", prompt)
+        # Driving a window without taking the screen comes before focusing it.
+        self.assertIn('press_key(keys, window=', prompt)
+        self.assertLess(prompt.index('press_key(keys, window="its title")'),
+                        prompt.index("Only if that does nothing: focus_window"))
 
 
 if __name__ == "__main__":

@@ -12,6 +12,23 @@ import venv
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def _forget_old_environments(root: Path, keep: int = 1) -> None:
+    """One previous environment is a safety net; a collection is just disk use.
+
+    Each rebuild moved the old environment aside and kept it for ever, so a
+    machine that had been through a few releases carried several gigabytes of
+    environments nobody would ever look at."""
+    history = root / "runtime" / "environment-history"
+    if history.is_dir():
+        # The directory name is a timestamp, so newest sorts last.
+        stale = sorted(item for item in history.iterdir() if item.is_dir())
+        for item in stale[:max(0, len(stale) - keep)]:
+            shutil.rmtree(item, ignore_errors=True)
+    failed = sorted((root / "runtime").glob("failed-environment-*"))
+    for item in failed[:max(0, len(failed) - keep)]:
+        shutil.rmtree(item, ignore_errors=True)
+
+
 def prepare(root=ROOT):
     root = Path(root).resolve()
     private = root / "runtime/python"
@@ -103,6 +120,7 @@ def prepare(root=ROOT):
                        check=True, env=env, cwd=root)
         (environment / ".requirements.sha256").write_text(digest + "\n", encoding="ascii")
         marker.write_text(json.dumps({"home": str(private), "digest": digest}), encoding="utf-8")
+        _forget_old_environments(root)
         print("[FULL] Ready. Only model downloads remain.", flush=True)
     except BaseException:
         failed = root / "runtime" / ("failed-environment-" + str(time.time_ns()))

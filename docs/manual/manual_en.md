@@ -823,10 +823,19 @@ The harness maps screenshot coordinates back to the real display resolution.
   program covers it. This is how the model watches a program it started without
   taking the screen away from you: a plain screenshot shows whatever is in front,
   which is usually not the program being tested.
-- Bring a window to the front by name, restoring it if it was minimised. Keys
-  always reach the window in front, so this comes before pressing keys. If the
-  system refuses to change the foreground, the model is told so instead of
-  reporting success.
+- Send keys straight into one program by window title, without bringing it
+  forward. Measured against a covered game window: presses, releases and
+  combinations such as Ctrl+S all arrive, while the window you are working in
+  receives nothing. This is how the model drives a program it started while you
+  carry on with something else.
+- Bring a window to the front by name, restoring it if it was minimised. This is
+  the fallback for programs that read the keyboard directly rather than through
+  window messages and can only be reached while in front - it takes the screen
+  from you, so the model tries the path above first. If the system refuses to
+  change the foreground, the model is told so instead of reporting success.
+- Run an SDL or pygame program with no window at all, when the question is about
+  behaviour rather than appearance: it renders into memory, saves a frame as a
+  picture the model can look at, and never touches your screen.
 - Press keys and combinations such as Enter, Escape, Ctrl+S, Alt+F4, or Win+D.
   Keys go out as hardware scancodes, which games and other SDL or DirectInput
   windows require: they identify keys by scancode and ignore a key sent without
