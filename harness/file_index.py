@@ -15,6 +15,21 @@ _cache: dict[str, tuple[float, list[Path]]] = {}
 _lock = threading.RLock()
 
 
+TEXT_EXTENSIONS = {
+    ".py", ".pyi", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs",
+    ".html", ".css", ".scss", ".json", ".yaml", ".yml", ".toml", ".ini",
+    ".md", ".rst", ".txt", ".sql", ".sh", ".bat", ".ps1", ".cmd",
+    ".rs", ".go", ".c", ".h", ".cpp", ".hpp", ".cs", ".java", ".kt",
+}
+
+
+def sanitize_query(raw_query: str) -> str:
+    """Turn what a person typed into something FTS5 will accept."""
+    import re
+    words = re.findall(r"\w+", raw_query, re.UNICODE)
+    return " OR ".join('"%s"' % word for word in words)
+
+
 def invalidate_project_files(root: Path):
     with _lock:
         _cache.pop(str(root.resolve()), None)

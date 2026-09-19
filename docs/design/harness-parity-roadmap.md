@@ -66,6 +66,8 @@ Recorded so the roadmap does not silently go stale. All of this landed on
 | Tool discoverability (gap A) | `capabilities.py`, the "What can I ask for?" catalogue | Released in 1.11.2 |
 | Voice input (gap B) | `speech.py`, [design](voice-input.md) | Released in 1.12.0 |
 | Watching a window that is not in front | `desktop.py`, `list_windows`, `focus_window`, `screenshot(window=)` | Released in 1.12.0 |
+| Driving a window without taking the screen | `desktop.py:post_keys`, `press_key(window=)`, the `testing-a-running-program` skill | After 1.12.1 |
+| Unified search, command palette, live preview (gaps C, D, E) | `finder.py`, `/api/find`, Ctrl+K, [design](finding-your-way.md) | After 1.12.1 |
 
 Semantic search shipped close to the original proposal - a CPU-only sidecar beside
 the main model, a vector index next to FTS5, hybrid merge - with two deviations
@@ -86,9 +88,9 @@ Verified against the tree, not assumed.
 |---|---|---|
 | A | Tool discoverability | **Delivered** in 1.11.2. The section below records the reasoning. |
 | B | Voice input (dictation) | **Delivered** in 1.12.0: whisper.cpp on the processor, 11.4% word error rate in Czech, measured. |
-| C | Live document preview while writing | **Partial.** Document and HTML preview exist; nothing renders while the user writes. |
-| D | Unified global search | **Partial.** `/api/search` covers chats only; files, memory and decisions are reached separately. `semantic_search` spans files and history but only as a model tool. |
-| E | Command palette | **Missing.** No keyboard-driven action launcher. |
+| C | Live document preview while writing | **Delivered**: an open preview follows the file, and a changed document is one click from being watched. |
+| D | Unified global search | **Delivered**: one box over chats, project files, memory and decisions - see [finding-your-way.md](finding-your-way.md). |
+| E | Command palette | **Delivered**: Ctrl+K, actions plus the same search. |
 | F | Usage analytics | **Partial.** Current context estimate, measured tokens of the last request and live tok/s; no history and no per-chat or per-project totals. |
 | G | Exposed OpenAI-compatible endpoint | **Missing.** `server.host` and `web.host` are `127.0.0.1` in config with no switch. |
 

@@ -8,16 +8,10 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from harness.file_index import TEXT_EXTENSIONS, sanitize_query
 from harness.safety import Risk
 from harness.tools.base import AgentContext, Tool, truncate
 
-# Text-file extensions eligible for indexing.
-TEXT_EXTENSIONS = {
-    ".py", ".pyi", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs",
-    ".html", ".css", ".scss", ".json", ".yaml", ".yml", ".toml", ".ini",
-    ".md", ".rst", ".txt", ".sql", ".sh", ".bat", ".ps1", ".cmd",
-    ".rs", ".go", ".c", ".h", ".cpp", ".hpp", ".cs", ".java", ".kt",
-}
 
 IGNORED_DIRS = {
     ".git", ".venv", "venv", "node_modules", "runtime", "sessions",
@@ -49,12 +43,6 @@ def _collect_files(root: Path, max_files: int = 2000) -> list[Path]:
     return files
 
 
-def _sanitize_fts_query(raw_query: str) -> str:
-    """Sanitize a query for SQLite FTS5 MATCH."""
-    words = re.findall(r"\w+", raw_query, re.UNICODE)
-    if not words:
-        return ""
-    return " OR ".join(f'"{w}"' for w in words)
 
 
 class SearchProjectTool(Tool):
@@ -76,7 +64,7 @@ class SearchProjectTool(Tool):
         if not workspace.is_dir():
             return f"ERROR: Workspace directory not found: {workspace}"
 
-        clean_query = _sanitize_fts_query(query)
+        clean_query = sanitize_query(query)
         if not clean_query:
             return "ERROR: Query contains no searchable words."
 

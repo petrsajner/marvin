@@ -60,12 +60,14 @@ import {
 } from "./api";
 
 import { Attachment, ChatMessage } from "./components/Messages";
-import { DialogView } from "./components/Dialogs";
+import { DialogView, SETTINGS_SECTIONS } from "./components/Dialogs";
 import { ResizeHandle } from "./components/ResizeHandle";
 import { ActivityFeedback } from "./components/ActivityFeedback";
 
 type Dialog = { type: string; file?: FileItem; section?: string; data?: any };
 const COPYRIGHT = "© Petr Sajner 2026";
+// Documents a preview can render, as opposed to code or binaries.
+const READABLE = /\.(md|markdown|txt|rst|docx|pdf|html?|csv|xlsx)$/i;
 const phases: Record<string, string> = {
   preparing: "Preparing request",
   reading_context: "Reading context",
@@ -98,6 +100,7 @@ export function App() {
   const [toast, setToast] = useState(""),
     [search, setSearch] = useState(""),
     [searchResults, setSearchResults] = useState<any[] | null>(null),
+    [findings, setFindings] = useState<any[] | null>(null),
     [sending, setSending] = useState(false),
     [delivery, setDelivery] = useState("steer"),
     [connected, setConnected] = useState(true),
@@ -162,6 +165,7 @@ export function App() {
     return () => clearInterval(timer);
   }, [listening]);
   const cs = app?.preferences?.language === "cs";
+  const modeNames = ["Discussion", "Research", "Writing", "Development", "Computer"];
   useEffect(() => setChatLimit(20), [chat?.meta.workspace, search]);
   // While a chat is loading after a switch, keep the sidebar on the target
   // project's list instead of flashing the no-project conversations.
@@ -397,16 +401,51 @@ export function App() {
       });
     else setNewMessages(true);
   }, [chat?.messages, chat?.live]);
+  // One search over chats, project files, memory and decisions. Each of these was
+  // reachable from a different place, so remembering a sentence but not where it
+  // was written meant guessing which place to look in.
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (search.trim())
-        api("/api/search?query=" + encodeURIComponent(search.trim()))
-          .then(setSearchResults)
-          .catch(error);
-      else setSearchResults(null);
+      if (!search.trim()) {
+        setSearchResults(null);
+        setFindings(null);
+        return;
+      }
+      api(
+        "/api/find?query=" +
+          encodeURIComponent(search.trim()) +
+          (sid ? "&session_id=" + encodeURIComponent(sid) : ""),
+      )
+        .then((answer: any) => {
+          const groups = answer.groups || [];
+          const chats = groups.find((g: any) => g.kind === "chat");
+          setSearchResults(
+            (chats?.items || []).map((item: any) => ({
+              id: item.open.session_id,
+              title: item.title,
+              snippet: item.snippet,
+            })),
+          );
+          setFindings(groups.filter((g: any) => g.kind !== "chat"));
+        })
+        .catch(error);
     }, 250);
     return () => clearTimeout(timer);
-  }, [search, error]);
+  }, [search, sid, error]);
+  // Ctrl+K anywhere. The palette is the keyboard route to the same places the
+  // interface already has, for someone who would rather type than hunt.
+  useEffect(() => {
+    const open = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        setDialog((current: any) =>
+          current?.type === "palette" ? null : { type: "palette" },
+        );
+      }
+    };
+    document.addEventListener("keydown", open);
+    return () => document.removeEventListener("keydown", open);
+  }, []);
   const act = useCallback(
     async (action: string, payload: any = {}) => {
       const result = await api(
@@ -549,6 +588,17 @@ export function App() {
     setSid(value.session_id);
     setNav(false);
     await refresh();
+  };
+  // Documents worth watching render as text; a binary would show nothing useful.
+  const watchDocument = async (path: string) => {
+    try {
+      const file = await api(
+        "/api/sessions/" + sid + "/register-file", "POST", { path },
+      );
+      setDialog({ type: "preview", file });
+    } catch (e) {
+      error(e);
+    }
   };
   const newChat = async () => {
     const project = app?.projects?.find(
@@ -695,10 +745,10 @@ export function App() {
           <label className="search">
             <Search />
             <input
-              aria-label={tr("Search chats")}
+              aria-label={tr("Search everything")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={tr("Search chats")}
+              placeholder={tr("Search everything")}
             />
           </label>
           <label className="section-label">{tr("PROJECT")}</label>
@@ -758,6 +808,58 @@ export function App() {
               {tr("Show recent only")}
             </button>}
           </nav>
+          {(findings || []).map((group: any) => (
+            <div key={group.kind}>
+              <label className="section-label">
+                {tr(
+                  group.kind === "file"
+                    ? "IN PROJECT FILES"
+                    : group.kind === "memory"
+                      ? "IN MEMORY"
+                      : "IN PROJECT DECISIONS",
+                )}
+              </label>
+              <nav className="chat-list">
+                {group.items.map((item: any, index: number) => (
+                  <button
+                    key={group.kind + index}
+                    onClick={() => {
+                      setNav(false);
+                      if (item.open.what === "file")
+                        setDialog({
+                          type: "preview",
+                          file: {
+                            id: item.open.path,
+                            name: item.title,
+                            path: item.open.path,
+                            url: "",
+                          },
+                        });
+                      else if (item.open.what === "memory")
+                        setDialog({
+                          type: "settings",
+                          section: "memory",
+                          data: { scope: item.snippet },
+                        });
+                      else setDialog({ type: "decisions" });
+                    }}
+                  >
+                    {item.open.what === "file" ? (
+                      <FileText />
+                    ) : item.open.what === "memory" ? (
+                      <Brain />
+                    ) : (
+                      <BookmarkCheck />
+                    )}
+                    <span>
+                      {item.title}
+                      <small>{item.snippet}</small>
+                    </span>
+                  </button>
+                ))}
+              </nav>
+            </div>
+          ))}
           <button
             className="nav-button"
             onClick={() => setDialog({ type: "library" })}
@@ -1529,20 +1631,31 @@ export function App() {
                         {detail?.changes?.files
                           ?.filter((f: any) => f.changed)
                           .map((f: any) => (
-                            <button
-                              key={f.path}
-                              className="file-diff-link"
-                              title={tr("Show changes")}
-                              onClick={() =>
-                                setDialog({
-                                  type: "diff",
-                                  data: { path: f.path },
-                                })
-                              }
-                            >
-                              <GitCompare />
-                              {f.path}
-                            </button>
+                            <div className="row" key={f.path}>
+                              <button
+                                className="file-diff-link"
+                                title={tr("Show changes")}
+                                onClick={() =>
+                                  setDialog({
+                                    type: "diff",
+                                    data: { path: f.path },
+                                  })
+                                }
+                              >
+                                <GitCompare />
+                                {f.path}
+                              </button>
+                              {READABLE.test(f.path) && (
+                                <button
+                                  className="icon"
+                                  title={tr("Watch this document")}
+                                  aria-label={tr("Watch this document")}
+                                  onClick={() => watchDocument(f.path)}
+                                >
+                                  <BookOpen />
+                                </button>
+                              )}
+                            </div>
                           ))}
                         <button
                           className="wide"
@@ -1789,8 +1902,66 @@ export function App() {
           </button>
         </div>
       )}
+      {/* The palette's actions are built here, where the callbacks live: it is a
+          second way into the interface, not a second implementation of it. */}
       {dialog && (
         <DialogView
+          actions={[
+            { id: "new-chat", label: tr("New chat"), run: () => newChat() },
+            {
+              id: "capabilities",
+              label: tr("What can I ask for?"),
+              run: async () => setDialog({ type: "capabilities" }),
+            },
+            ...(app.modes || []).map((m: any, index: number) => ({
+              id: "mode-" + m.id,
+              label: tr("Switch mode") + ": " +
+                (cs ? translate(modeNames[index], "cs") : m.label),
+              run: () => act("mode", { mode: m.id }),
+            })),
+            {
+              id: "decisions",
+              label: tr("Project decisions"),
+              run: async () => setDialog({ type: "decisions" }),
+            },
+            {
+              id: "context",
+              label: tr("Context"),
+              run: async () => {
+                setTab("context");
+                setPanel(true);
+              },
+            },
+            {
+              id: "progress",
+              label: tr("Task progress"),
+              run: async () => {
+                setTab("progress");
+                setPanel(true);
+              },
+            },
+            {
+              id: "changes",
+              label: tr("Changes"),
+              run: async () => {
+                setTab("changes");
+                setPanel(true);
+              },
+            },
+            {
+              id: "compress",
+              label: tr("Compress"),
+              run: () => act("compress"),
+            },
+            ...(app.voice?.enabled && app.voice?.ready
+              ? [{ id: "dictate", label: tr("Dictate"), run: () => dictate() }]
+              : []),
+            ...SETTINGS_SECTIONS.map(([section, label]) => ({
+              id: "settings-" + section,
+              label: tr("Settings") + ": " + tr(label),
+              run: async () => setDialog({ type: "settings", section }),
+            })),
+          ]}
           dialog={dialog}
           close={closeDialog}
           setDialog={setDialog}

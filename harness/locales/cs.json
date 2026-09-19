@@ -844,7 +844,17 @@
     "Start my game and watch what happens when you press enter.": "Spusť mi hru a sleduj, co se stane po stisku enteru.",
     "This version needs a small update to its Python packages (a few MB).\n\nInstall it now?": "Tato verze potřebuje malou aktualizaci svých Python balíčků (několik MB).\n\nNainstalovat ji teď?",
     "The bundled Python environment could not be prepared.\n\nConnect to the internet and start Marvin again, or install the Full package for this version.\n\nDetails: {path}": "Přibalené prostředí Pythonu se nepodařilo připravit.\n\nPřipojte se k internetu a spusťte Marvina znovu, nebo nainstalujte balík Full pro tuto verzi.\n\nPodrobnosti: {path}",
-    "Downloading speech recognition": "Stahuji rozpoznávání řeči"
+    "Downloading speech recognition": "Stahuji rozpoznávání řeči",
+    "Search everything": "Hledat všude",
+    "IN PROJECT FILES": "V SOUBORECH PROJEKTU",
+    "IN MEMORY": "V PAMĚTI",
+    "IN PROJECT DECISIONS": "V ROZHODNUTÍCH PROJEKTU",
+    "Go to": "Přejít na",
+    "An action, or anything you wrote": "Akce, nebo cokoli, co jsi napsal",
+    "Found in your work": "Nalezeno ve tvé práci",
+    "Switch mode": "Přepnout režim",
+    "Project file": "Soubor projektu",
+    "Watch this document": "Sledovat tento dokument"
   },
   "legacy_profile_labels": {
     "16 bit - přesnější, kontext 128k": "16-bit - more precise, context 128k",

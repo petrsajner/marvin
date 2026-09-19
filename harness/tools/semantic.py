@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 
 from harness.tools.base import Risk, Tool, truncate
-from harness.tools.search import TEXT_EXTENSIONS, _sanitize_fts_query
+from harness.file_index import TEXT_EXTENSIONS, sanitize_query
 
 FIRST_INDEX_WAIT = 8.0
 
@@ -84,7 +84,7 @@ class SemanticSearchTool(Tool):
         key = hashlib.sha256(str(ctx.workspace.resolve()).encode()).hexdigest()[:24]
         fts_db = ctx.cfg.path("paths.runtime_dir") / "indexes" / f"{key}.sqlite3"
         keyword, file_count = search_index(ctx.workspace, fts_db,
-                                           _sanitize_fts_query(query), TEXT_EXTENSIONS, limit)
+                                           sanitize_query(query), TEXT_EXTENSIONS, limit)
         semantic_paths = {hit["path"] for hit in hits}
         lines = [f"Project files for '{query}':"]
         for hit in hits:

@@ -78,6 +78,29 @@ function modeLabel(app: any, id: string, tr: (value: string) => string): string 
   return found ? tr(found.label) : id;
 }
 
+// Shared with the command palette, so one list names the settings sections.
+// What a search hit is, in words rather than a field name.
+function kindLabel(kind: string) {
+  return kind === "chat"
+    ? "Conversation"
+    : kind === "file"
+      ? "Project file"
+      : kind === "memory"
+        ? "Memory"
+        : "Project decision";
+}
+
+
+export const SETTINGS_SECTIONS: [string, string][] = [
+  ["model", "Model and device"],
+  ["behavior", "Behavior"],
+  ["memory", "Memory and skills"],
+  ["data", "Data and backups"],
+  ["appearance", "Appearance and language"],
+  ["help", "Help and manuals"],
+];
+
+
 export function DialogView(props: any) {
   const {
     dialog,
@@ -99,7 +122,10 @@ export function DialogView(props: any) {
     runtimeCommand,
     setText,
     openPanel,
+    actions,
   } = props;
+  const [palette, setPalette] = useState("");
+  const [paletteHits, setPaletteHits] = useState<any[]>([]);
   const [voiceDevices, setVoiceDevices] = useState<any[] | null>(null);
   const [voiceStatus, setVoiceStatus] = useState<any>(null);
   // The followed status while a download runs, the general one otherwise.
@@ -250,6 +276,22 @@ export function DialogView(props: any) {
         .then((v) => setContent(v.content))
         .catch(error);
   }, [dialog.file, page, error]);
+  // Follow the file while it is being written. Writing mode had no feedback at
+  // all during work: the preview froze at the moment it was opened.
+  useEffect(() => {
+    const file = dialog.file;
+    if (
+      dialog.type !== "preview" || !file ||
+      imageFile(file) || file.name.toLowerCase().endsWith(".pdf")
+    )
+      return;
+    const timer = setInterval(() => {
+      api("/api/files/" + file.id + "/preview?start=" + page + "&count=50")
+        .then((v) => setContent((current) => (v.content === current ? current : v.content)))
+        .catch(() => {});
+    }, 1500);
+    return () => clearInterval(timer);
+  }, [dialog.type, dialog.file?.id, page]);
   const title =
     dialog.type === "settings"
       ? tr("Settings")
@@ -269,16 +311,10 @@ export function DialogView(props: any) {
               "queue-edit": tr("Queued message"),
               diff: (dialog.data?.path || "").split(/[\\/]/).pop() || tr("Changes"),
               capabilities: tr("What can I ask for?"),
+              palette: tr("Go to"),
             } as any
           )[dialog.type] || dialog.type;
-  const settingsSections = [
-    ["model", "Model and device"],
-    ["behavior", "Behavior"],
-    ["memory", "Memory and skills"],
-    ["data", "Data and backups"],
-    ["appearance", "Appearance and language"],
-    ["help", "Help and manuals"],
-  ];
+  const settingsSections = SETTINGS_SECTIONS;
   const finishSelect = async (result: any) => {
     if (result?.session_id) setSid(result.session_id);
     await refresh();
@@ -309,6 +345,28 @@ export function DialogView(props: any) {
       clearInterval(timer);
     };
   }, [dialog.type, dialog.data?.id, sid, error]);
+  useEffect(() => {
+    if (dialog.type !== "palette") return;
+    if (!palette.trim()) {
+      setPaletteHits([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      api(
+        "/api/find?query=" + encodeURIComponent(palette.trim()) +
+          (sid ? "&session_id=" + encodeURIComponent(sid) : ""),
+      )
+        .then((answer: any) =>
+          setPaletteHits(
+            (answer.groups || []).flatMap((group: any) =>
+              group.items.map((item: any) => ({ ...item, kind: group.kind })),
+            ),
+          ),
+        )
+        .catch(() => setPaletteHits([]));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [dialog.type, palette, sid]);
   useEffect(() => {
     if (dialog.type !== "settings" || section !== "data") return;
     const timer = setInterval(() => {
@@ -1505,6 +1563,82 @@ export function DialogView(props: any) {
             )}
             {dialog.type === "process-output" && (
               <pre className="document-preview">{content}</pre>
+            )}
+            {dialog.type === "palette" && (
+              <>
+                <input
+                  autoFocus
+                  aria-label={tr("Go to")}
+                  value={palette}
+                  placeholder={tr("An action, or anything you wrote")}
+                  onChange={(e) => setPalette(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    const first = (actions || []).filter((action: any) =>
+                      action.label.toLowerCase().includes(palette.trim().toLowerCase()),
+                    )[0];
+                    if (first) {
+                      close();
+                      Promise.resolve(first.run()).catch(error);
+                    }
+                  }}
+                />
+                <div className="palette-list">
+                  {(actions || [])
+                    .filter((action: any) =>
+                      action.label
+                        .toLowerCase()
+                        .includes(palette.trim().toLowerCase()),
+                    )
+                    .slice(0, 10)
+                    .map((action: any) => (
+                      <button
+                        key={action.id}
+                        onClick={() => {
+                          close();
+                          Promise.resolve(action.run()).catch(error);
+                        }}
+                      >
+                        {action.label}
+                      </button>
+                    ))}
+                </div>
+                {paletteHits.length > 0 && (
+                  <>
+                    <h3>{tr("Found in your work")}</h3>
+                    <div className="palette-list">
+                      {paletteHits.slice(0, 10).map((item: any, index: number) => (
+                        <button
+                          key={"hit" + index}
+                          onClick={() => {
+                            if (item.open.what === "chat") {
+                              setSid(item.open.session_id);
+                              close();
+                            } else if (item.open.what === "file")
+                              setDialog({
+                                type: "preview",
+                                file: {
+                                  id: item.open.path,
+                                  name: item.title,
+                                  path: item.open.path,
+                                  url: "",
+                                },
+                              });
+                            else if (item.open.what === "memory")
+                              setDialog({ type: "settings", section: "memory" });
+                            else setDialog({ type: "decisions" });
+                          }}
+                        >
+                          <span>
+                            {item.title}
+                            <small>{tr(kindLabel(item.kind))}</small>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </>
             )}
             {dialog.type === "capabilities" && (
               <>

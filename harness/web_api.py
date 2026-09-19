@@ -445,6 +445,21 @@ def create_app(cfg=None, *, service=None):
                 for path in project_files(Path(workspace))
                 if path.suffix.lower() in (DOCUMENT_EXTENSIONS | {".xlsx", ".xlsm", ".png", ".jpg", ".webp"})]
 
+    @app.post("/api/sessions/{sid}/register-file")
+    def register_project_file(sid: str, payload: dict):
+        """Make a project file previewable. The preview resolves an id, not a path."""
+        session = service.session(sid)
+        workspace = session.meta.get("workspace")
+        if not workspace:
+            raise HTTPException(400, "Select a project first")
+        root = Path(workspace).resolve()
+        target = (root / payload["path"]).resolve() if not Path(payload["path"]).is_absolute()             else Path(payload["path"]).resolve()
+        if not target.is_relative_to(root):
+            raise HTTPException(400, "That file is outside the project")
+        if not target.is_file():
+            raise HTTPException(404, "File not found")
+        return service.store.register_file(target, sid, "project")
+
     @app.post("/api/sessions/{sid}/import-chat")
     def import_chat(sid: str, payload: dict):
         session = service.session(sid)
@@ -471,6 +486,33 @@ def create_app(cfg=None, *, service=None):
     @app.get("/api/search")
     def search(query: str):
         return HistoryIndex(cfg.path("paths.sessions_dir")).search(query)
+
+    @app.get("/api/find")
+    def find_everywhere(query: str, session_id: str | None = None):
+        """One search over chats, project files, memory and decisions.
+
+        Each was searchable from a different place, so remembering a sentence but
+        not where it was written meant guessing which place to look in."""
+        from harness import finder
+        with service.lock:
+            session = service.session(session_id) if session_id else None
+        workspace = None
+        work_mode = None
+        if session is not None:
+            raw = session.meta.get("workspace")
+            workspace = Path(raw) if raw else None
+            work_mode = session.meta.get("work_mode")
+        answer = finder.find(cfg, query, workspace=workspace, work_mode=work_mode)
+        # File hits are registered so the existing preview can open them: the
+        # preview resolves an id from the file store, not a path.
+        for group in answer["groups"]:
+            if group["kind"] != "file":
+                continue
+            for item in group["items"]:
+                record = service.store.register_file(item["open"]["path"],
+                                                     session_id, "project")
+                item["open"]["file"] = record
+        return answer
 
     @app.patch("/api/settings")
     def update_settings(payload: dict):
