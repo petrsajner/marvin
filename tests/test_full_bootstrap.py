@@ -77,6 +77,28 @@ class StalePayloadTests(unittest.TestCase):
         self.prepare()
         self.assertTrue((self.venv / "Scripts" / "python.exe").is_file())
 
+    def test_an_older_environment_is_updated_in_place_not_demolished(self):
+        """Rebuilding from a payload that is itself older would lose the change."""
+        (self.venv / ".requirements.sha256").write_text("f" * 64 + "\n", encoding="ascii")
+        calls = []
+
+        class Completed:
+            returncode = 0
+
+        def record(command, **kwargs):
+            calls.append(command)
+            return Completed()
+
+        with patch.object(self.bootstrap.subprocess, "run", side_effect=record):
+            self.prepare()
+        self.assertTrue(any("pip" in part for command in calls for part in command),
+                        "the difference should have been installed with pip")
+        self.assertIn(str(self.lock), [part for command in calls for part in command])
+        self.assertFalse((self.root / "runtime" / "environment-history").exists(),
+                         "a working environment must not be moved aside")
+        self.assertEqual((self.venv / ".requirements.sha256").read_text(encoding="ascii").strip(),
+                         self.digest)
+
     def test_it_still_refuses_to_run_under_the_wrong_interpreter(self):
         with self.assertRaises(RuntimeError) as caught:
             self.bootstrap.prepare(self.root)

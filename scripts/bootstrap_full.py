@@ -42,6 +42,29 @@ def prepare(root=ROOT):
                   "install the Full package for this version to refresh it.")
         marker.write_text(json.dumps({"home": str(private), "digest": digest}), encoding="utf-8")
         return
+    # An environment that works but was installed for older requirements only needs
+    # the difference. Demolishing it and rebuilding from a payload that is itself
+    # older would throw away a working installation to no purpose.
+    if interpreter.is_file() and not payload_current:
+        source = root / "requirements-windows-py312.lock"
+        if not source.is_file():
+            source = root / "requirements.txt"
+        print("[FULL] Updating the existing environment to the current requirements ...",
+              flush=True)
+        env = dict(os.environ)
+        for key in ("PYTHONHOME", "PYTHONPATH", "PYTHONUSERBASE", "PYTHONSTARTUP"):
+            env.pop(key, None)
+        env["PYTHONNOUSERSITE"] = "1"
+        completed = subprocess.run([str(interpreter), "-I", "-m", "pip", "install",
+                                    "-r", str(source)], env=env, cwd=root)
+        if completed.returncode == 0:
+            installed.write_text(digest + "\n", encoding="ascii")
+            marker.write_text(json.dumps({"home": str(private), "digest": digest}),
+                              encoding="utf-8")
+            print("[FULL] Environment updated in place.", flush=True)
+            return
+        print("[FULL] Could not update in place; rebuilding from the bundled payload.",
+              flush=True)
     previous = None
     if environment.exists():
         previous = root / "runtime" / "environment-history" / str(time.time_ns())
