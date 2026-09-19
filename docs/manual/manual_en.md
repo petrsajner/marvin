@@ -162,6 +162,30 @@ PDF, DOCX, XLSX, CSV, Markdown, and text files can also be attached. The model r
 
 Enter and Ctrl+Enter send; Shift+Enter inserts a new line. The composer clears after the service accepts the identified message. Draft text is stored per conversation.
 
+## Dictation
+
+Turn **Voice input** on in **Settings > Behavior**. The first time, about 556 MB
+is downloaded in the background: the speech program and a Czech-capable model.
+Everything then runs on the processor, on this computer, with nothing sent
+anywhere.
+
+A **Dictate** button appears beside Attach. Press it, speak, press it again. The
+text is written into the prompt box, where you read it and correct it before
+sending. Nothing is ever sent by voice alone.
+
+Say which language you speak under **Dictation language**; leaving it on the
+interface language is normal. Stating it is roughly twice as fast as letting the
+program work it out, because detection is a separate pass over the recording.
+
+What to expect: ordinary Czech comes back clean. Names, foreign words and
+technical terms are where mistakes appear, which is why the text lands in an
+editable box rather than being sent. Transcribing takes about four seconds,
+regardless of whether you spoke for two seconds or ten.
+
+If you press the button and then say nothing, you get "Nothing was heard" rather
+than a sentence the program invented - silence is detected before transcription
+starts.
+
 ## Running tasks and the message queue
 
 While a task is active, choose **Clarify now** to steer it or **After completion** to queue a separate request. A task in a different chat keeps running; a new request waits for the single model worker. Queued text can be edited, and queued messages can be cancelled.
@@ -795,6 +819,14 @@ The harness maps screenshot coordinates back to the real display resolution.
 - Left/right/middle click and double-click.
 - Scroll up/down at an optional location.
 - Type ASCII directly or paste Unicode/long text through the clipboard.
+- List the open windows, and photograph one of them by name even while another
+  program covers it. This is how the model watches a program it started without
+  taking the screen away from you: a plain screenshot shows whatever is in front,
+  which is usually not the program being tested.
+- Bring a window to the front by name, restoring it if it was minimised. Keys
+  always reach the window in front, so this comes before pressing keys. If the
+  system refuses to change the foreground, the model is told so instead of
+  reporting success.
 - Press keys and combinations such as Enter, Escape, Ctrl+S, Alt+F4, or Win+D.
   Keys go out as hardware scancodes, which games and other SDL or DirectInput
   windows require: they identify keys by scancode and ignore a key sent without

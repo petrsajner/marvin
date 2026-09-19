@@ -15,7 +15,10 @@ from harness.agent import DOCUMENT_OPERATION_RE
 from harness.config import Config, DEFAULTS
 
 ROOT = Path(__file__).resolve().parent.parent
-LOCALIZED_DOCS = {"docs/manual/manual_cs.md", "docs/distribution/INSTALL-CS.md"}
+# Prose that is meant to contain Czech: the Czech manual and installer guide, and
+# the dictation design, which quotes the Czech speech it was measured against.
+LOCALIZED_DOCS = {"docs/manual/manual_cs.md", "docs/distribution/INSTALL-CS.md",
+                  "docs/design/voice-input.md"}
 CZECH_CHARACTERS = re.compile("[\u00e1\u010d\u010f\u00e9\u011b\u00ed\u0148\u00f3\u0159\u0161\u0165\u00fa\u016f\u00fd\u017e]", re.I)
 TEXT_SUFFIXES = {"", ".py", ".ts", ".tsx", ".js", ".mjs", ".css", ".html", ".md", ".txt",
                  ".yaml", ".yml", ".json", ".toml", ".ps1", ".bat", ".iss", ".spec"}

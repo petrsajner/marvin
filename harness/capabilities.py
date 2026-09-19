@@ -151,6 +151,15 @@ CAPABILITIES: tuple[Capability, ...] = (
         tools=("screenshot", "click", "type_text", "press_key", "scroll",
                "move_mouse", "get_screen_info"),
     ),
+    Capability(
+        id="watch_a_program",
+        title="Watch a program you are testing",
+        summary="Finds the program's own window and photographs it even when something else is "
+                "in front, so your other work is not disturbed.",
+        example="Start my game and watch what happens when you press enter.",
+        category="images", modes=("computer",),
+        tools=("list_windows", "focus_window"),
+    ),
     # --- project work ------------------------------------------------------
     Capability(
         id="write_program",

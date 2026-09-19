@@ -154,6 +154,27 @@ Přiložit lze také PDF, DOCX, XLSX, CSV, Markdown a text. Model dostane cesty 
 
 Enter a Ctrl+Enter odešlou zprávu, Shift+Enter vloží nový řádek. Composer se vyčistí po přijetí identifikované zprávy službou. Rozepsaný text se ukládá pro každý chat zvlášť.
 
+## Diktování
+
+V **Nastavení > Chování** zapněte **Hlasový vstup**. Poprvé se na pozadí stáhne
+asi 556 MB: program pro rozpoznávání řeči a model, který umí česky. Pak vše běží
+na procesoru, v tomto počítači, a nic se nikam neposílá.
+
+Vedle Attach se objeví tlačítko **Diktovat**. Stisknete, mluvíte, stisknete znovu.
+Text se zapíše do pole promptu, kde si ho přečtete a opravíte, než odešlete.
+Samotným hlasem se nikdy nic neodešle.
+
+V **Jazyk diktování** uveďte, jakým jazykem mluvíte; ponechat jazyk rozhraní je
+běžné. Uvedený jazyk je zhruba dvakrát rychlejší než automatické rozpoznání,
+protože rozpoznání jazyka je samostatný průchod nahrávkou.
+
+Co čekat: běžná čeština se vrací čistá. Chyby dělají jména, cizí slova a odborné
+termíny — proto text končí v poli k úpravě a neodesílá se rovnou. Přepis trvá
+kolem čtyř sekund, ať mluvíte dvě sekundy nebo deset.
+
+Když tlačítko stisknete a nic neřeknete, dostanete „Nic jsem neslyšel" místo věty,
+kterou si program vymyslel — ticho se rozpozná ještě před přepisem.
+
 ## Běžící úloha a fronta zpráv
 
 Během práce zvolte **Upřesnit nyní** pro steering nebo **Po dokončení** pro samostatný další požadavek. Úloha v jiném chatu pokračuje a nová zpráva čeká na jediný modelový worker. Text ve frontě lze upravit a čekající zprávu zrušit.
@@ -567,6 +588,12 @@ Harness přepočítá souřadnice obrázku na skutečné rozlišení primárníh
 - Levé, pravé, prostřední kliknutí a dvojklik.
 - Scroll na volitelné pozici.
 - Přímé psaní ASCII nebo vložení Unicode/dlouhého textu přes schránku.
+- Vypsat otevřená okna a vyfotit jedno z nich podle jména, i když ho zakrývá jiný
+  program. Tak model sleduje program, který spustil, aniž by vám bral obrazovku:
+  běžný screenshot ukazuje to, co je vpředu, což obvykle není testovaný program.
+- Přepnout okno do popředí podle jména a obnovit ho, pokud bylo minimalizované.
+  Klávesy vždy míří do okna vpředu, takže tohle předchází jejich stisku. Když
+  systém přepnutí odmítne, model se to dozví, místo aby hlásil úspěch.
 - Klávesy a kombinace jako Enter, Escape, Ctrl+S, Alt+F4 nebo Win+D. Klávesy
   odcházejí jako hardwarové scancody, které hry a další okna na SDL nebo
   DirectInput vyžadují: rozlišují klávesy podle scancodu a klávesu bez něj

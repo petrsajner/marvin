@@ -47,6 +47,7 @@ import {
   Upload,
   Save,
   Sparkles,
+  Mic,
 } from "lucide-react";
 import {
   api,
@@ -99,6 +100,7 @@ export function DialogView(props: any) {
     setText,
     openPanel,
   } = props;
+  const [voiceDevices, setVoiceDevices] = useState<any[] | null>(null);
   const [content, setContent] = useState(""),
     [name, setName] = useState(""),
     [scope, setScope] = useState("global"),
@@ -196,6 +198,12 @@ export function DialogView(props: any) {
       api("/api/backup").then(setBackup).catch(error);
       api("/api/maintenance").then(setMaintenance).catch(error);
     }
+    // Enumerating input devices touches the audio system, so it is asked for
+    // only while the section that lists them is open.
+    if (dialog.type === "settings" && section === "behavior")
+      api("/api/voice")
+        .then((state: any) => setVoiceDevices(state.devices || []))
+        .catch(error);
   }, [dialog.type, section, sid, error]);
   useEffect(() => {
     if (
@@ -531,6 +539,72 @@ export function DialogView(props: any) {
                 <p>
                   {tr("Drafts and received messages are saved automatically.")}
                 </p>
+                <h3>{tr("Dictation")}</h3>
+                <div className="row">
+                  <button
+                    className={app.preferences.voice_input ? "positive" : "outline"}
+                    onClick={() =>
+                      call(() =>
+                        settings({ voice_input: !app.preferences.voice_input }),
+                      )
+                    }
+                  >
+                    <Mic />
+                    {tr("Voice input")}
+                  </button>
+                </div>
+                {app.preferences.voice_input && (
+                  <>
+                    <p>
+                      {app.voice?.installing
+                        ? tr("Downloading speech recognition (~556 MB)…")
+                        : app.voice?.install_error
+                          ? app.voice.install_error
+                          : (app.voice?.missing || []).length
+                            ? tr("Still needed:") + " " + app.voice.missing.join(", ")
+                            : app.voice?.capture_error
+                              ? app.voice.capture_error
+                              : tr("Dictation is ready. It runs on the processor and never leaves this computer.")}
+                    </p>
+                    <label>
+                      {tr("Dictation language")}
+                      <select
+                        value={app.preferences.voice_language || "auto"}
+                        onChange={(e) =>
+                          call(() => settings({ voice_language: e.target.value }))
+                        }
+                      >
+                        <option value="auto">{tr("Follow the interface")}</option>
+                        <option value="cs">{tr("Czech")}</option>
+                        <option value="en">{tr("English")}</option>
+                      </select>
+                    </label>
+                    <p className="muted">
+                      {tr("Stating the language is roughly twice as fast as letting it be detected.")}
+                    </p>
+                    <label>
+                      {tr("Microphone")}
+                      <select
+                        value={String(app.preferences.voice_device ?? "")}
+                        onChange={(e) =>
+                          call(() =>
+                            settings({
+                              voice_device:
+                                e.target.value === "" ? null : Number(e.target.value),
+                            }),
+                          )
+                        }
+                      >
+                        <option value="">{tr("System default")}</option>
+                        {(voiceDevices || []).map((device: any) => (
+                          <option key={device.index} value={device.index}>
+                            {device.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </>
+                )}
               </>
             )}
             {dialog.type === "settings" && section === "appearance" && (

@@ -67,6 +67,13 @@ class ApplicationService:
             self.preferences["model"] = cfg.model_key()
         # Semantic search is opt-in; the runtime flag mirrors the saved preference.
         self.preferences.setdefault("semantic_search", False)
+        # Dictation is opt-in too, and the microphone belongs to the service: a
+        # reloaded page must not leave a stream open or start a second one.
+        self.preferences.setdefault("voice_input", False)
+        self.preferences.setdefault("voice_language", "auto")
+        self.preferences.setdefault("voice_device", None)
+        self.recorder = None
+        self._voice_install = {"running": False, "error": "", "note": ""}
         # Where new projects are created. Empty means the folder beside the
         # installation, which is all that used to be possible.
         self.preferences.setdefault("projects_root", "")
@@ -114,6 +121,79 @@ class ApplicationService:
             self.store.save_job(payload, "interrupted" if job["status"] == "running" else "queued")
         self.worker = threading.Thread(target=self._work, name="marvin-run-controller", daemon=True)
         self.worker.start()
+
+    # ---------------------------------------------------------------- dictation
+    def voice_state(self, devices: bool = False) -> dict:
+        """Dictation status. Device enumeration is skipped unless asked for: it
+        queries the audio system, and the interface polls the general state."""
+        from harness import speech
+        absent = speech.missing(self.cfg)
+        can_record, reason = speech.capture_available()
+        return {
+            "enabled": bool(self.preferences.get("voice_input")),
+            "ready": not absent and can_record,
+            "missing": absent,
+            "capture_error": reason,
+            "recording": bool(self.recorder and self.recorder.active),
+            "seconds": self.recorder.seconds if self.recorder else 0.0,
+            "language": self.preferences.get("voice_language", "auto"),
+            "device": self.preferences.get("voice_device"),
+            "devices": speech.input_devices() if devices else [],
+            "installing": self._voice_install["running"],
+            "install_error": self._voice_install["error"],
+        }
+
+    def voice_start(self) -> dict:
+        from harness import speech
+        from harness.i18n import t
+        absent = speech.missing(self.cfg)
+        if absent:
+            raise ValueError(t("Dictation is not installed yet: {items}",
+                               items=", ".join(absent)))
+        can_record, reason = speech.capture_available()
+        if not can_record:
+            raise ValueError(reason or t("No microphone is connected."))
+        self.cfg.data["speech"]["device"] = self.preferences.get("voice_device")
+        if self.recorder is None:
+            self.recorder = speech.Recorder(self.cfg)
+        self.recorder.start()
+        return self.voice_state()
+
+    def voice_cancel(self) -> dict:
+        if self.recorder:
+            self.recorder.cancel()
+        return self.voice_state()
+
+    def voice_stop(self) -> dict:
+        """Stop recording and return what was heard. Never sends anything."""
+        from harness import speech
+        if not (self.recorder and self.recorder.active):
+            return {"text": "", "heard": False, **self.voice_state()}
+        wav = self.recorder.stop()
+        if wav is None:
+            return {"text": "", "heard": False, **self.voice_state()}
+        try:
+            text = speech.transcribe(self.cfg, wav, self.preferences.get("voice_language"))
+        finally:
+            wav.unlink(missing_ok=True)
+        return {"text": text, "heard": bool(text), **self.voice_state()}
+
+    def prepare_voice_input(self) -> None:
+        """Download the pinned dictation assets once, in the background."""
+        from harness import speech
+        if speech.ready(self.cfg) or self._voice_install["running"]:
+            return
+        self._voice_install.update(running=True, error="")
+
+        def _install():
+            try:
+                speech.install(self.cfg)
+            except Exception as error:
+                self._voice_install["error"] = f"{type(error).__name__}: {error}"
+            finally:
+                self._voice_install["running"] = False
+
+        threading.Thread(target=_install, name="marvin-voice-setup", daemon=True).start()
 
     def apply_projects_root(self, value: str) -> str:
         """Point new projects at a folder, or back at the built-in one.

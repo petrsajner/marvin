@@ -130,6 +130,7 @@ def create_app(cfg=None, *, service=None):
                 "memory": {"vram_detected_gb": vram_total_gb(), "vram_budget_gb": budget,
                            "ram_total_gb": round(memory.total / 1024**3, 1),
                            "ram_available_gb": round(memory.available / 1024**3, 1)},
+                "voice": service.voice_state(),
                 "session_id": selected, "sessions": sessions, "projects": Projects(cfg).list_all(),
                 "modes": [{"id": key, "label": value.label} for key, value in WORK_MODES.items()],
                 "models": model_options, "semantic_search": semantic,
@@ -150,6 +151,39 @@ def create_app(cfg=None, *, service=None):
             return {"id": sid, "meta": session.meta, "messages": [service.message_payload(session, m) for m in messages[start:end]],
                     "before": start if start else None, "total": len(messages), "live": live,
                     "draft": read_json(session.dir / "draft.json"), "jobs": jobs}
+
+    @app.get("/api/voice")
+    def voice_state():
+        with service.lock:
+            return service.voice_state(devices=True)
+
+    @app.post("/api/voice/start")
+    def voice_start():
+        with service.lock:
+            try:
+                return service.voice_start()
+            except ValueError as error:
+                raise HTTPException(status_code=400, detail=str(error))
+
+    @app.post("/api/voice/stop")
+    def voice_stop():
+        # Outside the service lock: transcription takes seconds and must not
+        # block the rest of the interface while it runs.
+        try:
+            return service.voice_stop()
+        except (RuntimeError, OSError) as error:
+            raise HTTPException(status_code=400, detail=str(error))
+
+    @app.post("/api/voice/cancel")
+    def voice_cancel():
+        with service.lock:
+            return service.voice_cancel()
+
+    @app.post("/api/voice/install")
+    def voice_install():
+        with service.lock:
+            service.prepare_voice_input()
+            return service.voice_state()
 
     @app.get("/api/capabilities")
     def capabilities(mode: str = "discussion"):
@@ -467,7 +501,11 @@ def create_app(cfg=None, *, service=None):
                 # Validated before it is stored, so a bad folder never persists.
                 payload["projects_root"] = service.apply_projects_root(payload["projects_root"])
             allowed = {"model", "thinking", "language", "theme", "density", "autonomy", "send_mode",
-                       "kv_cache_modes", "vram_gb", "semantic_search", "projects_root"}
+                       "kv_cache_modes", "vram_gb", "semantic_search", "projects_root",
+                       "voice_input", "voice_language", "voice_device"}
+            if payload.get("voice_input"):
+                # Fetch the pinned program and models once, in the background.
+                service.prepare_voice_input()
             if "semantic_search" in payload and not isinstance(payload["semantic_search"], bool):
                 raise ValueError("Semantic search must be enabled or disabled")
             if payload.get("semantic_search"):

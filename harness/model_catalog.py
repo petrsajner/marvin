@@ -67,6 +67,40 @@ QWEN27B_MTP_DRAFT = {
     ],
 }
 
+# Speech recognition for dictation, run by whisper-cli on the CPU. Measured on
+# FLEURS cs_cz: 11.4% word error rate, 3.9 s per utterance. The full large-v3
+# scored identically on the same clips and took 6.1 s, so turbo is the only one
+# shipped - see docs/design/voice-input.md.
+SPEECH_WHISPER_TURBO = {
+    "alias": "Whisper large-v3-turbo Q5_0 (547 MB, dictation, CPU only)",
+    "repo": "ggerganov/whisper.cpp",
+    "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+    "download_dir": "Speech",
+    "download_transport": "range",
+    "optional_download": True,
+    "assets": [
+        {"path": "ggml-large-v3-turbo-q5_0.bin", "size": 574041195,
+         "sha256": "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2"},
+    ],
+}
+
+# Voice activity detection. Not optional: without it, silence and faint hiss are
+# both transcribed as an invented Czech subtitle credit.
+SPEECH_SILERO_VAD = {
+    "alias": "Silero VAD v5.1.2 (speech detection for dictation)",
+    "repo": "ggml-org/whisper-vad",
+    "revision": "9ffd54a1e1ee413ddf265af9913beaf518d1639b",
+    # Its own directory: the download receipt is per directory, so two specs
+    # sharing one would each report the other's as unverified.
+    "download_dir": "Speech/vad",
+    "download_transport": "range",
+    "optional_download": True,
+    "assets": [
+        {"path": "ggml-silero-v5.1.2.bin", "size": 885098,
+         "sha256": "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf"},
+    ],
+}
+
 # CPU-only embedding model for semantic search. Served by a dedicated
 # llama-server sidecar with -ngl 0; never registered as a selectable model.
 EMBEDDINGS_BGE_M3 = {

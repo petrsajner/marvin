@@ -123,20 +123,57 @@ def _send_scancodes(parts: list[str], hold: float) -> int:
 
 class ScreenshotTool(Tool):
     name = "screenshot"
-    description = ("Capture a screenshot of the primary monitor. The image is attached to the conversation "
-                   "so you can see the screen. Returns real screen size and image size - use IMAGE pixel "
-                   "coordinates for click/move/scroll tools. ALWAYS call this first, before any GUI action.")
-    parameters = {}
+    description = ("Capture the screen, or one window by name. The image is attached to the conversation "
+                   "so you can see it. Returns real size and image size - use IMAGE pixel "
+                   "coordinates for click/move/scroll tools. ALWAYS call this first, before any GUI action. "
+                   "Pass 'window' to photograph a program that is open but covered by something else, which "
+                   "is the reliable way to watch a game or a program you started: a plain screenshot shows "
+                   "whatever happens to be in front, which may not be the program you are testing. "
+                   "Use list_windows to learn the names.")
+    parameters = {"window": {"type": "string",
+                             "description": "Part of a window title, for one window instead of the screen"}}
 
-    def run(self, ctx: AgentContext) -> str:
+    def run(self, ctx: AgentContext, window: str = "") -> str:
         import mss
         from PIL import Image
 
         ccfg = ctx.cfg.computer
-        with mss.mss() as sct:
-            mon = sct.monitors[1]  # Primary monitor.
-            shot = sct.grab(mon)
-            img = Image.frombytes("RGB", shot.size, shot.rgb)
+        origin = (0, 0)
+        note = ""
+        if window:
+            from harness import desktop
+            target = desktop.find(window)
+            if target is None:
+                open_titles = ", ".join(repr(w["title"]) for w in desktop.windows()[:12])
+                return (f"ERROR: no open window matches {window!r}. "
+                        f"Currently open: {open_titles or 'nothing with a title'}")
+            if target["minimized"]:
+                return (f"ERROR: the window {target['title']!r} is minimised and has nothing to show. "
+                        f"Use focus_window to restore it first.")
+            img = desktop.capture(target["handle"])
+            if img is None:
+                # Some GPU-drawn windows hand back nothing. Bringing the window
+                # forward and grabbing its rectangle always works, at the cost of
+                # taking the foreground away from whatever the user was doing.
+                ok, how = desktop.focus(target["handle"])
+                if not ok:
+                    return (f"ERROR: {target['title']!r} could not be photographed where it stands, "
+                            f"and it could not be brought forward either ({how}).")
+                time.sleep(0.25)
+                target = desktop.find(window) or target
+                with mss.mss() as sct:
+                    shot = sct.grab({"left": target["x"], "top": target["y"],
+                                     "width": target["width"], "height": target["height"]})
+                    img = Image.frombytes("RGB", shot.size, shot.rgb)
+                note = " The window had to be brought to the front to be photographed."
+            origin = (target["x"], target["y"])
+            label = f"window {target['title']!r}"
+        else:
+            with mss.mss() as sct:
+                mon = sct.monitors[1]  # Primary monitor.
+                shot = sct.grab(mon)
+                img = Image.frombytes("RGB", shot.size, shot.rgb)
+            label = "screen"
 
         screen_w, screen_h = img.size
         max_edge = int(ccfg.get("screenshot_max_edge", 1920))
@@ -153,11 +190,64 @@ class ScreenshotTool(Tool):
         _last_shot.update(
             screen_w=screen_w, screen_h=screen_h,
             img_w=img.size[0], img_h=img.size[1],
-            origin_x=0, origin_y=0,
+            origin_x=origin[0], origin_y=origin[1],
         )
         ctx.pending_images.append(path)
-        return (f"Screenshot captured: image {img.size[0]}x{img.size[1]} px (real screen {screen_w}x{screen_h}). "
-                f"Coordinates for GUI tools are in IMAGE pixel space. The screenshot is attached to your next message.")
+        return (f"Screenshot captured of the {label}: image {img.size[0]}x{img.size[1]} px "
+                f"(real {screen_w}x{screen_h}). Coordinates for GUI tools are in IMAGE pixel space. "
+                f"The screenshot is attached to your next message.{note}")
+
+
+class ListWindowsTool(Tool):
+    name = "list_windows"
+    description = ("List the open windows with their titles, programs, positions and sizes. "
+                   "Use it to find the program you are testing before taking its screenshot or "
+                   "sending it keys - the screen shows whatever is in front, which is often "
+                   "something else entirely.")
+    parameters = {}
+    risk = Risk.SAFE
+
+    def run(self, ctx: AgentContext) -> str:
+        from harness import desktop
+        found = desktop.windows()
+        if not found:
+            return "No open windows with a title."
+        lines = []
+        for item in found:
+            marks = []
+            if item["foreground"]:
+                marks.append("in front")
+            if item["minimized"]:
+                marks.append("minimised")
+            lines.append("%-44s %-18s %4d,%-4d %dx%d%s" % (
+                item["title"][:44], item["process"][:18], item["x"], item["y"],
+                item["width"], item["height"],
+                "  (" + ", ".join(marks) + ")" if marks else ""))
+        return "Open windows:\n" + "\n".join(lines)
+
+
+class FocusWindowTool(Tool):
+    name = "focus_window"
+    description = ("Bring a window to the front by part of its title, restoring it if it is "
+                   "minimised. Keys always go to the window in front, so call this before "
+                   "pressing keys for a program you started. Screenshots do not need it: "
+                   "screenshot(window=...) can photograph a covered window where it stands.")
+    parameters = {"title": {"type": "string", "description": "Part of the window title"}}
+    required = ["title"]
+    risk = Risk.WRITE
+
+    def run(self, ctx: AgentContext, title: str) -> str:
+        from harness import desktop
+        target = desktop.find(title)
+        if target is None:
+            open_titles = ", ".join(repr(w["title"]) for w in desktop.windows()[:12])
+            return (f"ERROR: no open window matches {title!r}. "
+                    f"Currently open: {open_titles or 'nothing with a title'}")
+        ok, how = desktop.focus(target["handle"])
+        if not ok:
+            return (f"ERROR: {target['title']!r} could not be brought to the front ({how}). "
+                    f"You can still photograph it with screenshot(window=...).")
+        return f"{target['title']!r} is now in front, and will receive keys ({how})."
 
 
 class ClickTool(Tool):
@@ -314,6 +404,11 @@ class GetScreenSizeTool(Tool):
         return f"Screen: {w}x{h}px. No screenshot taken yet - call screenshot() first."
 
 
+def desktop_supported() -> bool:
+    from harness import desktop
+    return desktop.supported()
+
+
 def register_computer_tools(registry) -> None:
     registry.register(ScreenshotTool())
     registry.register(ClickTool())
@@ -322,3 +417,6 @@ def register_computer_tools(registry) -> None:
     registry.register(ScrollTool())
     registry.register(MoveMouseTool())
     registry.register(GetScreenSizeTool())
+    if desktop_supported():
+        registry.register(ListWindowsTool())
+        registry.register(FocusWindowTool())

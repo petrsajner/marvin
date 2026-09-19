@@ -35,6 +35,12 @@ computer:
   screenshot_grayscale: false
   failsafe: true
   pause_between_actions: 0.15
+speech:
+  enabled: false           # Dictation is off until the owner turns it on.
+  language: auto           # auto follows the interface language; cs or en states it.
+  device: null             # null uses the system default input device.
+  threads: 0               # 0 lets the harness choose from the processor count.
+  max_seconds: 300         # A recording that is never stopped cannot grow forever.
 memory:
   directory: memory
   global_filename: GLOBAL.md

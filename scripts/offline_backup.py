@@ -90,6 +90,14 @@ def _runtime_sources(root: Path) -> list[tuple[Path, Path, str]]:
             if source.is_file():
                 rel = Path("payload") / "runtime" / "llama" / source.relative_to(llama)
                 sources.append((source, rel, "llama"))
+    whisper = runtime / "whisper"
+    if whisper.is_dir():
+        # The dictation program. Its models live under runtime/models and are
+        # already collected above.
+        for source in sorted(whisper.rglob("*")):
+            if source.is_file():
+                rel = Path("payload") / "runtime" / "whisper" / source.relative_to(whisper)
+                sources.append((source, rel, "whisper"))
     webview = runtime / "webview2"
     if webview.is_dir():
         for source in sorted(webview.iterdir()):
@@ -516,7 +524,8 @@ def _main() -> int:
     restore.add_argument("--backup", required=True)
     restore.add_argument("--root", default=str(Path(__file__).resolve().parent.parent))
     restore.add_argument("--components", default=None,
-                         help="comma-separated components (models,llama,python-dependencies)")
+                         help="comma-separated components "
+                              "(models,llama,whisper,webview2,settings,python-dependencies)")
     info = sub.add_parser("info")
     info.add_argument("--backup", required=True)
     refresh = sub.add_parser("refresh")

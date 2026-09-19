@@ -74,6 +74,12 @@ These are product decisions, not postponed roadmap items.
 - 🧩 **Hierarchical project guidance** — `AGENTS.md`, `QWEN.md` and `CLAUDE.md`
   are applied automatically from project root to the active file
 - 🔎 **Fast repository search** — ripgrep-backed literal/regex search and file globs
+- 🎙️ **Dictation (opt-in)** — speak instead of typing, in Czech or English. Runs
+  on the processor with whisper.cpp; the text lands in the prompt box for you to
+  check, and nothing is ever sent by voice alone.
+- 🪟 **Window-aware computer control** — lists the open windows, photographs one by
+  name even while another program covers it, and brings it to the front before
+  sending keys.
 - 🧲 **Semantic search (opt-in)** — meaning-based retrieval over project files and
   past conversations, Czech and English, hybrid with keyword FTS5; a small
   CPU-only embedding model serves it without touching the GPU

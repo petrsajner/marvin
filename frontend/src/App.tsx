@@ -12,6 +12,7 @@ import {
   PanelLeft,
   PanelRight,
   Ellipsis,
+  Mic,
   Paperclip,
   ArrowUp,
   Square,
@@ -115,6 +116,9 @@ export function App() {
     liveRate = useRef<{ run: string; chars: number; at: number; rate: number } | null>(null),
     loadGeneration = useRef(0);
   const [now, setNow] = useState(Date.now());
+  const [listening, setListening] = useState(false),
+    [transcribing, setTranscribing] = useState(false),
+    [listenFrom, setListenFrom] = useState(0);
   const project = (app?.projects || []).find(
     (p: any) => p.path === chat?.meta.workspace,
   );
@@ -151,6 +155,12 @@ export function App() {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [app?.active?.session_id, sid]);
+  // The clock above only runs during a task; dictation needs its own.
+  useEffect(() => {
+    if (!listening) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [listening]);
   const cs = app?.preferences?.language === "cs";
   useEffect(() => setChatLimit(20), [chat?.meta.workspace, search]);
   // While a chat is loading after a switch, keep the sidebar on the target
@@ -177,6 +187,44 @@ export function App() {
     if (!sidRef.current) setSid(next.session_id);
     return next;
   }, []);
+  // Dictation puts the text in the box and stops there. Nothing is ever sent
+  // without the owner pressing send.
+  const dictate = useCallback(async () => {
+    if (transcribing) return;
+    if (!listening) {
+      try {
+        await api("/api/voice/start", "POST");
+        setListenFrom(Date.now());
+        setNow(Date.now());
+        setListening(true);
+      } catch (e) {
+        error(e);
+      }
+      return;
+    }
+    setListening(false);
+    setTranscribing(true);
+    try {
+      const heard = await api<{ text: string; heard: boolean }>(
+        "/api/voice/stop",
+        "POST",
+      );
+      if (heard.heard) {
+        setText((current) =>
+          current && !/\s$/.test(current)
+            ? current + " " + heard.text
+            : current + heard.text,
+        );
+        textRef.current?.focus();
+      } else {
+        setToast(tr("Nothing was heard."));
+      }
+    } catch (e) {
+      error(e);
+    } finally {
+      setTranscribing(false);
+    }
+  }, [listening, transcribing, error, tr]);
   const refreshDetail = useCallback(async () => {
     const current = sidRef.current;
     if (current) {
@@ -1095,6 +1143,39 @@ export function App() {
                     </div>
                   )}
                   <div className="composer-toolbar">
+                    {app.voice?.enabled && (
+                      <button
+                        className={listening ? "danger" : "attach"}
+                        disabled={transcribing || (!listening && !app.voice?.ready)}
+                        title={
+                          app.voice?.ready
+                            ? ""
+                            : (app.voice?.missing || []).join(", ") ||
+                              app.voice?.capture_error ||
+                              ""
+                        }
+                        onClick={() => void dictate()}
+                      >
+                        {transcribing ? (
+                          <LoaderCircle className="spin" />
+                        ) : listening ? (
+                          <Square />
+                        ) : (
+                          <Mic />
+                        )}
+                        {transcribing
+                          ? tr("Transcribing")
+                          : listening
+                            ? tr("Stop dictation") +
+                              " · " +
+                              Math.max(
+                                0,
+                                Math.round((now - listenFrom) / 1000),
+                              ) +
+                              " s"
+                            : tr("Dictate")}
+                      </button>
+                    )}
                     <button
                       className="attach"
                       onClick={() => fileRef.current?.click()}

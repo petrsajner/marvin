@@ -63,6 +63,9 @@ Recorded so the roadmap does not silently go stale. All of this landed on
 | Diff viewer with per-file restore | `changes.py:file_diff`, diff dialog, restore-point drift | `16dd993`, made reachable in `02a9a3c` |
 | Per-task Git auto-commit | `application.py:_maybe_autocommit`, `projects.py:set_autocommit` | `77e0e1c`, `4b04c1a`, `49976f8` |
 | Project checks with agent repair | `project_checks.py`, Project status panel | `3cb3cf2`, corrected in `02a9a3c` and `e21ae01` |
+| Tool discoverability (gap A) | `capabilities.py`, the "What can I ask for?" catalogue | Released in 1.11.2 |
+| Voice input (gap B) | `speech.py`, [design](voice-input.md) | Released in 1.12.0 |
+| Watching a window that is not in front | `desktop.py`, `list_windows`, `focus_window`, `screenshot(window=)` | Released in 1.12.0 |
 
 Semantic search shipped close to the original proposal - a CPU-only sidecar beside
 the main model, a vector index next to FTS5, hybrid merge - with two deviations
@@ -81,8 +84,8 @@ Verified against the tree, not assumed.
 
 | # | Gap | Current state |
 |---|---|---|
-| A | Tool discoverability | **Missing.** See below - the largest gap for this target. |
-| B | Voice input (dictation) | **Missing.** No speech path anywhere in the tree. |
+| A | Tool discoverability | **Delivered** in 1.11.2. The section below records the reasoning. |
+| B | Voice input (dictation) | **Delivered** in 1.12.0: whisper.cpp on the processor, 11.4% word error rate in Czech, measured. |
 | C | Live document preview while writing | **Partial.** Document and HTML preview exist; nothing renders while the user writes. |
 | D | Unified global search | **Partial.** `/api/search` covers chats only; files, memory and decisions are reached separately. `semantic_search` spans files and history but only as a model tool. |
 | E | Command palette | **Missing.** No keyboard-driven action launcher. |
@@ -117,7 +120,9 @@ reasoning is recorded so it can be argued with later.
 1. **Tool discoverability (A).** Directly serves axis 2 and the stated user. The
    capability already exists and is being wasted.
 2. **Voice input (B).** The remaining capability gap that most favours a
-   non-programmer, and no local competitor offers it.
+   non-programmer, and no local competitor offers it. Delivered in 1.12.0; the
+   measurements that decided the model and the silence handling are in
+   [voice-input.md](voice-input.md).
 3. **Live document preview (C).** Writing is the non-programmer's mode; it is the
    place where feedback while working matters most.
 4. **Unified search (D)** and **command palette (E).** Both reduce "where do I
