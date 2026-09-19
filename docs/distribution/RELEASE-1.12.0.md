@@ -72,8 +72,22 @@ so it was not adopted.
 **Also in this release.** New projects can be given their own folder (Settings >
 Data and backups). Text can be selected and copied from the chat. Keys reach games
 as hardware scancodes with a configurable hold, which is what SDL and DirectInput
-require. The release staging no longer links files that get rebuilt, after a
-rebuilt manual silently rewrote the copy inside an already published release.
+require.
+
+Three faults found while preparing the release rather than after it. The release
+staging linked files that get rebuilt, so a rebuilt manual silently rewrote the
+copy inside an already published release and its checksums stopped matching. The
+new speech settings existed only in `config.yaml`, which an upgrade preserves, so
+dictation would have raised a KeyError on every existing installation - caught by
+loading the installed configuration instead of the repository's own. And
+refreshing the offline backup replaced the installer and dependencies but not the
+runtime payload, so a restored offline install would have had no speech program;
+a refresh now carries new runtime while still recognising the unchanged 226 GB by
+size rather than re-reading it.
+
+Adding a dependency also used to make the launcher announce that the application
+was not fully installed and offer to download 37 GB of models again. A release
+that adds a Python package now says what it is: a few megabytes.
 
 ## Upgrading
 
@@ -83,7 +97,7 @@ turn it on.
 
 ## Verification
 
-370 checks in the core suite and 231 unit tests, green locally before the build.
+370 checks in the core suite and 232 unit tests, green locally before the build.
 Dictation is additionally covered end to end by `tests/check_speech.py`, which
 runs the real program against a generated sample; window capture was verified
 against a live pygame window. The measurements behind both features are recorded
