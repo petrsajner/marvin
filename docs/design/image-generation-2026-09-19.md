@@ -109,9 +109,25 @@ and `--dry-run` returns exactly the intended request -
 `POST /api/cli/v1/generate` with `{"model": "nano-banana-2", "media": "image",
 "mode": "text2image", "params": {"prompt": ...}}`.
 
-**The one thing still unverified is a real generation**, because it spends the
-owner's credits and that is his to authorise. Everything up to the paid call has
-now carried traffic.
+## One real generation
+
+Authorised by the owner and run through `openart.generate` rather than by hand,
+so what was tested is the code path and not a command line:
+
+| | |
+|---|---|
+| model | `nano-banana-2` |
+| wall time | **17 s** |
+| quoted first | 20 credits |
+| actually charged | **20** - 27,854 before, 27,834 after |
+| saved | `generated-images/nA0WZVN7tMQTDSLq8sdx.png`, 1,553,048 bytes |
+
+The picture is what was asked for. The path carries traffic end to end.
+
+One thing the run showed that no documentation said: **the service names the file
+after its own id**, not after the prompt, so a folder of these is unreadable. That
+is what the tool's optional `name` already exists for, and it is worth the model
+using every time - the description asks for it.
 
 The CLI is at **v0.1.1**. That is an early version, and the interface may move;
 the pin is what protects against it moving underneath us.

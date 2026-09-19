@@ -35,8 +35,13 @@ class GenerateImageTool(Tool):
                   "description": "Model id from the list above. Defaults to %s." % openart.DEFAULT_MODEL},
         "reference": {"type": "string",
                       "description": "Optional path to an existing image to edit or vary."},
+        # Measured: the service names the file after its own id, so a folder of
+        # these is unreadable without this.
         "name": {"type": "string",
-                 "description": "Optional file name stem for the saved picture."},
+                 "description": "File name stem for the saved picture, without the "
+                                "extension. Always pass one that describes the picture: "
+                                "the service otherwise names the file after its internal "
+                                "id, like nA0WZVN7tMQTDSLq8sdx.png."},
     }
     required = ["prompt"]
     risk = Risk.WRITE             # It writes a file and spends the owner's credits.
