@@ -443,7 +443,8 @@ def _tool_progress_text(name: str, arguments, *, preparing: bool) -> str:
 
 
 def _live_token_estimate() -> int:
-    return int(state.hub.progress()["generated_chars"]) * 10 // 36
+    from harness.session import Session
+    return Session.tokens_for(int(state.hub.progress()["generated_chars"]))
 
 
 state = AppState()

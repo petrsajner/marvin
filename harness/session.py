@@ -175,13 +175,59 @@ class Session:
         return f"data:{mime};base64,{b64}"
 
     # -- context estimate / compression -----------------------------------------
-    IMAGE_TOKENS = 1400  # Approximate token cost per downscaled image.
+    #
+    # These two constants were measured against what the server actually
+    # tokenised, not assumed. An image-free conversation of 287,114 characters
+    # was 89,670 prompt tokens - 3.20 characters per token, not the 3.6 assumed
+    # before, because Czech prose and JSON tool output both tokenise worse than
+    # English. Given that ratio, a conversation carrying seven screenshots left
+    # 18,087 tokens unaccounted for: 2,583 per picture, not 1,400.
+    #
+    # Both errors ran the same way, so the harness believed the context was
+    # emptier than it was - by 17% in one measured session and 11% in another.
+    # That is why the figure beside the composer disagreed with the one the
+    # server reported while reading the prompt: one was measured, one was not.
+    IMAGE_TOKENS = 2600      # Measured cost of one downscaled screenshot.
+    CHARS_PER_TOKEN = 3.2    # Measured on Czech prose, Python and JSON mixed.
+    SCALE_KEY = "token_scale"
+
+    @classmethod
+    def tokens_for(cls, chars: int, images: int = 0, scale: float = 1.0) -> int:
+        """The one place characters and pictures become a token count."""
+        return int((chars / cls.CHARS_PER_TOKEN + images * cls.IMAGE_TOKENS) * scale)
+
+    def token_scale(self) -> float:
+        """The correction this conversation has learned from the server."""
+        try:
+            value = float(self.meta.get(self.SCALE_KEY) or 1.0)
+        except (TypeError, ValueError):
+            return 1.0
+        return value if 0.5 <= value <= 2.0 else 1.0
+
+    def calibrate_tokens(self, prompt_tokens: int, raw_estimate: int) -> float:
+        """Learn the real ratio from a request the server has counted for us.
+
+        Constants cannot know whether a conversation is Czech prose, Python or
+        screenshots, and the mix changes as the work does. The server reports the
+        exact prompt length with every response, so the estimate does not have to
+        keep guessing: it is corrected towards what was actually measured, gently
+        enough that one odd request cannot swing it."""
+        if prompt_tokens <= 0 or raw_estimate <= 0:
+            return self.token_scale()
+        observed = prompt_tokens / raw_estimate
+        if not 0.5 <= observed <= 2.0:
+            return self.token_scale()      # A truncated or retried request teaches nothing.
+        scale = round(self.token_scale() + (observed - self.token_scale()) * 0.3, 4)
+        self.meta[self.SCALE_KEY] = scale
+        self._save_meta()
+        return scale
 
     def estimate_context_tokens(self, include_pins: bool = True) -> int:
         """Estimate the actual API input, counting only images still being sent."""
         import json as _json
         view = self._view_messages()
         total = 0
+        images = 0
         for m in view:
             c = m.get("content") or ""
             if isinstance(c, str):
@@ -192,15 +238,14 @@ class Session:
                         if part.get("type") == "text":
                             total += len(str(part.get("text", "")))
                         elif part.get("type") == "image_url":
-                            total += self.IMAGE_TOKENS * 4  # Character-equivalent cost, converted to tokens below.
-            total += len(self._sent_images(m)) * self.IMAGE_TOKENS * 4
+                            images += 1
+            images += len(self._sent_images(m))
             if m.get("tool_calls"):
                 total += len(_json.dumps(m["tool_calls"], ensure_ascii=False))
             total += len(str(m.get("reasoning") or m.get("reasoning_content") or ""))
         if include_pins:
             total += len(self.pinned_context_block())
-        # Approximately 3.6 characters per token for multilingual prose, code and JSON.
-        return total * 10 // 36
+        return self.tokens_for(total, images, self.token_scale())
 
     def pin_context_file(self, path: Path) -> bool:
         resolved = str(path.resolve())
@@ -271,12 +316,10 @@ class Session:
         c = m.get("content") or ""
         if not isinstance(c, str):
             c = " ".join(str(p.get("text", "")) for p in c if isinstance(p, dict))
-        n = len(str(c)) * 10 // 36
-        n += len(str(m.get("reasoning") or m.get("reasoning_content") or "")) * 10 // 36
-        n += len(self._sent_images(m)) * self.IMAGE_TOKENS
+        chars = len(str(c)) + len(str(m.get("reasoning") or m.get("reasoning_content") or ""))
         if m.get("tool_calls"):
-            n += len(_json.dumps(m["tool_calls"], ensure_ascii=False)) * 10 // 36
-        return n
+            chars += len(_json.dumps(m["tool_calls"], ensure_ascii=False))
+        return self.tokens_for(chars, len(self._sent_images(m)), self.token_scale())
 
     @classmethod
     def _is_user_boundary(cls, message: dict) -> bool:
@@ -332,8 +375,8 @@ class Session:
         """How many images pruning would drop, and roughly what that frees.
 
         Asked before pruning, because the rewrite costs the server every token
-        after the first dropped image: giving up one picture to save 1400 tokens
-        is a minute of reprocessing for nothing."""
+        after the first dropped image: giving up one picture to save a couple of
+        thousand tokens is a minute of reprocessing for nothing."""
         carrying = [m for m in self._view_messages() if self._sent_images(m)]
         kept = 0
         dropped = 0
@@ -343,7 +386,7 @@ class Session:
                 kept += count
                 continue
             dropped += count
-        return dropped, dropped * self.IMAGE_TOKENS
+        return dropped, self.tokens_for(0, dropped, self.token_scale())
 
     def prune_images(self, keep: int = 4) -> int:
         """Give up all but the newest `keep` images and return how many were dropped.

@@ -65,7 +65,10 @@ def summarize_messages(llm: Any, messages: list[dict], should_stop=None) -> str:
         content = render_messages_text([message], max_chars=2**63 - 1)
         lines.append(f"[Message {reference}]\n{content}")
     transcript = "\n\n".join(lines)
-    budget = max(8000, int(llm.cfg.context_size() * 0.45 * 3.6))
+    # A token budget turned into a character budget. Measured, not assumed: at the
+    # old 3.6 this asked for 12% more text than 45% of the context can hold.
+    from harness.session import Session
+    budget = max(8000, int(llm.cfg.context_size() * 0.45 * Session.CHARS_PER_TOKEN))
     cache = llm.cfg.path("paths.runtime_dir") / "summary-cache"
     cache.mkdir(parents=True, exist_ok=True)
 

@@ -326,6 +326,9 @@ class Agent:
 
     def _request_messages(self) -> list[dict]:
         messages = self._api_messages()
+        # Remember the uncorrected size of this request, so the server's own
+        # count of it can correct the estimate afterwards.
+        self._last_sent = self.session.tokens_for(*self._sent_size(messages))
         # Record what is actually sent. The conversation on disk shows the final
         # state, so anything rewritten in place looks as though it always was that
         # way - which is exactly the case a lost prompt cache needs explained.
@@ -348,11 +351,46 @@ class Agent:
         return sum(self.context_usage_breakdown().values())
 
     def context_usage_breakdown(self) -> dict[str, int]:
-        import json as _json
+        scale = self.session.token_scale()
         messages = self.session.estimate_context_tokens(include_pins=False)
-        dynamic = len(self._context_update(self.session.to_api_messages(include_pins=False))) * 10 // 36
-        schemas = len(_json.dumps(self.registry.schemas(), ensure_ascii=False)) * 10 // 36
-        return {"messages": messages, "dynamic": dynamic, "tool_schemas": schemas}
+        dynamic = self.session.tokens_for(
+            len(self._context_update(self.session.to_api_messages(include_pins=False))), 0, scale)
+        return {"messages": messages, "dynamic": dynamic,
+                "tool_schemas": self.session.tokens_for(self._schema_chars(), 0, scale)}
+
+    def _schema_chars(self) -> int:
+        """How many characters of tool definitions travel with every request."""
+        import json as _json
+        try:
+            return len(_json.dumps(self.registry.schemas(), ensure_ascii=False))
+        except (TypeError, ValueError):
+            return 0
+
+    def _sent_size(self, messages: list[dict]) -> tuple[int, int]:
+        """Characters and pictures in exactly what is about to be sent.
+
+        Calibration has to compare like with like: the server counts the tool
+        definitions too, so they belong in the figure the server's count is
+        measured against."""
+        import json as _json
+        chars = self._schema_chars()
+        images = 0
+        for message in messages:
+            content = message.get("content")
+            if isinstance(content, list):
+                for part in content:
+                    if not isinstance(part, dict):
+                        continue
+                    if part.get("type") == "text":
+                        chars += len(str(part.get("text", "")))
+                    elif part.get("type") == "image_url":
+                        images += 1
+            else:
+                chars += len(str(content or ""))
+            chars += len(str(message.get("reasoning_content") or message.get("reasoning") or ""))
+            if message.get("tool_calls"):
+                chars += len(_json.dumps(message["tool_calls"], ensure_ascii=False))
+        return chars, images
 
     def new_task(self, text: str, images: list[Path] | None = None) -> None:
         """Record user input and reset task counters."""
@@ -707,6 +745,17 @@ class Agent:
         if getattr(res, "usage", None):
             self.session.meta["last_usage"] = res.usage
             self.session._save_meta()
+            # The server has just told us exactly how long that prompt was. Use it:
+            # an estimate that disagrees with the measurement is the reason the
+            # context figure beside the composer drifted away from the one shown
+            # while the prompt was being read.
+            prompt_tokens = 0
+            try:
+                prompt_tokens = int((res.usage or {}).get("prompt_tokens") or 0)
+            except (AttributeError, TypeError, ValueError):
+                prompt_tokens = 0
+            if prompt_tokens:
+                self.session.calibrate_tokens(prompt_tokens, getattr(self, "_last_sent", 0))
             self.emit("usage", res.usage)
 
         if res.stopped:

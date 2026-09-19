@@ -211,6 +211,91 @@ class PromptPerformanceTests(unittest.TestCase):
         self.session.prunable_images(keep=4)
         self.assertEqual(self.session.to_api_messages(include_pins=False), before)
 
+    # -- the context figure has to be the same number everywhere ----------------
+    #
+    # Two displays disagreed - 56k beside the composer against the server's own
+    # 70k while it read the prompt - because one was a character estimate and the
+    # other was measured. These pin the estimate to what was measured and keep
+    # the two paths that compute it from drifting apart again.
+
+    def test_the_estimate_matches_what_the_server_actually_counted(self):
+        """Measured: an image-free conversation of 287,114 characters was 89,670
+        prompt tokens, and seven screenshots accounted for a further 18,087."""
+        self.assertAlmostEqual(Session.tokens_for(287114), 89670, delta=89670 * 0.02)
+        self.assertAlmostEqual(Session.tokens_for(0, 7), 18087, delta=18087 * 0.02)
+
+    def test_both_ways_of_counting_the_context_agree(self):
+        """The estimate walks the session; the request walks rendered messages.
+        When those two drifted apart, the UI showed two different numbers."""
+        shot = self.root / "agree.png"
+        shot.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x01" * 64)
+        self.session.add("user", "Look at this", images=[shot])
+        self.session.add("assistant", "Noted.", reasoning="thinking at some length")
+        with patch.object(self.agent, "_dynamic_context_sections", return_value={}):
+            messages = self.agent._api_messages()
+        chars, images = self.agent._sent_size(messages)
+        self.assertEqual(images, 1, "the rendered request must still carry the picture")
+        from_request = Session.tokens_for(chars - self.agent._schema_chars(), images,
+                                          self.session.token_scale())
+        self.assertAlmostEqual(self.session.estimate_context_tokens(include_pins=False),
+                               from_request, delta=2)
+
+    def test_calibration_covers_what_the_server_also_counts(self):
+        """Tool definitions travel with every request, so leaving them out would
+        teach the estimate that the prompt is bigger than it is."""
+        registry = ToolRegistry()
+        with patch.object(registry, "schemas", return_value=[{"name": "x", "parameters": {}}]):
+            agent = Agent(self.cfg, None, self.session, registry, SafetyPolicy("auto"))
+            with patch.object(agent, "_dynamic_context_sections", return_value={}):
+                messages = agent._api_messages()
+            self.assertGreater(agent._schema_chars(), 0)
+            chars, _ = agent._sent_size(messages)
+        self.assertGreaterEqual(chars, agent._schema_chars())
+
+    def test_the_server_count_corrects_the_estimate(self):
+        with patch.object(self.agent, "_dynamic_context_sections", return_value={}):
+            self.agent._request_messages()
+        raw = self.agent._last_sent
+        self.assertGreater(raw, 0)
+        self.session.calibrate_tokens(int(raw * 1.5), raw)
+        self.assertGreater(self.session.token_scale(), 1.0,
+                           "a longer prompt than estimated must raise the estimate")
+        self.assertLess(self.session.token_scale(), 1.5,
+                        "one request must not swing it the whole way")
+        self.assertEqual(self.session.meta[Session.SCALE_KEY], self.session.token_scale())
+
+    def test_calibration_repeated_converges_on_the_measurement(self):
+        raw = 10000
+        for _ in range(20):
+            self.session.calibrate_tokens(12000, raw)
+        self.assertAlmostEqual(self.session.token_scale(), 1.2, delta=0.02)
+        self.assertAlmostEqual(Session.tokens_for(32000, 0, self.session.token_scale()),
+                               12000, delta=120)
+
+    def test_an_implausible_measurement_teaches_nothing(self):
+        """A truncated, retried or failed request must not corrupt the estimate."""
+        for prompt_tokens in (0, -5, 100, 10 ** 7):
+            self.session.calibrate_tokens(prompt_tokens, 10000)
+            self.assertEqual(self.session.token_scale(), 1.0)
+        self.session.meta[Session.SCALE_KEY] = 9.0
+        self.assertEqual(self.session.token_scale(), 1.0, "a stored absurdity is ignored")
+
+    def test_a_learned_correction_reaches_every_reported_figure(self):
+        self.session.calibrate_tokens(15000, 10000)
+        scale = self.session.token_scale()
+        self.assertGreater(scale, 1.0)
+        breakdown = self.agent.context_usage_breakdown()
+        plain = {"messages": self.session.estimate_context_tokens(include_pins=False)}
+        self.assertEqual(breakdown["messages"], plain["messages"])
+        self.assertGreater(sum(breakdown.values()), 0)
+        shot = self.root / "learned.png"
+        shot.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x02" * 64)
+        for step in range(9):
+            self.session.add("user", "Step %d" % step, images=[shot])
+        _, saving = self.session.prunable_images(keep=4)
+        self.assertEqual(saving, Session.tokens_for(0, 5, scale),
+                         "what pruning frees must be counted the same way")
+
     def test_every_request_is_recorded_so_a_lost_cache_can_be_explained(self):
         """The conversation on disk shows the final state, so a message rewritten
         in place looks as though it always was that way. The trace does not."""

@@ -68,6 +68,9 @@ type Dialog = { type: string; file?: FileItem; section?: string; data?: any };
 const COPYRIGHT = "© Petr Sajner 2026";
 // Documents a preview can render, as opposed to code or binaries.
 const READABLE = /\.(md|markdown|txt|rst|docx|pdf|html?|csv|xlsx)$/i;
+// Measured against what the server actually tokenised, not assumed. Keep this in
+// step with Session.CHARS_PER_TOKEN, or the two context figures disagree again.
+const CHARS_PER_TOKEN = 3.2;
 const phases: Record<string, string> = {
   preparing: "Preparing request",
   reading_context: "Reading context",
@@ -311,7 +314,7 @@ export function App() {
         if (!prev || prev.run !== p.run_id) {
           liveRate.current = { run: p.run_id, chars, at, rate: 0 };
         } else if (at > prev.at + 150) {
-          const inst = chars > prev.chars ? (chars - prev.chars) / 3.6 / ((at - prev.at) / 1000) : 0;
+          const inst = chars > prev.chars ? (chars - prev.chars) / CHARS_PER_TOKEN / ((at - prev.at) / 1000) : 0;
           prev.rate = inst > 0 ? (prev.rate ? prev.rate * 0.7 + inst * 0.3 : inst) : prev.rate * 0.85;
           prev.chars = chars;
           prev.at = at;
@@ -1142,7 +1145,7 @@ export function App() {
                             ((live?.text?.length || 0) +
                               (live?.reasoning?.length || 0) +
                               (live?.tool_chars || 0)) /
-                              3.6,
+                              CHARS_PER_TOKEN,
                           ),
                         ) +
                         " tok"}
@@ -2031,7 +2034,15 @@ function prefillSummary(
   const parts: string[] = [];
   const todo = Math.max(1, total - cache);
   const done = Math.max(0, processed - cache);
-  parts.push(Math.max(0, Math.min(100, Math.round((100 * done) / todo))) + "%");
+  // Label it. A bare percentage after "Reading context" reads as how full the
+  // context is, which is a different number entirely - this one is progress
+  // through the part the server does not already hold.
+  parts.push(
+    tr("new") +
+      " " +
+      Math.max(0, Math.min(100, Math.round((100 * done) / todo))) +
+      "%",
+  );
   if (total > 0) {
     parts.push(
       tr("reused") +

@@ -815,6 +815,7 @@
     "Choose a folder": "Vybrat složku",
     "Use the default folder": "Použít výchozí složku",
     "reused": "z cache",
+    "new": "nové",
     "remaining": "zbývá",
     "🖼 Older screenshots no longer sent (count: {count}) - context ~{est} tokens": "🖼 Starší snímky obrazovky se už neposílají (počet: {count}) - kontext ~{est} tokenů",
     "speech recognition program (9 MB)": "program pro rozpoznávání řeči (9 MB)",
