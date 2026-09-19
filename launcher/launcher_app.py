@@ -356,9 +356,15 @@ def main() -> int:
     if problems:
         _close_splash()
         _log("Missing: " + "; ".join(problems))
-        question = t("The app is not fully installed — missing:\n\n  • {items}\n\n"
-                     "Run the setup now? (downloads ~37 GB to the right place)",
-                     items="\n  • ".join(problems))
+        # A new release that adds a Python package is not a missing installation,
+        # and offering to download the models again would be alarming nonsense.
+        if problems == [t("Python dependencies (new requirements.txt version)")]:
+            question = t("This version needs a small update to its Python packages "
+                         "(a few MB).\n\nInstall it now?")
+        else:
+            question = t("The app is not fully installed — missing:\n\n  • {items}\n\n"
+                         "Run the setup now? (downloads ~37 GB to the right place)",
+                         items="\n  • ".join(problems))
         if _alert(question, question=True):
             if not _run_setup_console():
                 return 1

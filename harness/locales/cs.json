@@ -842,7 +842,8 @@
     "System default": "Výchozí zařízení systému",
     "Watch a program you are testing": "Sledovat program, který testuješ",
     "Finds the program's own window and photographs it even when something else is in front, so your other work is not disturbed.": "Najde vlastní okno programu a vyfotí ho, i když je vpředu něco jiného, takže tě to neruší při ostatní práci.",
-    "Start my game and watch what happens when you press enter.": "Spusť mi hru a sleduj, co se stane po stisku enteru."
+    "Start my game and watch what happens when you press enter.": "Spusť mi hru a sleduj, co se stane po stisku enteru.",
+    "This version needs a small update to its Python packages (a few MB).\n\nInstall it now?": "Tato verze potřebuje malou aktualizaci svých Python balíčků (několik MB).\n\nNainstalovat ji teď?"
   },
   "legacy_profile_labels": {
     "16 bit - přesnější, kontext 128k": "16-bit - more precise, context 128k",
