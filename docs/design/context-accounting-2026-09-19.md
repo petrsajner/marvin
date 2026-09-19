@@ -123,13 +123,67 @@ weights fully (all 83 reached "model loaded", only one logged an error) and was
 then replaced without being asked anything.
 
 So the cost is restart churn, not cache eviction, and `--cache-ram` cannot help:
-the prompt cache lives inside the process that is being replaced. What could is
-`--slot-save-path`, which this build offers and which writes slot KV to disk -
-though it is driven by API calls, not a flag alone. The first question is why
-there are 134 restarts: 26 are real model switches the owner made, including the
-one back to `q5` at 18:47:59 that made the 18:52 request cold. The rest are not
-yet explained, and `kv_cache_modes` changing (9 times) and `vram_gb` changing
-(7 times) do not cover them.
+the prompt cache lives inside the process that is being replaced.
+
+## `--cache-ram` measured, and it is not the lever
+
+Measured directly rather than argued about. A Qwen Q5 server, `q8_0` cache, asked
+the same conversation before and after a pause, and before and after a *different*
+conversation took its single slot - because those are two different mechanisms and
+only the second is what `--cache-ram` governs.
+
+At 15k tokens, 32k context:
+
+| `--cache-ram` | cold | immediately | after a 300 s pause | after another conversation |
+|---|---|---|---|---|
+| 8192 (default) | 4.80 s | 0.30 s | **0.40 s** | **0.40 s** |
+| -1 (unlimited) | 4.70 s | 0.20 s | - | **0.40 s** |
+| 0 (disabled) | 4.70 s | 0.20 s | - | **4.80 s** |
+
+Three things, and the third is the answer:
+
+1. **A pause costs nothing.** Five minutes of silence, then 0.40 s and no prefill
+   line in the server log at all. Time does not evict a prompt.
+2. **Another conversation costs nothing either** - as long as the cache is on.
+   Turning it off (`0`) makes the return trip cost a full reprocess, the same
+   4.80 s as cold, which is what proves the saving path is real and working.
+3. **Raising it above the default buys nothing.** Unlimited and 8192 are the same
+   number to two decimal places.
+
+The obvious objection is that a 15k entry is small and his conversations are ten
+times that, so the test was repeated at the real size - 150k tokens in a 196,608
+context, the profile he runs:
+
+| step | time |
+|---|---|
+| first, cold | **92.4 s** |
+| again, immediately | 0.3 s |
+| an unrelated conversation takes the slot | 2.1 s |
+| back to the 150k conversation | **1.2 s** |
+
+Ninety-two seconds becomes one. The default 8192 MiB holds a 150k-token
+conversation across an interruption, so there is nothing to raise.
+
+## What to do instead
+
+The first question is why there are 134 restarts. 26 are real model switches the
+owner made, including the one back to `q5` at 18:47:59 that made the photographed
+18:52 request cold - those are correct and unavoidable. The rest are not
+explained: `kv_cache_modes` changed 9 times and `vram_gb` 7 times, which does not
+cover them.
+
+`application.py:771` restarts when any of four conditions holds - profile changed,
+hardware changed, the server is unhealthy, or `running_model(cfg) != key` - and
+records **which** of them decided. A bare `except Exception` in
+`servermgmt._managed_process` deletes the PID file on any psutil failure, which
+would make the harness think its own server is gone; tested against the live
+process, psutil answered `name`, `exe`, `cmdline` and `status` without raising, so
+that is not it either.
+
+The cheap next step is the one that worked for the prompt cache itself: log the
+reason. One line naming which condition triggered each restart, and the next
+occurrence explains itself instead of being reconstructed from a log six days
+later.
 
 The one mid-task break still in the trace window was not a defect: the system
 prompt grew by exactly 462 characters, the length of the Ornith reasoning-effort
