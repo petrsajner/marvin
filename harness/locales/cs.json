@@ -854,7 +854,12 @@
     "Found in your work": "Nalezeno ve tvé práci",
     "Switch mode": "Přepnout režim",
     "Project file": "Soubor projektu",
-    "Watch this document": "Sledovat tento dokument"
+    "Watch this document": "Sledovat tento dokument",
+    "Q8 · 96k · vision on GPU": "Q8 · 96k · vidění na GPU",
+    "Q8 · 64k · vision on GPU": "Q8 · 64k · vidění na GPU",
+    "Q4 · 192k": "Q4 · 192k",
+    "Q4 · 128k": "Q4 · 128k",
+    "Q8/Q4 cache · 96k": "cache Q8/Q4 · 96k"
   },
   "legacy_profile_labels": {
     "16 bit - přesnější, kontext 128k": "16-bit - more precise, context 128k",

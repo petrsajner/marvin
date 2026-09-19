@@ -476,8 +476,15 @@ def test_gpu_autofit() -> None:
     check(best_fit(cfg, 16.0) == ("q3", "q8_0_64k"),
           "auto-fit for 16 GB selects the measured IQ3_S / 64k profile")
     q3_profiles = cfg.kv_cache_profiles("q3")
-    check(set(q3_profiles) == {"q8_0", "q8_0_64k", "q8_0_128k", "q8_0_96k"},
+    check(set(q3_profiles) == {"q8_0", "q8_0_64k", "q8_0v4_96k", "q4_0_128k",
+                               "q8_0_128k", "q8_0_96k"},
           "IQ3 has only the approved 16 and 24 GB profiles")
+    check(set(cfg.kv_cache_profiles("q2")) == {"q8_0_96k_vision", "q8_0_64k_vision",
+                                               "q8_0_128k", "q4_0_192k"},
+          "Q2 has only the approved 16 GB profiles")
+    check(cfg.model("q2").get("optional_download") is True
+          and best_fit(cfg, 16.0) == ("q3", "q8_0_64k"),
+          "Q2 is offered for 16 GB but never chosen automatically")
     check(all("min_vram_gb" in p for p in q3_profiles.values()),
           "Every Q3 profile specifies min_vram_gb")
     check(set(download_keys(cfg, 32.0)) == {"q4", "q5", "ornith_q5",
