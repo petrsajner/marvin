@@ -607,6 +607,9 @@ class ApplicationService:
         from harness.i18n import t
         self.store.emit(session.id, "notice", {"text": t("Adjusting the memory profile and continuing the task."),
                                               "run_id": job["id"], "created": time.time()})
+        from harness import restart_log
+        restart_log.record_for(cfg, reason="memory_pressure_recovery", wanted=key,
+                               running=key, profile=profile, note=failure.get("code"))
         live.update(phase="loading_model", phase_started=time.time(), text="", reasoning="", prompt_progress=None)
         self.models.request(key, restart=True, kv_profile=profile, config=cfg,
                             on_success=self.model_became_ready,
@@ -768,7 +771,19 @@ class ApplicationService:
                 key = cfg.model_key()
                 profile_changed = cfg.kv_cache_mode(key) != self.models.cfg.kv_cache_mode(key)
                 hardware_changed = cfg.data.get("hardware") != self.models.cfg.data.get("hardware")
-                if profile_changed or hardware_changed or not servermgmt.health(cfg) or servermgmt.running_model(cfg) != key:
+                # Ask each condition once and keep the answers. A restart throws
+                # away the processed prompt - 92 seconds for 150k tokens - and
+                # until now the decision recorded nothing about why it was taken.
+                healthy = servermgmt.health(cfg)
+                running = servermgmt.running_model(cfg)
+                if profile_changed or hardware_changed or not healthy or running != key:
+                    from harness import restart_log
+                    restart_log.record_for(
+                        cfg,
+                        reason=restart_log.reasons(profile_changed=profile_changed,
+                                                   hardware_changed=hardware_changed,
+                                                   healthy=healthy, running=running, wanted=key),
+                        wanted=key, running=running, profile=cfg.kv_cache_mode(key))
                     live["phase"] = "loading_model"
                     flush(True)
                     profile = cfg.kv_cache_mode(key)
