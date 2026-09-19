@@ -52,6 +52,11 @@ ShowLanguageDialog=yes
 ; Remove the old executable after the product rename
 [InstallDelete]
 Type: files; Name: "{app}\QwenHarness.exe"
+; The Gradio interface and its entry points, removed in 1.16.0. Upgrading only
+; overwrites what the package ships, so without this they stay on disk - and
+; qwen_app.py would still open the interface this release exists to remove.
+Type: files; Name: "{app}\webapp.py"
+Type: files; Name: "{app}\qwen_app.py"
 ; Replace only packaged application code. User data, models and user-skills stay.
 Type: filesandordirs; Name: "{app}\_internal"
 Type: filesandordirs; Name: "{app}\harness"
