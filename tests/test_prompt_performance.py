@@ -328,6 +328,21 @@ class PromptPerformanceTests(unittest.TestCase):
         self.assertEqual(report[0]["agreed_for"], 2)
         self.assertEqual(report[0]["first_difference"]["before"]["role"], "assistant")
 
+    def test_two_requests_in_the_same_clock_tick_are_both_kept(self):
+        """time_ns() reads a clock that steps about 15 ms on Windows, so two tool
+        steps in quick succession really do get the same value. Losing one would
+        hide a rewrite exactly where requests come closest together."""
+        from harness import request_trace
+        traces = self.root / "ticks"
+        with patch.object(request_trace.time, "time_ns", return_value=1789800000000000000):
+            for index in range(5):
+                request_trace.record(traces, [{"role": "user", "content": "step %d" % index}],
+                                     step=index)
+        written = sorted(traces.glob("request-*.json"))
+        self.assertEqual(len(written), 5, "no request may overwrite another")
+        steps = [json.loads(path.read_text(encoding="utf-8"))["step"] for path in written]
+        self.assertEqual(steps, [0, 1, 2, 3, 4], "and they must stay in the order written")
+
     def test_the_trace_keeps_only_the_recent_requests(self):
         from harness import request_trace
         traces = self.root / "bounded"

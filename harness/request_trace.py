@@ -57,9 +57,17 @@ def record(directory: Path, messages: list[dict], *, step: int | None = None) ->
     """Append a request fingerprint, keeping only the most recent ones."""
     try:
         directory.mkdir(parents=True, exist_ok=True)
-        # Nanoseconds: two requests in the same millisecond would otherwise share
-        # a name, and the second would quietly replace the first.
-        path = directory / ("request-%019d.json" % time.time_ns())
+        # Nanoseconds, and then a nudge until the name is free. time_ns() reads
+        # the system clock, which on Windows advances in steps of about 15 ms, so
+        # two tool steps in quick succession genuinely do get the same value - and
+        # the second would quietly replace the first, losing a trace exactly when
+        # requests come close together, which is when reuse is worth explaining.
+        # Incrementing keeps the names sorting in the order they were written.
+        stamp = time.time_ns()
+        path = directory / ("request-%019d.json" % stamp)
+        while path.exists():
+            stamp += 1
+            path = directory / ("request-%019d.json" % stamp)
         path.write_text(json.dumps({
             "created": time.time(), "step": step,
             "messages": len(messages), "entries": fingerprint(messages),
