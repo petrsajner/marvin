@@ -94,7 +94,7 @@ py -3.12 -m venv .venv
 .venv\Scripts\python scripts\setup_env.py --model auto
 npm --prefix frontend ci
 npm --prefix frontend run build
-.venv\Scripts\python qwen_app.py
+.venv\Scripts\python launcher\launcher_app.py
 ```
 
 Pro terminál použijte `run_cli.bat` nebo `.venv\Scripts\python tui.py`.
@@ -120,7 +120,7 @@ Tato kapitola popisuje pracovní okno verze 1.8.0. Model a jeho stav najdete v h
 
 Šířku navigace i pravého detailu změníte tažením za jejich vnitřní okraj. Dvojklik na okraj obnoví výchozí šířku; totéž provede restart nebo obnovení stránky. Seznam konverzací nejprve ukáže 20 nejnovějších chatů vybraného projektu. **Zobrazit starší** přidá dalších 20, **Jen nejnovější** seznam opět zkrátí.
 
-Desktopový spouštěč používá data své vlastní instalace. Vývojová kopie a nainstalovaný Marvin neslučují konverzace. Pro výslovné otevření existujících dat z vývojové kopie slouží `python webapp.py --data-dir "C:\cesta\k\Marvinu"`. Data zůstávají na původním místě, bez převodu nebo kopírování.
+Desktopový spouštěč používá data své vlastní instalace. Vývojová kopie a nainstalovaný Marvin neslučují konverzace. Pro výslovné otevření existujících dat z vývojové kopie slouží `python marvin_web.py --data-dir "C:\cesta\k\Marvinu"`. Data zůstávají na původním místě, bez převodu nebo kopírování.
 
 Výběr projektu otevře jeho nejnovější chat. **Bez projektu** otevře samostatnou konverzaci. Přepnutí pohledu nepřesune ani nepřenastaví úlohu, která právě běží v jiném chatu.
 
@@ -931,4 +931,4 @@ Projektový archiv je oddělený od zálohy modelů a runtime. Ta nadále funguj
 
 Běžný uživatel volí Minimal nebo Full; Full obsahuje Python 3.12 i závislosti. Node.js není nutný pro provoz aplikace. Vývojář sestaví frontend příkazy `npm --prefix frontend ci` a `npm --prefix frontend run build`. Python obsluhuje výsledný adresář `ui_dist`. Ověřené Windows verze balíčků drží `requirements-windows-py312.lock`.
 
-Původní Gradio rozhraní zůstává pro diagnostiku kompatibility s `MARVIN_LEGACY_UI=1`; standardně se spouští nová pracovní plocha.
+Pracovní plocha je jediné rozhraní. Původní Gradio bylo ve verzi 1.16.0 odstraněno i se závislostí, kterou potřebovalo.

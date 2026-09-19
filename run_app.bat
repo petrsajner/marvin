@@ -2,7 +2,7 @@
 rem ============================================================
 rem  Marvin - desktop app launcher
 rem  - on first run it creates the venv + downloads deps/models
-rem  - then opens the native app window (qwen_app.py)
+rem  - then opens the native app window (the same launcher Marvin.exe wraps)
 rem ============================================================
 setlocal
 cd /d "%~dp0"
@@ -70,5 +70,5 @@ if not exist "runtime\models\mmproj-F16.gguf" (
 )
 
 echo [APP] Starting Marvin...
-start "" ".venv\Scripts\pythonw.exe" "qwen_app.py"
+start "" ".venv\Scripts\pythonw.exe" "launcher\launcher_app.py"
 endlocal

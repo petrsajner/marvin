@@ -1,6 +1,5 @@
 numpy
 openai>=1.60
-gradio>=5.0
 rich>=13.9
 prompt_toolkit>=3.0
 pyautogui>=0.9.54

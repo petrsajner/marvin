@@ -138,8 +138,8 @@ def test_config() -> None:
     version_files = [p for p in _version_candidates() if p.exists()]
     installer_version = (version_files[0].read_text(encoding="utf-8").strip()
                          if version_files else "")
-    check(bool(installer_version) and APP_VERSION == installer_version and APP_VERSION == "1.15.0",
-          "The visible application version matches installer version 1.15.0")
+    check(bool(installer_version) and APP_VERSION == installer_version and APP_VERSION == "1.16.0",
+          "The visible application version matches installer version 1.16.0")
     invariants = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     check(all(item in invariants for item in (
         "Language servers or an LSP runtime/distribution layer",
@@ -148,14 +148,15 @@ def test_config() -> None:
         "One-million-token context",
         "general plugin host, MCP ecosystem",
     )), "Permanent non-goals are recorded in the root product instructions")
-    web_source = (ROOT / "webapp.py").read_text(encoding="utf-8")
-    check(all(marker in web_source for marker in (
-        'elem_id="workspace-control-stack"',
-        't("Current task")', 't("Context")', 't("Runtime")',
-        't("Settings & help")', 'show_progress="hidden"',
-    )) and 't("Available skills"), open=' not in web_source
-          and 't("Help & manuals"), open=' not in web_source,
-          "The sidebar uses consistent information architecture")
+    # The sidebar check that stood here read the Gradio source for element ids.
+    # That interface is gone; the workspace is the React one, whose structure is
+    # checked by its own type build rather than by grepping a Python file.
+    workspace_source = (ROOT / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
+    check(all(marker in workspace_source for marker in (
+        '["results", "Results"]', '["progress", "Progress"]', '["context", "Context"]',
+    )), "The detail panel offers Results, Progress and Context")
+    check(not (ROOT / "webapp.py").exists() and not (ROOT / "qwen_app.py").exists(),
+          "The Gradio interface is gone, not merely unreachable")
 
 
 def test_memory_layers() -> None:
@@ -2189,8 +2190,8 @@ def test_thinking_and_communication():
     from harness.llm import ThinkStreamParser
     from harness.session import Session
     from harness.config import load_config
-    import webapp
-    scratch_sessions(webapp.cfg)
+    cfg = load_config()
+    scratch_sessions(cfg)
 
     # 1) Parse reasoning tags split across stream chunks.
     text_accum, reason_accum = [], []
@@ -2221,29 +2222,13 @@ def test_thinking_and_communication():
     check(last_api.get("reasoning_content") == "Internal model reasoning" and "reasoning" not in last_api,
           "to_api_messages maps reasoning to reasoning_content for llama-server")
 
-    # 3) webapp thought box & chat view rendering
-    thought_open = webapp._format_thought_box("My reasoning", open_box=True, elapsed_s=4)
-    check('<details class="thought-box" open>' in thought_open and "Thinking…" in thought_open,
-          "_format_thought_box opens while reasoning streams and displays the timer")
-    thought_closed = webapp._format_thought_box("My reasoning", open_box=False, duration=3.5)
-    check('<details class="thought-box">' in thought_closed and "open" not in thought_closed
-          and "Thought for 4s" in thought_closed,
-          "_format_thought_box collapses after completion and displays the reasoning duration")
-
-    webapp.state.session = loaded
-    view = webapp.chat_view()
-    assistant_view = [m for m in view if m["role"] == "assistant"]
-    check(len(assistant_view) >= 1 and 'class="thought-box"' in assistant_view[-1]["content"]
-          and "Final response" in assistant_view[-1]["content"],
-          "chat_view renders a collapsible thought box and the final response")
-
-    # 4) tool box in chat view
+    # 3) A tool result is kept as its own message, which is what any interface
+    # renders from. The collapsible boxes this used to check were Gradio markup.
     loaded.add("tool", "contents of file abc.txt", name="read_file")
-    view_with_tool = webapp.chat_view()
-    tool_entry = view_with_tool[-1]
-    check('class="tool-box"' in tool_entry["content"] and "read_file" in tool_entry["content"]
-          and "contents of file abc.txt" in tool_entry["content"],
-          "chat_view renders tool output in a collapsible tool box")
+    tool_message = loaded.messages[-1]
+    check(tool_message["role"] == "tool" and tool_message.get("name") == "read_file"
+          and "contents of file abc.txt" in tool_message["content"],
+          "A tool result is stored with its name and output")
     Session.delete(cfg, s.id)
 
 
@@ -2254,9 +2239,8 @@ def test_harness_enhancements():
     from harness.tools.search import SearchProjectTool
     from harness.session import Session
     from harness.config import load_config
-    import webapp
     import tempfile
-    scratch_sessions(webapp.cfg)
+    scratch_sessions(load_config())
 
     # 1) Head+Tail truncate
     short = "kratky text"
@@ -2317,31 +2301,14 @@ def test_harness_enhancements():
               "revert_last_task restored the exact original contents")
         Session.delete(cfg, s.id)
 
-    # 5) Slash command dispatcher
-    s_cmd = Session(cfg, transient=False)
-    webapp.state.session = s_cmd
-    webapp.state.rebuild_agent()
-    h1, p1 = webapp._handle_slash_command("/help")
-    check(h1 is True and "Available slash commands" in s_cmd.messages[-1]["content"],
-          "_handle_slash_command handles /help locally")
-    h2, p2 = webapp._handle_slash_command("/pins")
-    check(h2 is True and "pinned files" in s_cmd.messages[-1]["content"],
-          "_handle_slash_command handles /pins locally")
-    h3, p3 = webapp._handle_slash_command("/test")
-    check(h3 is False and "project checks" in (p3 or ""),
-          "_handle_slash_command extends the /test prompt")
-    h4, p4 = webapp._handle_slash_command("/skills")
-    check(h4 is True and "Available skills" in s_cmd.messages[-1]["content"]
-          and "excel-spreadsheet-craft" in s_cmd.messages[-1]["content"],
-          "_handle_slash_command handles /skills locally")
-    h5, p5 = webapp._handle_slash_command("/skill excel-spreadsheet-craft")
-    check(h5 is True and "was activated" in s_cmd.messages[-2]["content"]
-          and "[ACTIVE SKILL" in s_cmd.messages[-1]["content"],
-          "_handle_slash_command activates a skill in the context")
-    h6, p6 = webapp._handle_slash_command("/skill new my-analysis")
-    check(h6 is False and "SKILL DESIGNER" in (p6 or ""),
-          "_handle_slash_command starts the skill designer")
-    Session.delete(cfg, s_cmd.id)
+    # 5) Slash commands are dispatched by app_operations.execute_command, which
+    # the workspace uses. They were only ever covered through the Gradio handler -
+    # a second implementation of the same idea - so the coverage moved to
+    # tests/test_commands.py with that interface's removal rather than going with
+    # it. This keeps one check here so the catalogue cannot quietly empty out.
+    from harness.app_operations import COMMANDS
+    check(len(COMMANDS) >= 10 and "/help" in COMMANDS and "/skill" in COMMANDS,
+          "The slash command catalogue is populated")
 
     # 5b) Office and Spreadsheet tools (Excel, Word, PDF)
     from harness.tools.documents import ReadDocumentTool, EditSpreadsheetTool
@@ -2395,48 +2362,41 @@ def test_harness_enhancements():
 
 def test_clickable_skills_and_clipboard_images():
     print("--- test_clickable_skills_and_clipboard_images ---")
-    import base64
-    import json
-    import webapp
+    # The Gradio versions of these read rendered HTML for element ids. The
+    # workspace builds its own markup from data, so what is worth checking is the
+    # data: that the skill panel gets what it needs to list and activate a skill,
+    # and that images on a message come back as files the interface can display.
+    from harness.application import ApplicationService
+    from harness.config import load_config
     from harness.session import Session
-    cfg = scratch_sessions(webapp.cfg)
+    from harness.skills import SkillLibrary
+    cfg = scratch_sessions(load_config())
 
-    # 1) Verify skill-information HTML.
-    info_html = webapp.skills_info_text()
-    check("skills-panel-list" in info_html, "skills_info_text contains the skills-panel-list container")
-    check("skill-chip-btn" in info_html, "skills_info_text contains clickable skill-chip-btn buttons")
-    check("data-skill=" in info_html, "skills_info_text contains data-skill attributes")
+    # 1) What the skills panel is built from.
+    skills = SkillLibrary(cfg, None).list()
+    check(len(skills) > 0, "The skill library lists skills")
+    first = skills[0]
+    check(all(getattr(first, field, None) for field in ("name", "description", "path")),
+          "Each skill carries the name, description and path the panel needs")
+    check(any(s.name == "excel-spreadsheet-craft" for s in skills),
+          "A known built-in skill is present in the catalogue")
 
-    # 2) Prepare pasted base64 image attachments.
-    sample_png_b64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-    pasted_json = json.dumps([
-        {"name": "test1.png", "data": sample_png_b64},
-        {"name": "test2.png", "data": sample_png_b64}
-    ])
-
-    orig_sess = webapp.state.session
+    # 2) Images on a message become displayable files.
+    service = ApplicationService.__new__(ApplicationService)
+    from harness.app_storage import EventStore
+    service.store = EventStore(cfg.path("paths.runtime_dir") / "checks.sqlite3")
     test_sess = Session(cfg, transient=True)
-    webapp.state.session = test_sess
-    webapp.state.agent.session = test_sess
     try:
-        sub_res, _, msg_up, pasted_up = webapp.prepare_submission("Analyzuj tyto 2 snimky", pasted_json)
-        check(sub_res.get("kind") == "run", "prepare_submission starts a run for a prompt with clipboard images")
-        check(pasted_up.get("value") == "[]", "prepare_submission clears the hidden pasted-image field")
-        user_img_msgs = [m for m in test_sess.messages if m.get("images")]
-        check(len(user_img_msgs) == 1 and len(user_img_msgs[0]["images"]) == 2,
-              "Two decoded images were attached to the user message")
-
-        # 3) Render image thumbnails in the conversation.
-        views = webapp.chat_view()
-        user_views = [v for v in views if v.get("role") == "user"]
-        check(len(user_views) > 0, "chat_view contains the user message")
-        last_user = user_views[-1]
-        check("chat-attached-gallery" in last_user["content"], "chat_view contains the chat-attached-gallery thumbnail gallery")
-        check("chat-msg-thumb" in last_user["content"], "chat_view contains chat-msg-thumb thumbnails")
-        check("/gradio_api/file=" in last_user["content"], "chat_view thumbnails reference displayable /gradio_api/file= URLs")
+        shot = cfg.path("paths.sessions_dir") / "pasted.png"
+        shot.parent.mkdir(parents=True, exist_ok=True)
+        shot.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 32)
+        test_sess.add("user", "Analyse these", images=[shot])
+        payload = service.message_payload(test_sess, test_sess.messages[-1])
+        check(len(payload["files"]) == 1, "An attached image reaches the message payload")
+        check(payload["files"][0]["url"].startswith("/api/files/"),
+              "The interface is given a URL it can fetch the image from")
+        check(payload["files"][0]["exists"], "The referenced image is actually on disk")
     finally:
-        webapp.state.session = orig_sess
-        webapp.state.agent.session = orig_sess
         Session.delete(cfg, test_sess.id)
 
 

@@ -1,4 +1,4 @@
-; ============================================================
+﻿; ============================================================
 ;  Marvin - installer (Inno Setup 6)
 ;  Build:  installer\build_installer.bat  →  dist\Marvin-Setup-<version>.exe
 ;
@@ -108,8 +108,7 @@ Source: "..\dist\Marvin\_internal\*"; DestDir: "{app}\_internal"; Flags: ignorev
 Source: "..\build\full-payload-{#MyAppVersion}\crt\*.dll"; DestDir: "{app}\_internal"; Flags: ignoreversion
 #endif
 ; Supporting source (harness core, scripts and configuration)
-Source: "..\qwen_app.py"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\webapp.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\marvin_web.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\tui.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\run_app.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\run_cli.bat"; DestDir: "{app}"; Flags: ignoreversion

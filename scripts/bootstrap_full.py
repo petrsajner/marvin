@@ -116,7 +116,7 @@ def prepare(root=ROOT):
                     "missing ones could not be downloaded. Connect to the internet and "
                     "start Marvin again, or install the Full package for this version.")
         subprocess.run([str(environment / "Scripts/python.exe"), "-I", "-c",
-                        "import fastapi,uvicorn,openai,pypdfium2,gradio,webview,tkinter; print('FULL_IMPORTS_OK')"],
+                        "import fastapi,uvicorn,openai,pypdfium2,webview,tkinter; print('FULL_IMPORTS_OK')"],
                        check=True, env=env, cwd=root)
         (environment / ".requirements.sha256").write_text(digest + "\n", encoding="ascii")
         marker.write_text(json.dumps({"home": str(private), "digest": digest}), encoding="utf-8")

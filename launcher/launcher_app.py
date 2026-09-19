@@ -383,7 +383,7 @@ def main() -> int:
 
     # 2) Open the web workspace first; load the model in the background.
     # The window opens immediately and displays model startup progress.
-    webapp_proc = None
+    workspace_proc = None
     existing_port = _existing_web_port(web_port)
     webui_running = existing_port is not None
     if existing_port is not None:
@@ -396,8 +396,8 @@ def main() -> int:
            "QWEN_WEB_PORT": str(web_port)}
     if not webui_running:
         _log("Starting Web UI (model loads in the background) ...")
-        webapp_proc = subprocess.Popen(
-            [str(VENV_PYW), "webapp.py"], cwd=str(ROOT), env=env,
+        workspace_proc = subprocess.Popen(
+            [str(VENV_PYW), "marvin_web.py"], cwd=str(ROOT), env=env,
             creationflags=0x08000000)
         if not smoke:
             # Open the loading page immediately; it redirects when the UI is ready.
@@ -423,7 +423,7 @@ def main() -> int:
                 _log(f"Model autostart request failed: {exc}")
         import threading
         threading.Thread(target=start_existing_model, daemon=True, name="model-autostart").start()
-    if not (webapp_proc is not None and not smoke):
+    if not (workspace_proc is not None and not smoke):
         _log(f"Web UI ready: {url}")
 
     # 3) Closing the window stops its services and releases GPU memory.
@@ -434,8 +434,8 @@ def main() -> int:
             return
         cleaned["done"] = True
         _log("Shutting down: Web UI ...")
-        if webapp_proc is not None:
-            _kill_tree(webapp_proc.pid)
+        if workspace_proc is not None:
+            _kill_tree(workspace_proc.pid)
         _log("Stopping llama-server (freeing VRAM) ...")
         subprocess.call([str(VENV_PY), "scripts/server.py", "stop"],
                         cwd=str(ROOT), creationflags=0x08000000)

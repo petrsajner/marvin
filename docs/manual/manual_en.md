@@ -101,7 +101,7 @@ py -3.12 -m venv .venv
 .venv\Scripts\python scripts\setup_env.py --model auto
 npm --prefix frontend ci
 npm --prefix frontend run build
-.venv\Scripts\python qwen_app.py
+.venv\Scripts\python launcher\launcher_app.py
 ```
 
 For terminal use, run `run_cli.bat` or `.venv\Scripts\python tui.py`.
@@ -127,7 +127,7 @@ This chapter describes the 1.8.0 workspace. The top bar contains the model and i
 
 The navigation and detail columns can be resized by dragging their inner edges. Double-click an edge to reset its width; restarting or reloading the interface also restores the default widths. The conversation list initially shows the 20 most recent chats in the selected project. **Show older** reveals another 20; **Show recent only** collapses the list.
 
-The desktop launcher uses the data folder belonging to its own installation. Running a development checkout alongside an installed copy does not merge their conversations. For explicit access to an existing installation from source, run `python webapp.py --data-dir "C:\path\to\Marvin"`; this uses the existing data in place without converting or copying it.
+The desktop launcher uses the data folder belonging to its own installation. Running a development checkout alongside an installed copy does not merge their conversations. For explicit access to an existing installation from source, run `python marvin_web.py --data-dir "C:\path\to\Marvin"`; this uses the existing data in place without converting or copying it.
 
 The project selector opens the most recent chat of that project. **No project** opens an independent chat. Selecting another chat never rebinds the task that is already running elsewhere.
 
@@ -1249,4 +1249,4 @@ This project archive is separate from the model/runtime backup. The latter still
 
 End users choose Minimal or Full; Full includes Python 3.12 and runtime dependencies. Node.js is not a runtime prerequisite. Source developers build the frontend with `npm --prefix frontend ci` and `npm --prefix frontend run build`. Python serves the compiled `ui_dist` directory. Windows package versions are fixed in `requirements-windows-py312.lock`.
 
-The old Gradio surface remains available for compatibility diagnostics with `MARVIN_LEGACY_UI=1`; the new workspace is the default.
+The workspace is the only interface. The older Gradio surface was removed in 1.16.0, along with the dependency it needed.

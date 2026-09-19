@@ -147,9 +147,9 @@ Context summaries use the work mode and process every input segment.
 
 Python remains the backend and Windows/Python 3.12 package versions are locked in
 `requirements-windows-py312.lock`. Node.js is needed only by source developers to
-build the frontend; the installer ships the compiled assets. The previous Gradio
-surface remains available for compatibility diagnostics through
-`MARVIN_LEGACY_UI=1`.
+build the frontend; the installer ships the compiled assets. The Gradio surface
+was removed in 1.16.0 along with the `gradio` dependency; the React workspace is
+the only interface.
 
 For a detailed technical specification of the application service, UI/UX components,
 and harness intelligence, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -213,20 +213,21 @@ See the [integration evidence](docs/design/2026-09-13-qwen38-flash-next-integrat
 # 2a) terminal UI
 .venv/Scripts/python tui.py
 
-# 2b) web UI → http://127.0.0.1:7860
-.venv/Scripts/python webapp.py
+# 2b) workspace → http://127.0.0.1:7860
+.venv/Scripts/python marvin_web.py
 ```
 
 The server can also be controlled from the TUI (`/server start|stop|status`) and
-from the web UI (buttons).
+from the workspace (buttons).
 
 ## Desktop app (Windows)
 
-**`qwen_app.py`** — a native window with the full lifecycle:
+**`launcher/launcher_app.py`** — the native window Marvin.exe wraps, with the full
+lifecycle:
 
 ```bash
-.venv/Scripts/pythonw qwen_app.py     # no console (for shortcuts)
-.venv/Scripts/python qwen_app.py      # with a diagnostic console
+.venv/Scripts/pythonw launcher/launcher_app.py   # no console (for shortcuts)
+.venv/Scripts/python launcher/launcher_app.py    # with a diagnostic console
 ```
 
 - **START**: automatically starts llama-server (if not running) + the web UI and
@@ -459,7 +460,7 @@ skills/           bundled optional SKILL.md procedures
 user-skills/      personal persistent skills (the installer never overwrites them)
 scripts/          current setup, build, release, backup and benchmark helpers
 tests/            current unit, service, browser and GPU verification
-webapp.py         current API/workspace entry point; Gradio compatibility fallback
+marvin_web.py     workspace and local API entry point
 runtime/          llama.cpp + deliberately retained GGUF models (gitignored)
 sessions/         development conversation history (gitignored)
 ```

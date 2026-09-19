@@ -71,7 +71,7 @@ def main():
 import json
 from pathlib import Path
 from importlib.metadata import version
-import fastapi, uvicorn, pypdfium2, webview, gradio
+import fastapi, uvicorn, pypdfium2, webview
 from fastapi.testclient import TestClient
 from packaging.requirements import Requirement
 from harness.config import Config, load_config
