@@ -138,8 +138,8 @@ def test_config() -> None:
     version_files = [p for p in _version_candidates() if p.exists()]
     installer_version = (version_files[0].read_text(encoding="utf-8").strip()
                          if version_files else "")
-    check(bool(installer_version) and APP_VERSION == installer_version and APP_VERSION == "1.13.0",
-          "The visible application version matches installer version 1.13.0")
+    check(bool(installer_version) and APP_VERSION == installer_version and APP_VERSION == "1.14.0",
+          "The visible application version matches installer version 1.14.0")
     invariants = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     check(all(item in invariants for item in (
         "Language servers or an LSP runtime/distribution layer",
@@ -480,8 +480,8 @@ def test_gpu_autofit() -> None:
                                "q8_0_128k", "q8_0_96k"},
           "IQ3 has only the approved 16 and 24 GB profiles")
     check(set(cfg.kv_cache_profiles("q2")) == {"q8_0_96k_vision", "q8_0_64k_vision",
-                                               "q8_0_128k", "q4_0_192k"},
-          "Q2 has only the approved 16 GB profiles")
+                                               "q8_0_128k", "q4_0_192k", "q8_0_256k"},
+          "Q2 has the approved 16 GB profiles and one for a large card")
     check(cfg.model("q2").get("optional_download") is True
           and best_fit(cfg, 16.0) == ("q3", "q8_0_64k"),
           "Q2 is offered for 16 GB but never chosen automatically")

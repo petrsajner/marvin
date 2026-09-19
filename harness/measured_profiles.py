@@ -71,6 +71,12 @@ PROFILES = {
                              measurement=SMALL_CARD_MEASUREMENT),
         "q4_0_192k": profile(192, 16, 13.73, precision="q4_0", cpu_vision=True,
                              measurement=SMALL_CARD_MEASUREMENT),
+        # On a large card the weights are small and the context fills it instead:
+        # 256k with the projector on the GPU, at 97 tokens a second against 62 for
+        # Q5. 384k and 512k were measured to fit and are deliberately not offered,
+        # because no Qwen profile here has been approved beyond 256k.
+        "q8_0_256k": profile(256, 32, 20.27, gpu_vision=True,
+                             measurement=SMALL_CARD_MEASUREMENT),
     },
     "q3": {
         "q8_0_64k": profile(64, 16, 13.617, cpu_vision=True),
