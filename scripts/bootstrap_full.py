@@ -20,15 +20,28 @@ def prepare(root=ROOT):
     manifest = json.loads((root / "runtime/full-manifest.json").read_text(encoding="utf-8"))
     content = (root / "requirements.txt").read_bytes() + b"\nLOCK\n" + (root / "requirements-windows-py312.lock").read_bytes()
     digest = hashlib.sha256(content).hexdigest()
-    if digest != manifest["requirements_digest"]:
-        raise RuntimeError("Full payload does not match application dependencies")
+    payload_current = digest == manifest["requirements_digest"]
     environment = root / ".venv"
     marker = environment / ".full-runtime.json"
+    interpreter = environment / "Scripts/python.exe"
     if marker.exists():
         stamp = json.loads(marker.read_text())
-        if stamp == {"home": str(private), "digest": digest} and (environment / "Scripts/python.exe").is_file():
+        if stamp == {"home": str(private), "digest": digest} and interpreter.is_file():
             print("[FULL] Private environment is ready.")
             return
+    # An application update can add a package while the bundled payload stays at
+    # the version that shipped with Full. If the environment already satisfies the
+    # current requirements there is nothing to prepare, and refusing to start over
+    # an old payload would be absurd.
+    installed = environment / ".requirements.sha256"
+    if interpreter.is_file() and installed.is_file() \
+            and installed.read_text(encoding="ascii").strip() == digest:
+        print("[FULL] Private environment already satisfies the current requirements.")
+        if not payload_current:
+            print("[FULL] The bundled package payload is older than these requirements; "
+                  "install the Full package for this version to refresh it.")
+        marker.write_text(json.dumps({"home": str(private), "digest": digest}), encoding="utf-8")
+        return
     previous = None
     if environment.exists():
         previous = root / "runtime" / "environment-history" / str(time.time_ns())
@@ -46,6 +59,22 @@ def prepare(root=ROOT):
         for key in ("PYTHONHOME", "PYTHONPATH", "PYTHONUSERBASE", "PYTHONSTARTUP"):
             env.pop(key, None)
         env["PYTHONNOUSERSITE"] = "1"
+        if not payload_current:
+            # The payload predates these requirements, so fetch only the
+            # difference. Offline this fails, and the caller says what to install.
+            print("[FULL] Bundled payload is older than the requirements; "
+                  "fetching the difference ...", flush=True)
+            source = root / "requirements-windows-py312.lock"
+            if not source.is_file():
+                source = root / "requirements.txt"
+            completed = subprocess.run(
+                [str(environment / "Scripts/python.exe"), "-I", "-m", "pip", "install",
+                 "-r", str(source)], env=env, cwd=root)
+            if completed.returncode:
+                raise RuntimeError(
+                    "The bundled packages are older than this version needs, and the "
+                    "missing ones could not be downloaded. Connect to the internet and "
+                    "start Marvin again, or install the Full package for this version.")
         subprocess.run([str(environment / "Scripts/python.exe"), "-I", "-c",
                         "import fastapi,uvicorn,openai,pypdfium2,gradio,webview,tkinter; print('FULL_IMPORTS_OK')"],
                        check=True, env=env, cwd=root)

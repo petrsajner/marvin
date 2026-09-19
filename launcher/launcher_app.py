@@ -338,7 +338,11 @@ def main() -> int:
                              cwd=ROOT, creationflags=0x08000000)
         if rc:
             _close_splash()
-            _alert("Bundled Python environment could not be prepared. See runtime/launcher.log.")
+            detail = ROOT / "runtime" / "full-setup-error.log"
+            _alert(t("The bundled Python environment could not be prepared.\n\n"
+                     "Connect to the internet and start Marvin again, or install the "
+                     "Full package for this version.\n\nDetails: {path}",
+                     path=detail if detail.is_file() else ROOT / "runtime" / "launcher.log"))
             return 1
 
     # 1) Check environment, inference runtime and model files.
