@@ -195,6 +195,20 @@ kolem čtyř sekund, ať mluvíte dvě sekundy nebo deset.
 Když tlačítko stisknete a nic neřeknete, dostanete „Nic jsem neslyšel" místo věty,
 kterou si program vymyslel — ticho se rozpozná ještě před přepisem.
 
+## Generování obrázků
+
+Všechno ostatní v Marvinovi běží na vašem počítači. Tahle jediná funkce ne: obrázky generuje přes OpenArt, na vašem účtu OpenArt, a každý obrázek stojí kredity. Dokud ji nezapnete, je vypnutá.
+
+V **Nastavení > Chování** zapněte **Povolit placené generování obrázků**. Jednorázově se stáhne 4MB program. Pak stiskněte **Přihlásit k OpenArt**: přihlášení se otevře v prohlížeči a dokončíte ho tam. Marvin vaše heslo nikdy nevidí a žádný credential neukládá — program OpenArt si drží vlastní ve vašem uživatelském profilu a nic z něj se nedostane do nastavení Marvina, exportu ani zálohy. Není co vkládat jako API klíč, protože OpenArt žádný nepoužívá.
+
+Jakmile je účet připojený, svítí zvýrazněný štítek se zůstatkem kreditů. **Přepínač je nezávislý na přihlášení**: když ho vypnete, generování se zastaví, i když účet zůstane připojený.
+
+Model pak umí vygenerovat obrázek, když je opravdu potřeba — sprite, texturu, návrh — a ukládá ho do složky `generated-images` v aktuálním projektu, kde ho otevřete jako každý jiný soubor. Zná pět modelů: Google Nano Banana 2 (výchozí, 4K s přesným textem v obrázku), OpenAI GPT Image 2.5 ve verzi rychlejší a přesnější, Nano Banana Pro na dlouhý text a konzistentní postavy a Seedream 4.5 na anime a ilustraci.
+
+Co čekat: jeden obrázek zhruba sedmnáct sekund a cena se napíše k výsledku vedle souboru. Obrázek z Nano Banana 2 stál v době psaní 20 kreditů. Marvin utrácení nestropuje; ovládáte ho tím přepínačem.
+
+Bez připojení k internetu je tohle jediná věc, která fungovat nemůže. Řekne to a nic jiného to neovlivní.
+
 ## Běžící úloha a fronta zpráv
 
 Během práce zvolte **Upřesnit nyní** pro steering nebo **Po dokončení** pro samostatný další požadavek. Úloha v jiném chatu pokračuje a nová zpráva čeká na jediný modelový worker. Text ve frontě lze upravit a čekající zprávu zrušit.

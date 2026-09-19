@@ -209,6 +209,37 @@ If you press the button and then say nothing, you get "Nothing was heard" rather
 than a sentence the program invented - silence is detected before transcription
 starts.
 
+## Image generation
+
+Everything else in Marvin runs on your own computer. This one feature does not:
+it generates pictures through OpenArt, on your OpenArt account, and each picture
+costs credits. It is off until you turn it on.
+
+Turn **Allow paid image generation** on in **Settings > Behavior**. A 4 MB
+program is downloaded once. Then press **Sign in to OpenArt**: the sign-in opens
+in your browser and you complete it there. Marvin never sees your password, and
+never stores any credential - the OpenArt program keeps its own, in your user
+profile, and nothing about it reaches Marvin's settings file, an export or a
+backup. There is no API key to paste, because OpenArt does not use one.
+
+Once the account is connected it is shown as a highlighted label with your credit
+balance. **The switch is separate from being signed in**: turning it off stops
+image generation even while the account stays connected.
+
+The model can then generate a picture when one is actually wanted - a sprite, a
+texture, a mock-up - and it saves into `generated-images` inside the current
+project, where you can open it like any other file. It knows five models: Google
+Nano Banana 2 (the default, 4K with accurate text in the picture), OpenAI GPT
+Image 2.5 in a faster and a more precise variant, Nano Banana Pro for long text
+and consistent characters, and Seedream 4.5 for anime and illustration.
+
+What to expect: about seventeen seconds for one picture, and the price is quoted
+in the answer beside the file. A picture from Nano Banana 2 cost 20 credits when
+this was written. Marvin does not cap the spending; the switch is the control.
+
+Without an internet connection this is the one thing that cannot work. It says so
+and nothing else is affected.
+
 ## Running tasks and the message queue
 
 While a task is active, choose **Clarify now** to steer it or **After completion** to queue a separate request. A task in a different chat keeps running; a new request waits for the single model worker. Queued text can be edited, and queued messages can be cancelled.
