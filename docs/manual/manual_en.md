@@ -137,6 +137,29 @@ Use **New chat** to create a conversation. Type into the title above the chat an
 
 The three-dot menu beside the project selector creates a new project, attaches an existing folder, or removes the selected project. Attached folders are never deleted from disk. Search in the left sidebar searches saved conversations.
 
+## Finding anything you have written
+
+The box at the top of the sidebar searches **everything**, not only
+conversations: your chats, the text files in the open project, all three layers of
+memory, and the project's decisions. Results are grouped by where they live, and
+clicking one opens that place - the conversation, the document, the memory page,
+the decisions panel.
+
+Which project is searched follows the open conversation. With no project open,
+only conversations and global memory are searched, because there is nothing else
+to look in.
+
+## Go to - one keystroke
+
+**Ctrl+K** opens a small box you can type into. It offers the things the interface
+can do - new chat, switch work mode, the capability catalogue, the context,
+progress and changes panels, each settings page, dictation when it is ready - and
+below them, whatever your words found in your own work. Enter runs the first
+action; Escape closes it.
+
+It is a shortcut, not a separate feature: everything it offers is somewhere in the
+interface already.
+
 ## What can I ask for?
 
 Beside **Attach** is **What can I ask for?**. It opens a catalogue of about twenty
@@ -403,6 +426,20 @@ Use for ordinary conversation, analysis, learning, brainstorming, planning, and 
 ## Research
 
 Use for web research, literature or market investigation, comparison, and evidence synthesis. Research creates a persistent plan and ledger, keeps all sources regardless of perceived trustworthiness, records contradictions, and produces a final synthesis.
+
+## Watching a document being written
+
+In the **Files changed** list, a document the task touched has a second button
+beside the difference view. It opens the document rendered, and **keeps it up to
+date while the model writes**: the view re-reads the file and redraws only when
+the content really changed, so it does not flicker.
+
+The button appears for what can be rendered - Markdown, text, DOCX, PDF, HTML,
+CSV and spreadsheets. Source code and binary files have nothing to show, so they
+only offer the difference view.
+
+This is the answer to the one question Writing mode could not answer while it
+worked: what does it look like now.
 
 ## Writing
 

@@ -130,6 +130,26 @@ Tlačítko **Nový chat** vytvoří konverzaci. Název nad chatem přejmenujete 
 
 Menu vedle výběru projektu vytvoří nový projekt, připojí existující složku nebo smaže projekt i jeho adresář. Vyhledávání vlevo prohledává uložené konverzace.
 
+## Jak najít cokoli, co jste napsal
+
+Pole v horní části panelu hledá **všude**, nejen v konverzacích: v chatech,
+v textových souborech otevřeného projektu, ve všech třech vrstvách paměti
+a v rozhodnutích projektu. Výsledky jsou rozdělené podle toho, kde leží, a
+kliknutím se otevře právě to místo — konverzace, dokument, stránka paměti, panel
+rozhodnutí.
+
+Který projekt se prohledává, se řídí otevřenou konverzací. Bez projektu se hledá
+jen v konverzacích a v globální paměti, protože jinde není co hledat.
+
+## Přejít na — jedna klávesa
+
+**Ctrl+K** otevře malé pole, do kterého se píše. Nabídne, co rozhraní umí — nový
+chat, přepnutí režimu, katalog schopností, panely Kontext, Průběh a Změny,
+jednotlivé stránky nastavení, diktování, když je připravené — a pod tím to, co
+vaše slova našla ve vaší vlastní práci. Enter spustí první akci, Escape zavře.
+
+Je to zkratka, ne samostatná funkce: vše, co nabízí, už v rozhraní někde je.
+
 ## Co si můžu říct?
 
 Vedle tlačítka **Attach** je **Co si můžu říct?**. Otevře katalog zhruba dvaceti
@@ -767,6 +787,20 @@ Nástroje běžně požadujete přirozeným jazykem.
 | `make_directory`, `move_file`, `delete_file` | Strukturované změny s rollbackem. |
 | `list_task_changes`, `undo_task_changes` | Task journal a rollback. |
 | `view_image` | Vizuální analýza lokálního obrázku. |
+
+## Sledování dokumentu, který se právě píše
+
+V seznamu **Změněné soubory** má dokument, kterého se úloha dotkla, druhé tlačítko
+vedle zobrazení rozdílů. Otevře dokument vysázený a **drží ho aktuální, zatímco
+model píše**: náhled soubor znovu načítá a překresluje jen tehdy, když se obsah
+opravdu změnil, takže neproblikává.
+
+Tlačítko se objeví u toho, co jde vysázet — Markdown, text, DOCX, PDF, HTML, CSV
+a tabulky. Zdrojový kód a binární soubory nemají co ukázat, takže u nich zůstává
+jen zobrazení rozdílů.
+
+To je odpověď na jedinou otázku, kterou režim Psaní během práce neumělo
+zodpovědět: jak to teď vypadá.
 
 ## Psaní, Vývoj a Počítač
 
