@@ -71,6 +71,18 @@ class CommandTests(unittest.TestCase):
         self.assertTrue(all(any(unit in item for unit in ("MB", "GB")) for item in absent))
         self.assertFalse(speech.ready(self.cfg))
 
+    def test_an_upgraded_installation_gets_the_settings_it_never_had(self):
+        """An upgrade keeps the user's config.yaml, so a new section can only
+        arrive through the defaults in code. Without this, dictation raised a
+        KeyError on every installation that predates it."""
+        from harness.config import DEFAULTS, Config, _deep_merge
+        older = {"server": {"host": "127.0.0.1"}, "default_model": "q5"}
+        upgraded = Config(_deep_merge(DEFAULTS, older), Path(self.temporary.name))
+        self.assertEqual(upgraded.data["speech"]["language"], "auto")
+        self.assertFalse(upgraded.data["speech"]["enabled"])
+        # The command can be built, which is what actually crashed.
+        self.assertIn("--vad", speech.command(upgraded, Path("say.wav"), "cs"))
+
     def test_transcribing_without_the_runtime_explains_instead_of_crashing(self):
         with self.assertRaises(RuntimeError) as caught:
             speech.transcribe(self.cfg, Path("say.wav"), "cs")

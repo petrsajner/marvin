@@ -104,6 +104,16 @@ DEFAULTS: dict[str, Any] = {
         "failsafe": True,
         "pause_between_actions": 0.15,
     },
+    # Dictation. Listed here and not only in config.yaml: an upgrade keeps the
+    # user's file, so a new section reaches an existing installation only through
+    # these defaults.
+    "speech": {
+        "enabled": False,
+        "language": "auto",
+        "device": None,
+        "threads": 0,
+        "max_seconds": 300,
+    },
     "memory": {
         "directory": "memory",
         "global_filename": "GLOBAL.md",
