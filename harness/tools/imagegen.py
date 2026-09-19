@@ -84,6 +84,11 @@ class GenerateImageTool(Tool):
             files = renamed
         for path in files:
             ctx.pending_images.append(path)
+            # The service writes the file itself, so nothing else would record it
+            # and Results would never show a picture whose path is sitting in the
+            # conversation.
+            if ctx.changes is not None:
+                ctx.changes.record_created(path)
         lines = [t("Generated with {model}: {files}", model=chosen,
                    files=", ".join(str(p) for p in files))]
         if price is not None:

@@ -171,6 +171,46 @@ class ChangeJournal:
             ],
         }
 
+    def task_ids(self) -> list[str]:
+        """Every task this conversation has recorded, oldest first.
+
+        A fresh manifest is started per task, so anything that asks only the
+        current one sees a single task's work - which is why a finished program
+        dropped out of Results the moment the next task began.
+
+        Ordered by the timestamp inside each manifest, not by the folder name: a
+        task id is a second-resolution stamp plus random hex, so two tasks in the
+        same second sort by the random half."""
+        if not self.base.exists():
+            return []
+        found = []
+        for path in self.base.glob("*/manifest.json"):
+            manifest = self._read_json(path) or {}
+            found.append((float(manifest.get("created") or 0.0), path.parent.name))
+        return [name for _, name in sorted(found)]
+
+    def record_created(self, path: Path) -> None:
+        """Record a file produced by something other than the file tools.
+
+        A picture written by an image service, or an artefact a program built, is
+        as much a result as a file the model edited - and Results is assembled
+        from this journal, so whatever does not pass through here is invisible
+        there however plainly it is named in the conversation."""
+        path = Path(path).resolve()
+        key = str(path)
+        with self._lock:
+            if key in self._records or not path.is_file():
+                return
+            self._records[key] = {
+                "path": key,
+                "display_path": self._display_path(path),
+                "existed": False,
+                "backup": None,
+                "before_sha256": None,
+                "after_sha256": file_sha256(path),
+            }
+            self._write_manifest()
+
     def _diff_lines(self, before: list[str], after: list[str]) -> list[dict]:
         """Line records with old/new numbers; long equal runs collapse into gaps."""
         records: list[dict] = []

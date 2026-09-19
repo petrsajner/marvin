@@ -995,10 +995,16 @@ class ApplicationService:
                     if path.is_file():
                         self.store.register_file(path, session.id)
         if agent:
-            for item in agent.ctx.changes.summary().get("files", []):
-                path = agent.ctx.workspace / item["path"]
-                if item["changed"] and path.is_file():
-                    self.store.register_file(path, session.id, "changed")
+            # Every task this conversation has run, not only the most recent one.
+            # The journal starts a fresh manifest per task, so asking just the
+            # current one meant the finished program disappeared from Results the
+            # moment the next task touched a test script.
+            journal = agent.ctx.changes
+            for task_id in journal.task_ids() or [None]:
+                for item in journal.summary(task_id).get("files", []):
+                    path = agent.ctx.workspace / item["path"]
+                    if item["changed"] and path.is_file():
+                        self.store.register_file(path, session.id, "changed")
 
     def close(self):
         with self.wake:
