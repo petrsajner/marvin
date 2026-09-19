@@ -161,6 +161,56 @@ class PromptPerformanceTests(unittest.TestCase):
         self.assertEqual(sum(1 for m in self.session.to_api_messages(include_pins=False)
                              if isinstance(m.get("content"), list)), 4)
 
+    def test_one_stray_screenshot_does_not_buy_a_rewrite(self):
+        """Measured on the owner's session: after a first prune of 21 pictures,
+        every later screenshot made exactly one prunable again, and each of those
+        rewrote the prompt from that picture onwards - about 45k tokens and fifty
+        seconds - to free 1400. Those three rewrites bought nothing."""
+        for step in range(5):
+            shot = self.root / ("late-%02d.png" % step)
+            shot.write_bytes(b"\x89PNG\r\n\x1a\n" + bytes([step]) * 64)
+            self.session.add("user", "Step %d" % step, images=[shot])
+        prunable, saving = self.session.prunable_images(keep=4)
+        self.assertEqual(prunable, 1, "only the oldest picture is droppable here")
+        notes = []
+        self.agent.emit = lambda kind, text, **rest: notes.append(str(text))
+        with patch.object(self.agent, "_ctx_limit", return_value=200000), \
+                patch.object(self.agent, "estimate_context_tokens", return_value=180000), \
+                patch("harness.context.summarize_messages", return_value="summary"):
+            self.agent._maybe_compress()
+        self.assertFalse([note for note in notes if note.startswith("🖼")],
+                         "a single picture is not worth rewriting the prompt for")
+        self.assertEqual(sum(1 for m in self.session.to_api_messages(include_pins=False)
+                             if isinstance(m.get("content"), list)), 5,
+                         "nothing should have been given up")
+
+    def test_a_worthwhile_prune_still_happens(self):
+        for step in range(25):
+            shot = self.root / ("many-%02d.png" % step)
+            shot.write_bytes(b"\x89PNG\r\n\x1a\n" + bytes([step]) * 64)
+            self.session.add("user", "Step %d" % step, images=[shot])
+        prunable, saving = self.session.prunable_images(keep=4)
+        self.assertEqual(prunable, 21)
+        notes = []
+        self.agent.emit = lambda kind, text, **rest: notes.append(str(text))
+        # A real estimate over the threshold rather than a patched one: twenty
+        # five pictures are worth about 35k tokens against this limit.
+        with patch.object(self.agent, "_ctx_limit", return_value=30000), \
+                patch("harness.context.summarize_messages", return_value="summary"):
+            self.agent._maybe_compress()
+        self.assertTrue([note for note in notes if note.startswith("🖼")], notes)
+        self.assertEqual(sum(1 for m in self.session.to_api_messages(include_pins=False)
+                             if isinstance(m.get("content"), list)), 4)
+
+    def test_asking_the_cost_does_not_pay_it(self):
+        for step in range(9):
+            shot = self.root / ("ask-%02d.png" % step)
+            shot.write_bytes(b"\x89PNG\r\n\x1a\n" + bytes([step]) * 64)
+            self.session.add("user", "Step %d" % step, images=[shot])
+        before = self.session.to_api_messages(include_pins=False)
+        self.session.prunable_images(keep=4)
+        self.assertEqual(self.session.to_api_messages(include_pins=False), before)
+
     def test_every_request_is_recorded_so_a_lost_cache_can_be_explained(self):
         """The conversation on disk shows the final state, so a message rewritten
         in place looks as though it always was that way. The trace does not."""

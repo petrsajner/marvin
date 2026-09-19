@@ -134,3 +134,42 @@ Compression and image pruning still break the prefix once each, by construction 
 they exist to remove what the model has already seen. With `--cache-reuse`
 unavailable, the only lever is frequency, which is why pruning is now tied to
 context pressure rather than to taking a screenshot.
+
+## Correction, same day: pruning was charging for nothing
+
+The decision above says pruning trades "ten accidental rewrites for one
+deliberate one". Measured on the owner's own session that evening, it did not.
+The notices the harness had been writing all along say it plainly:
+
+```
+16:00:46   count: 21   context ~135442     <- worth it
+16:10:51   count: 3    context ~163421
+16:11:52   count: 1    context ~165616     <- one picture, one rewrite
+16:13:04   count: 1    context ~166699     <- one picture, one rewrite
+16:14:08   summarising
+```
+
+The first prune gives up 21 pictures and buys 30k tokens. After that only four
+remain, so **every new screenshot makes exactly one prunable again**, the
+threshold is crossed again, and one picture is dropped - rewriting the prompt
+from that picture onwards. The request trace named it precisely: `was: 87 chars,
+1 images / now: 87 chars, 0 images`, four times, agreeing for 40%, 86%, 87% and
+89% of the request. Around 45k tokens and fifty seconds of reprocessing, to free
+1400 tokens.
+
+Pruning now has to earn its rewrite: it runs only when it would free at least 5%
+of the context, which is about seven pictures. Below that, summarising is the
+honest answer, because summarising is what actually reclaims space at that point.
+
+### How the first investigation missed it
+
+This was the first hypothesis of the day, and it was dismissed on evidence that
+could not exist. The search for pruning notices looked at events of kind
+`message` and at `messages.jsonl`. These notices are stored as events of kind
+`notice`. They were there from the beginning, in plain words, with counts.
+
+Three further explanations were then measured and disproved - media chunks reuse
+at 99%, the prompt-cache limit changes nothing, `--cache-reuse` is unavailable -
+all of which was true and none of which was the cause. The lesson is narrow and
+worth keeping: *absence of a notice is not absence of the event*, unless you have
+checked that the notice is written where you are looking.

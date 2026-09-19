@@ -104,6 +104,7 @@ TOOL_STEPS_BEFORE_UPDATE = 4   # Request an update after this many tool steps wi
 MIN_TOOLS_FOR_SUMMARY = 3      # Tasks using at least this many tools require a structured summary.
 COMPRESS_AT = 0.85             # Compress automatically at 85 percent of the context limit.
 IMAGES_KEPT = 4                # Screenshots still sent once context pressure forces pruning.
+PRUNE_WORTH = 0.05             # Pruning must free this share of the context to earn its rewrite.
 OVERFLOW_RE = re.compile(
     r"exceeds.{0,40}context|context.{0,40}(exceed|full|too (large|long))|"
     r"prompt is too long|maximum context",
@@ -558,7 +559,16 @@ class Agent:
         # Old screenshots are the largest items here and the cheapest to give up,
         # so try them before summarizing away the conversation itself. Both
         # rewrite the processed prompt; this one keeps the text history.
-        dropped = self.session.prune_images(keep=IMAGES_KEPT)
+        #
+        # Only when the saving is worth that rewrite, though. Measured on the
+        # owner's own session: after a first prune of 21 pictures, every later
+        # screenshot made exactly one prunable again, and each of those rewrote
+        # the prompt from that picture onwards - some 45k tokens, about fifty
+        # seconds of reprocessing - to free 1400. Below this bar, summarising is
+        # the honest answer instead of a rewrite that pays for nothing.
+        _, saving = self.session.prunable_images(keep=IMAGES_KEPT)
+        dropped = (self.session.prune_images(keep=IMAGES_KEPT)
+                   if saving >= int(limit * PRUNE_WORTH) else 0)
         if dropped:
             est = self.estimate_context_tokens()
             self.emit("info", t("🖼 Older screenshots no longer sent (count: {count}) - context ~{est} tokens",

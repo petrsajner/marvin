@@ -328,6 +328,23 @@ class Session:
         self._save_compression()
         return True
 
+    def prunable_images(self, keep: int = 4) -> tuple[int, int]:
+        """How many images pruning would drop, and roughly what that frees.
+
+        Asked before pruning, because the rewrite costs the server every token
+        after the first dropped image: giving up one picture to save 1400 tokens
+        is a minute of reprocessing for nothing."""
+        carrying = [m for m in self._view_messages() if self._sent_images(m)]
+        kept = 0
+        dropped = 0
+        for message in reversed(carrying):
+            count = len(self._sent_images(message))
+            if kept < keep:
+                kept += count
+                continue
+            dropped += count
+        return dropped, dropped * self.IMAGE_TOKENS
+
     def prune_images(self, keep: int = 4) -> int:
         """Give up all but the newest `keep` images and return how many were dropped.
 
