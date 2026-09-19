@@ -101,6 +101,9 @@ export function DialogView(props: any) {
     openPanel,
   } = props;
   const [voiceDevices, setVoiceDevices] = useState<any[] | null>(null);
+  const [voiceStatus, setVoiceStatus] = useState<any>(null);
+  // The followed status while a download runs, the general one otherwise.
+  const voice = voiceStatus || app?.voice || {};
   const [content, setContent] = useState(""),
     [name, setName] = useState(""),
     [scope, setScope] = useState("global"),
@@ -202,9 +205,31 @@ export function DialogView(props: any) {
     // only while the section that lists them is open.
     if (dialog.type === "settings" && section === "behavior")
       api("/api/voice")
-        .then((state: any) => setVoiceDevices(state.devices || []))
+        .then((state: any) => {
+          setVoiceDevices(state.devices || []);
+          setVoiceStatus(state);
+        })
         .catch(error);
   }, [dialog.type, section, sid, error]);
+  // The general state arrives on events, which say nothing while a download
+  // runs, so the download is followed here - otherwise 556 MB looks like a
+  // sentence that never changes.
+  useEffect(() => {
+    if (dialog.type !== "settings" || section !== "behavior") return;
+    const follow = () =>
+      api("/api/voice")
+        .then((state: any) => {
+          setVoiceStatus(state);
+          return state;
+        })
+        .catch(() => null);
+    const timer = setInterval(async () => {
+      const state = await follow();
+      if (state && !state.installing && !(state.missing || []).length)
+        clearInterval(timer);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [dialog.type, section]);
   useEffect(() => {
     if (
       dialog.type === "settings" &&
@@ -556,14 +581,27 @@ export function DialogView(props: any) {
                 {app.preferences.voice_input && (
                   <>
                     <p>
-                      {app.voice?.installing
-                        ? tr("Downloading speech recognition (~556 MB)…")
-                        : app.voice?.install_error
-                          ? app.voice.install_error
-                          : (app.voice?.missing || []).length
-                            ? tr("Still needed:") + " " + app.voice.missing.join(", ")
-                            : app.voice?.capture_error
-                              ? app.voice.capture_error
+                      {voice.installing
+                        ? tr("Downloading speech recognition") +
+                          " " +
+                          Math.round((voice.install_done || 0) / 1048576) +
+                          "/" +
+                          Math.round((voice.install_total || 0) / 1048576) +
+                          " MB (" +
+                          Math.min(
+                            100,
+                            Math.round(
+                              (100 * (voice.install_done || 0)) /
+                                Math.max(1, voice.install_total || 0),
+                            ),
+                          ) +
+                          "%)"
+                        : voice.install_error
+                          ? voice.install_error
+                          : (voice.missing || []).length
+                            ? tr("Still needed:") + " " + voice.missing.join(", ")
+                            : voice.capture_error
+                              ? voice.capture_error
                               : tr("Dictation is ready. It runs on the processor and never leaves this computer.")}
                     </p>
                     <label>

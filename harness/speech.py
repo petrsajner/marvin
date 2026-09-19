@@ -113,20 +113,48 @@ def input_devices() -> list[dict]:
 
 
 # --------------------------------------------------------------------- install
-def install(cfg: Config, *, progress=print, should_stop=None) -> None:
-    """Fetch the pinned program and models. Safe to call when they already exist."""
+def install_bytes() -> int:
+    """Everything dictation downloads, so progress can be a share of the whole."""
+    from harness.model_catalog import SPEECH_SILERO_VAD, SPEECH_WHISPER_TURBO
+    total = ARCHIVE[1]
+    for spec in (SPEECH_SILERO_VAD, SPEECH_WHISPER_TURBO):
+        total += sum(int(asset["size"]) for asset in spec["assets"])
+    return total
+
+
+def install(cfg: Config, *, progress=print, should_stop=None, on_progress=None) -> None:
+    """Fetch the pinned program and models. Safe to call when they already exist.
+
+    on_progress(done, total) counts every byte of the whole installation, not of
+    one file: three separate downloads restarting from zero would read as a
+    download going backwards."""
     from harness.model_catalog import SPEECH_SILERO_VAD, SPEECH_WHISPER_TURBO
     from harness.model_files import download_pinned_model
     models = cfg.path("paths.models_dir")
+    total = install_bytes()
+    finished = 0
     for spec in (SPEECH_SILERO_VAD, SPEECH_WHISPER_TURBO):
         if should_stop and should_stop():
             raise InterruptedError("Dictation setup cancelled")
-        download_pinned_model(models, spec, progress=progress, should_stop=should_stop)
+        size = sum(int(asset["size"]) for asset in spec["assets"])
+        step = None
+        if on_progress:
+            done_before = finished
+            step = lambda done, _size, base=done_before: on_progress(base + done, total)
+        download_pinned_model(models, spec, progress=progress, should_stop=should_stop,
+                              on_progress=step)
+        finished += size
+        if on_progress:
+            on_progress(finished, total)
     if not whisper_cli(cfg).is_file():
-        _install_program(cfg, progress=progress, should_stop=should_stop)
+        _install_program(cfg, progress=progress, should_stop=should_stop,
+                         on_progress=(lambda done: on_progress(finished + done, total))
+                         if on_progress else None)
+    elif on_progress:
+        on_progress(total, total)
 
 
-def _install_program(cfg: Config, *, progress=print, should_stop=None) -> None:
+def _install_program(cfg: Config, *, progress=print, should_stop=None, on_progress=None) -> None:
     import requests
     from harness.runtime_update import sha256
     name, size, digest = ARCHIVE
@@ -141,10 +169,14 @@ def _install_program(cfg: Config, *, progress=print, should_stop=None) -> None:
         url = f"https://github.com/ggml-org/whisper.cpp/releases/download/{RELEASE}/{name}"
         with requests.get(url, stream=True, timeout=(15, 30)) as response, partial.open("wb") as out:
             response.raise_for_status()
+            written = 0
             for chunk in response.iter_content(4 * 1024**2):
                 if should_stop and should_stop():
                     raise InterruptedError("Dictation setup cancelled")
                 out.write(chunk)
+                written += len(chunk)
+                if on_progress:
+                    on_progress(written)
         if partial.stat().st_size != size or sha256(partial) != digest:
             partial.unlink(missing_ok=True)
             raise RuntimeError(t("The downloaded dictation program did not match its checksum."))

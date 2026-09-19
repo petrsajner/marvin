@@ -6,6 +6,7 @@ detection is on, and naming the language is about twice as fast as detecting it.
 """
 import copy
 import tempfile
+import time
 import unittest
 import wave
 from pathlib import Path
@@ -137,6 +138,37 @@ class EndpointTests(unittest.TestCase):
             self.client.patch("/api/settings", json={"voice_input": True}).raise_for_status()
         prepare.assert_called_once()
         self.assertTrue(self.client.get("/api/state").json()["voice"]["enabled"])
+
+    def test_the_download_reports_how_far_it_has_got(self):
+        """It used to show one sentence that never changed, so 556 MB of download
+        was indistinguishable from a download that had stalled."""
+        seen = []
+
+        def fake_install(cfg, *, progress=print, should_stop=None, on_progress=None):
+            for done in (0, 200 * 1048576, speech.install_bytes()):
+                on_progress(done, speech.install_bytes())
+                seen.append(self.service.voice_state()["install_done"])
+
+        with patch.object(speech, "ready", return_value=False), \
+                patch.object(speech, "install", side_effect=fake_install):
+            self.service.prepare_voice_input()
+            for _ in range(100):
+                if not self.service.voice_state()["installing"]:
+                    break
+                time.sleep(0.02)
+        self.assertEqual(seen, [0, 200 * 1048576, speech.install_bytes()])
+        state = self.service.voice_state()
+        self.assertEqual(state["install_total"], speech.install_bytes())
+        self.assertFalse(state["installing"])
+
+    def test_the_total_covers_every_piece_that_is_downloaded(self):
+        from harness.model_catalog import SPEECH_SILERO_VAD, SPEECH_WHISPER_TURBO
+        expected = speech.ARCHIVE[1] + sum(
+            int(asset["size"]) for spec in (SPEECH_SILERO_VAD, SPEECH_WHISPER_TURBO)
+            for asset in spec["assets"])
+        self.assertEqual(speech.install_bytes(), expected)
+        # Roughly the figure the interface quotes, so the two cannot drift apart.
+        self.assertAlmostEqual(speech.install_bytes() / 1048576, 556, delta=2)
 
     def test_recording_cannot_start_before_the_runtime_is_there(self):
         answer = self.client.post("/api/voice/start")

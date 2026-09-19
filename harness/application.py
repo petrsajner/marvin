@@ -73,7 +73,7 @@ class ApplicationService:
         self.preferences.setdefault("voice_language", "auto")
         self.preferences.setdefault("voice_device", None)
         self.recorder = None
-        self._voice_install = {"running": False, "error": "", "note": ""}
+        self._voice_install = {"running": False, "error": "", "done": 0, "total": 0}
         # Where new projects are created. Empty means the folder beside the
         # installation, which is all that used to be possible.
         self.preferences.setdefault("projects_root", "")
@@ -141,6 +141,8 @@ class ApplicationService:
             "devices": speech.input_devices() if devices else [],
             "installing": self._voice_install["running"],
             "install_error": self._voice_install["error"],
+            "install_done": self._voice_install["done"],
+            "install_total": self._voice_install["total"],
         }
 
     def voice_start(self) -> dict:
@@ -183,11 +185,15 @@ class ApplicationService:
         from harness import speech
         if speech.ready(self.cfg) or self._voice_install["running"]:
             return
-        self._voice_install.update(running=True, error="")
+        self._voice_install.update(running=True, error="", done=0,
+                                   total=speech.install_bytes())
 
         def _install():
+            def advance(done: int, total: int) -> None:
+                self._voice_install.update(done=done, total=total)
+
             try:
-                speech.install(self.cfg)
+                speech.install(self.cfg, on_progress=advance)
             except Exception as error:
                 self._voice_install["error"] = f"{type(error).__name__}: {error}"
             finally:
