@@ -287,6 +287,15 @@ export function App() {
       .catch(error);
     api("/api/sessions/" + sid + "/select", "POST").catch(error);
   }, [sid, error]);
+  // What remains is worth showing once, not until it is clicked away. Long enough
+  // to read an error, and the X is still there to dismiss it sooner. Not before
+  // the workspace has loaded: the startup screen uses the same text to say why it
+  // did not, and that must stay on screen.
+  useEffect(() => {
+    if (!app || !toast) return;
+    const timer = setTimeout(() => setToast(""), 8000);
+    return () => clearTimeout(timer);
+  }, [app, toast]);
   useEffect(() => {
     if (!app) return;
     document.title = "Marvin v" + app.version;
@@ -573,8 +582,9 @@ export function App() {
       localStorage.removeItem("marvin.draft." + current);
       await refresh();
       await reloadChat();
-      if (result.status === "steering")
-        setToast(tr("Clarification received"));
+      // No toast for a message that was sent: it is already in the conversation,
+      // which is the thing the user is looking at. A toast is for something
+      // important that is visible nowhere else.
     } catch (e) {
       error(e);
     } finally {
