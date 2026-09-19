@@ -472,6 +472,19 @@ def refresh_backup(root: Path, backup: Path) -> dict[str, Any]:
         if candidate.is_file():
             put(relative, candidate, "metadata")
 
+    # Runtime payload a new version may have introduced - 1.12.0 added dictation.
+    # Files already recorded at the same size are left alone: re-reading the whole
+    # model payload to learn that nothing moved would cost half an hour.
+    for source, relative, component in _runtime_sources(root):
+        key = relative.as_posix()
+        recorded = records.get(key)
+        target = backup / relative
+        if recorded and target.is_file() \
+                and recorded.get("size") == source.stat().st_size \
+                and target.stat().st_size == source.stat().st_size:
+            continue
+        put(key, source, component)
+
     requirements = root / "requirements.txt"
     lock = root / "requirements-windows-py312.lock"
     requirements_digest = sha256_file(requirements)

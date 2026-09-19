@@ -1,7 +1,7 @@
 {
   "version": "1.12.0",
   "tag": "v1.12.0",
-  "application_commit": "c15d55dd5d7585269e67cf29d5d9a5508b2361da",
+  "application_commit": "1b1a349a7c34ad6148f58baa6d5832089823feaf",
   "release_url": "https://github.com/petrsajner/marvin/releases/tag/v1.12.0",
   "assets": [
     {
@@ -20,15 +20,15 @@
     },
     {
       "name": "Marvin-Setup-Full.exe",
-      "bytes": 942628362,
-      "sha256": "0cbfa23942c4377c3f99dab501a8af11e064980b9d16102c89a90e74a6989ff0",
+      "bytes": 942628766,
+      "sha256": "6d01aa29c002528e36ca6fcd6390d3e2c24962429d49af0c9da0ace54954935b",
       "url": "https://github.com/petrsajner/marvin/releases/download/v1.12.0/Marvin-Setup-Full.exe",
       "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Full.exe"
     },
     {
       "name": "Marvin-Setup-Minimal.exe",
-      "bytes": 53989723,
-      "sha256": "601f9de91fff43e9906c274c11607eb6ae30003abba1772c98a93e39bc232204",
+      "bytes": 53990029,
+      "sha256": "70000ffe5f4dc28ed1a2b3b76c05feea9fde5d73eee4113c38f0a20650d8d8ce",
       "url": "https://github.com/petrsajner/marvin/releases/download/v1.12.0/Marvin-Setup-Minimal.exe",
       "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Minimal.exe"
     },
@@ -42,7 +42,7 @@
     {
       "name": "SHA256SUMS.txt",
       "bytes": 445,
-      "sha256": "297d84eedbbe14a55b1ccbd1db05b799f2a1664e0c2ce6db951ca3637dd6820c",
+      "sha256": "79e99080f4a7588b23f7736704c08eb2303b058dfb967a6724d6b4f21380962a",
       "url": "https://github.com/petrsajner/marvin/releases/download/v1.12.0/SHA256SUMS.txt",
       "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/SHA256SUMS.txt"
     }
