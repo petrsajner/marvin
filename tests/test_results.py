@@ -175,6 +175,52 @@ class DiscoveryTests(unittest.TestCase):
     def test_a_conversation_that_produced_nothing_produces_nothing(self):
         self.assertEqual(self._discover(), [])
 
+    def test_results_survive_a_restart_with_no_agent_loaded(self):
+        """Agents live in memory only for conversations used since the program
+        started. Asking only those emptied Results after every restart."""
+        self.journal.begin_task("write the game")
+        game = self.workspace / "game.py"
+        self.journal.record_before(game)
+        game.write_text("the finished program", encoding="utf-8")
+        self.journal.record_after(game)
+
+        from harness.application import ApplicationService
+        registered = []
+
+        class Store:
+            def register_file(self, path, session_id, kind="result", name=None):
+                registered.append(Path(path).name)
+                return {"id": Path(path).name}
+
+        service = ApplicationService.__new__(ApplicationService)
+        service.store = Store()
+        ApplicationService.discover_results(service, self.session, None)
+        self.assertIn("game.py", registered)
+
+    def test_an_output_folder_is_read_whatever_wrote_it(self):
+        """A picture made before the journal learned to record one still has to
+        appear, and so does anything a program drops in an output folder."""
+        from harness.application import ApplicationService
+        registered = []
+
+        class Store:
+            def register_file(self, path, session_id, kind="result", name=None):
+                registered.append(Path(path).name)
+                return {"id": Path(path).name}
+
+        pictures = self.session.dir / "generated-images"
+        pictures.mkdir(parents=True)
+        (pictures / "fox.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+        exported = self.session.dir / "exports"
+        exported.mkdir()
+        (exported / "report.pdf").write_bytes(b"%PDF-1.4")
+
+        service = ApplicationService.__new__(ApplicationService)
+        service.store = Store()
+        ApplicationService.discover_results(service, self.session, None)
+        self.assertIn("fox.png", registered)
+        self.assertIn("report.pdf", registered)
+
 
 if __name__ == "__main__":
     unittest.main()

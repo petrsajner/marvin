@@ -985,26 +985,39 @@ class ApplicationService:
                 value["files"].append(self.store.register_file(item["path"], session.id, "attachment"))
         return value
 
+    # Folders whose whole purpose is to hold something produced. Scanned rather
+    # than relying on the journal, so a picture is in Results whatever wrote it -
+    # including one made before the journal learned to record it.
+    OUTPUT_DIRECTORIES = ("exports", "generated-images")
+
     def discover_results(self, session, agent=None):
-        directories = [session.dir / "exports"]
+        roots = [session.dir]
         if session.meta.get("workspace"):
-            directories.append(Path(session.meta["workspace"]) / "exports")
-        for directory in directories:
-            if directory.is_dir():
-                for path in directory.iterdir():
-                    if path.is_file():
-                        self.store.register_file(path, session.id)
-        if agent:
-            # Every task this conversation has run, not only the most recent one.
-            # The journal starts a fresh manifest per task, so asking just the
-            # current one meant the finished program disappeared from Results the
-            # moment the next task touched a test script.
-            journal = agent.ctx.changes
-            for task_id in journal.task_ids() or [None]:
-                for item in journal.summary(task_id).get("files", []):
-                    path = agent.ctx.workspace / item["path"]
-                    if item["changed"] and path.is_file():
-                        self.store.register_file(path, session.id, "changed")
+            roots.append(Path(session.meta["workspace"]))
+        for root in roots:
+            for name in self.OUTPUT_DIRECTORIES:
+                directory = Path(root) / name
+                if directory.is_dir():
+                    for path in directory.iterdir():
+                        if path.is_file():
+                            self.store.register_file(path, session.id)
+        # The journal, not only when an agent happens to be loaded. Agents live in
+        # memory for the conversations that have run a task since the program
+        # started, so asking only those meant Results was empty after every
+        # restart until the conversation was used again.
+        from harness.changes import ChangeJournal
+        workspace = Path(session.meta["workspace"]) if session.meta.get("workspace") else None
+        journal = agent.ctx.changes if agent else ChangeJournal(session, workspace or session.dir)
+        root = agent.ctx.workspace if agent else (workspace or session.dir)
+        # Every task this conversation has run, not only the most recent one. The
+        # journal starts a fresh manifest per task, so asking just the current one
+        # meant the finished program disappeared from Results the moment the next
+        # task touched a test script.
+        for task_id in journal.task_ids() or [None]:
+            for item in journal.summary(task_id).get("files", []):
+                path = Path(root) / item["path"]
+                if item["changed"] and path.is_file():
+                    self.store.register_file(path, session.id, "changed")
 
     def close(self):
         with self.wake:
