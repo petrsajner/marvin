@@ -70,12 +70,16 @@ The event log holds the server's own progress for 357 requests:
   tokens, 33 to 120 seconds each.
 
 Those 13 account for **66% of all prefill time ever spent** (3,612 of 5,435
-seconds). Every one was the same conversation as the request before it with no
-model reload between - only a pause, and four minutes was enough to lose the
-cache. The processed prompt does not survive the time spent reading an answer and
-typing the next message. `--cache-ram 256` is 256 MiB for a cache that is
-gigabytes at 144k tokens; raising it is the next thing to measure, and it is
-worth more than everything in this release.
+seconds).
+
+Matching each one's prompt size against the server log shows why: seven of nine
+checked were `task 0`, the first request of a **freshly started server process**,
+whose cache is empty because the process is new. The log holds 134 separate
+server processes, and **83 of those runs served no request at all** after loading
+19.8 GB of weights. So this is restart churn, not a cache that expires with time,
+and `--cache-ram` cannot help - that cache lives inside the process being
+replaced. Why there are 134 restarts is the next thing to find out; 26 are model
+switches the owner made deliberately.
 
 One mid-task reprocess in the trace was not a defect: the system prompt grew by
 exactly 462 characters - the Ornith reasoning-effort block - when the model was

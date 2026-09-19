@@ -96,12 +96,40 @@ model reload in between - only a pause. Four minutes was enough to lose it:
 | 88 min | 0% |
 | 236 min | 0% |
 
-So the processed prompt does not survive the time the owner spends reading an
-answer and typing the next message. `harness/runtime_plan.py` passes
-`--cache-ram 256`, which is 256 MiB for a cache that is gigabytes at 144k tokens.
-Raising it, or keeping the slot on disk, is the next thing to measure - and it is
-worth more than everything in this document, because it is two thirds of the
-waiting.
+**Correction, same day.** The paragraph here first blamed a pause and named
+`--cache-ram 256` as the likely cause. Both were wrong. That argument is only on
+the Flash-Next path in `harness/runtime_plan.py`; a Qwen server never receives it
+and runs at the default 8192 MiB. And the check behind "no model reload in
+between" was the `loading_model` UI phase in the event store, which appears
+**once** in the entire store - so it proved nothing.
+
+Matching each cold start's prompt size against the server log answers it
+properly. Seven of nine were `task 0` - the first request of a **freshly started
+server**, whose cache is empty because the process is new:
+
+| prompt | found in the log as |
+|---|---|
+| 70,449 | run 130, task 0, 33 s |
+| 144,074 | run 133, task 0, 99 s |
+| 161,250 | run 128, task 0, 118 s |
+| 125,510 | run 125, task 0, 78 s |
+| 88,505 | run 106, task 0, 67 s |
+| 140,765 | run 125, task 3332, 98 s - a genuine mid-run loss |
+| 113,239 | run 103, task 127, 64 s - a genuine mid-run loss |
+
+The server log holds **134 `listening on http` lines**, so 134 separate server
+processes. **83 of those runs served no request at all** - each loaded 19.8 GB of
+weights fully (all 83 reached "model loaded", only one logged an error) and was
+then replaced without being asked anything.
+
+So the cost is restart churn, not cache eviction, and `--cache-ram` cannot help:
+the prompt cache lives inside the process that is being replaced. What could is
+`--slot-save-path`, which this build offers and which writes slot KV to disk -
+though it is driven by API calls, not a flag alone. The first question is why
+there are 134 restarts: 26 are real model switches the owner made, including the
+one back to `q5` at 18:47:59 that made the 18:52 request cold. The rest are not
+yet explained, and `kv_cache_modes` changing (9 times) and `vram_gb` changing
+(7 times) do not cover them.
 
 The one mid-task break still in the trace window was not a defect: the system
 prompt grew by exactly 462 characters, the length of the Ornith reasoning-effort
