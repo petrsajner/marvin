@@ -977,13 +977,9 @@ export function App() {
                         ? tr("Summarizing conversation")
                         : tr(phases[live?.phase] || phases.preparing)}
                       {live?.tool && " · " + live.tool}
-                      {live?.phase === "reading_context" && live.prompt_progress && (
-                        " · " + Math.max(0, Math.min(100, Math.round(
-                          100 * (Number(live.prompt_progress.processed || 0) - Number(live.prompt_progress.cache || 0)) /
-                          Math.max(1, Number(live.prompt_progress.total || 0) - Number(live.prompt_progress.cache || 0)),
-                        ))) + "% · " + formatTokens(Number(live.prompt_progress.cache || 0)) +
-                        tr(" tok reused")
-                      )}
+                      {live?.phase === "reading_context" &&
+                        live.prompt_progress &&
+                        prefillSummary(live.prompt_progress, tr)}
                       {live?.tool_chars > 0 &&
                         " · " + Math.round(live.tool_chars / 1024) + " KB"}
                       {(live?.phase_started || live?.started) &&
@@ -1763,6 +1759,47 @@ function reconcileMessages(old: Chat, next: Chat) {
     ? [...old.messages.slice(0, first), ...next.messages]
     : next.messages;
 }
+function formatDuration(seconds: number) {
+  return seconds >= 90
+    ? Math.round(seconds / 60) + " min"
+    : Math.max(1, Math.round(seconds)) + " s";
+}
+
+// What the wait costs, and why. Reuse is the number that matters: a prompt the
+// server still holds is free to send, so a low share means something near the
+// start of the conversation changed and all of it is being recomputed.
+function prefillSummary(
+  progress: { total?: number; cache?: number; processed?: number; time_ms?: number },
+  tr: (text: string) => string,
+) {
+  const total = Number(progress.total || 0);
+  const cache = Number(progress.cache || 0);
+  const processed = Number(progress.processed || 0);
+  const elapsed = Number(progress.time_ms || 0) / 1000;
+  const parts: string[] = [];
+  const todo = Math.max(1, total - cache);
+  const done = Math.max(0, processed - cache);
+  parts.push(Math.max(0, Math.min(100, Math.round((100 * done) / todo))) + "%");
+  if (total > 0) {
+    parts.push(
+      tr("reused") +
+        " " +
+        formatTokens(cache) +
+        "/" +
+        formatTokens(total) +
+        " (" +
+        Math.round((100 * cache) / total) +
+        "%)",
+    );
+  }
+  const rate = elapsed > 0 ? done / elapsed : 0;
+  const left = total - processed;
+  if (rate > 0 && left > rate) {
+    parts.push(tr("remaining") + " ~" + formatDuration(left / rate));
+  }
+  return " · " + parts.join(" · ");
+}
+
 function formatTokens(value: number) {
   return value >= 1000
     ? (value / 1000).toFixed(value < 10000 ? 1 : 0) + "k"

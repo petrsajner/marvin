@@ -23,9 +23,18 @@ foreach ($name in $assets.Keys) {
 if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
 New-Item -ItemType Directory -Path $target | Out-Null
 foreach ($name in $assets.Keys) {
-    # Hard links: the Full installer is about a gigabyte and copying it buys nothing.
-    New-Item -ItemType HardLink -Path (Join-Path $target $name) `
-        -Target (Join-Path $root $assets[$name]) | Out-Null
+    $source = Join-Path $root $assets[$name]
+    $staged = Join-Path $target $name
+    if ((Get-Item -LiteralPath $source).Length -gt 100MB) {
+        # Hard link: the Full installer is about a gigabyte and copying it buys
+        # nothing. It is never rewritten in place for a version already staged.
+        New-Item -ItemType HardLink -Path $staged -Target $source | Out-Null
+    } else {
+        # Copy: the manuals are rebuilt on every release and are a few hundred
+        # kilobytes. Linked, rebuilding them silently rewrote the manuals inside
+        # an already published release and its SHA256SUMS stopped matching.
+        Copy-Item -LiteralPath $source -Destination $staged
+    }
 }
 
 $checksums = Get-ChildItem -LiteralPath $target -File | Sort-Object Name | ForEach-Object {

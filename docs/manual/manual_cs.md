@@ -294,6 +294,15 @@ selhala, vypršela nebo se vůbec nespustila.
 
 ## Živý průběh
 
+Zatímco model čte kontext, řádek ukazuje, kolik konverzace měl server ještě
+z předchozího požadavku - podíl z celého promptu - a odhad zbývajícího času podle
+právě měřené rychlosti.
+
+Vysoký podíl je normální stav: harness požadavek jen doplňuje na konci, takže
+model nic nečte znovu. Nízký podíl znamená, že se změnilo něco blízko začátku
+konverzace a zpracovává se celá. Záměrně to dělají dvě věci - komprese a vzdání
+se starších snímků obrazovky, když se kontext plní. Obojí se v chatu ohlásí.
+
 UI rozlišuje reasoning, viditelný text, přípravu velkých tool callů, provádění nástrojů/příkazů/testů a sekundy bez tokenů. Při tvorbě velkého souboru ukazuje jméno souboru a rostoucí množství připravovaného obsahu.
 
 # 6. Pracovní režimy
@@ -356,7 +365,9 @@ Harness automaticky hledá `AGENTS.md`, `QWEN.md` a `CLAUDE.md` od kořene proje
 
 **Připnout soubor** vloží text vybraného souboru do následujících úloh tohoto chatu. Vhodné jsou architektura, specifikace, handoff a projektová pravidla. Limit je 10 souborů a asi 40 000 znaků. Větev pins kopíruje, nový chat ne.
 
-Při 85 % kontextu se starší část automaticky shrne. Viditelná historie se nemaže. Ruční komprese je v **Kontext > Komprimovat**. Při overflow agent jednou automaticky komprimuje a request zopakuje.
+Při 85 % kontextu se nejdřív přestanou posílat všechny snímky obrazovky kromě čtyř nejnovějších. V režimu Počítač jsou zdaleka největší částí konverzace, takže to obvykle stačí a text konverzace zůstane celý. Obrázky zůstanou vidět v chatu; jen je model u starších zpráv přestane dostávat, a to už trvale.
+
+Když to nestačí, starší část se automaticky shrne. Viditelná historie se nemaže. Ruční komprese je v **Kontext > Komprimovat**. Při overflow agent jednou automaticky komprimuje a request zopakuje.
 
 # 10. Tři vrstvy paměti
 

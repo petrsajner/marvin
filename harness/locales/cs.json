@@ -482,7 +482,6 @@
     "Task can be continued": "Úloha může pokračovat",
     "Continue": "Pokračovat",
     "Summarizing conversation": "Shrnuji konverzaci",
-    " tok reused": " tok z cache",
     "Progress": "Průběh",
     "Another chat is working; this message will be queued.": "Pracuje jiný chat; tato zpráva se zařadí do fronty.",
     "Adding attachments": "Přidávám přílohy",
@@ -814,7 +813,10 @@
     "Where new projects are created": "Kde se zakládají nové projekty",
     "Projects that already exist keep their own folder; this only decides where the next one is created.": "Už existující projekty si svou složku nechají; tohle rozhoduje jen o tom, kde vznikne další.",
     "Choose a folder": "Vybrat složku",
-    "Use the default folder": "Použít výchozí složku"
+    "Use the default folder": "Použít výchozí složku",
+    "reused": "z cache",
+    "remaining": "zbývá",
+    "🖼 Older screenshots no longer sent (count: {count}) - context ~{est} tokens": "🖼 Starší snímky obrazovky se už neposílají (počet: {count}) - kontext ~{est} tokenů"
   },
   "legacy_profile_labels": {
     "16 bit - přesnější, kontext 128k": "16-bit - more precise, context 128k",

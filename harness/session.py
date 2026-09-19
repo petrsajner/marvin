@@ -116,20 +116,31 @@ class Session:
         summary_msg = {"role": "user", "content": self.SUMMARY_PREFIX + self.compression["summary"]}
         return head + [summary_msg] + self.messages[cut:]
 
-    def to_api_messages(self, max_images: int = 8, include_pins: bool = True) -> list[dict]:
-        """Render API messages, encoding only the most recent max_images images."""
+    # A message whose images were given up under context pressure. The flag is
+    # persisted because the set of images the model sees must not depend on how
+    # many arrived afterwards: silently dropping an image from a message the
+    # server has already processed changes the prompt prefix and costs a full
+    # reprocess of the conversation. See prune_images.
+    HIDDEN_IMAGES_KEY = "images_hidden"
+
+    def _sent_images(self, message: dict) -> list[str]:
+        if message.get(self.HIDDEN_IMAGES_KEY):
+            return []
+        return list(message.get("images") or [])
+
+    def to_api_messages(self, include_pins: bool = True) -> list[dict]:
+        """Render API messages, keeping every image that has not been pruned."""
         view = self._view_messages()
-        image_paths = [p for m in view for p in m.get("images", [])]
-        recent = set(image_paths[-max_images:])
         out: list[dict] = []
         for m in view:
             m2 = {k: v for k, v in m.items() if k not in
-                  ("images", "id", "created", "attachments", "request_id", "run_id", "step_id", "tool_status")}
+                  ("images", self.HIDDEN_IMAGES_KEY, "id", "created", "attachments",
+                   "request_id", "run_id", "step_id", "tool_status")}
             if "reasoning" in m2:
                 reasoning_val = m2.pop("reasoning", None)
                 if reasoning_val and "reasoning_content" not in m2:
                     m2["reasoning_content"] = reasoning_val
-            imgs = [p for p in m.get("images", []) if p in recent]
+            imgs = self._sent_images(m)
             if not imgs:
                 if not m2.get("content") and not m2.get("tool_calls"):
                     continue
@@ -167,11 +178,9 @@ class Session:
     IMAGE_TOKENS = 1400  # Approximate token cost per downscaled image.
 
     def estimate_context_tokens(self, include_pins: bool = True) -> int:
-        """Estimate the actual API input after limiting image references."""
+        """Estimate the actual API input, counting only images still being sent."""
         import json as _json
         view = self._view_messages()
-        image_paths = [p for m in view for p in m.get("images", [])]
-        recent = set(image_paths[-8:])
         total = 0
         for m in view:
             c = m.get("content") or ""
@@ -184,7 +193,7 @@ class Session:
                             total += len(str(part.get("text", "")))
                         elif part.get("type") == "image_url":
                             total += self.IMAGE_TOKENS * 4  # Character-equivalent cost, converted to tokens below.
-            total += sum(1 for p in m.get("images", []) if p in recent) * self.IMAGE_TOKENS * 4
+            total += len(self._sent_images(m)) * self.IMAGE_TOKENS * 4
             if m.get("tool_calls"):
                 total += len(_json.dumps(m["tool_calls"], ensure_ascii=False))
             total += len(str(m.get("reasoning") or m.get("reasoning_content") or ""))
@@ -243,6 +252,7 @@ class Session:
         view = self._view_messages()
         counts = _collections.Counter(m.get("role", "other") for m in view)
         images = sum(len(m.get("images", [])) for m in view)
+        images_sent = sum(len(self._sent_images(m)) for m in view)
         pins = [raw for raw in self.meta.get("pinned_files") or [] if Path(raw).is_file()]
         return {
             "estimated_tokens": self.estimate_context_tokens(),
@@ -250,6 +260,7 @@ class Session:
             "total_messages": len(self.messages),
             "roles": dict(counts),
             "images": images,
+            "images_sent": images_sent,
             "pinned_files": pins,
             "compressed": bool(self.compression),
         }
@@ -262,8 +273,7 @@ class Session:
             c = " ".join(str(p.get("text", "")) for p in c if isinstance(p, dict))
         n = len(str(c)) * 10 // 36
         n += len(str(m.get("reasoning") or m.get("reasoning_content") or "")) * 10 // 36
-        if m.get("images"):
-            n += len(m["images"]) * self.IMAGE_TOKENS
+        n += len(self._sent_images(m)) * self.IMAGE_TOKENS
         if m.get("tool_calls"):
             n += len(_json.dumps(m["tool_calls"], ensure_ascii=False)) * 10 // 36
         return n
@@ -317,6 +327,27 @@ class Session:
         self.compression_rev += 1
         self._save_compression()
         return True
+
+    def prune_images(self, keep: int = 4) -> int:
+        """Give up all but the newest `keep` images and return how many were dropped.
+
+        This is the one place allowed to change history the model has already
+        seen, because images are by far the largest items in a computer-use
+        conversation and the cheapest to lose. It runs only under context
+        pressure - never as a side effect of taking another screenshot - so the
+        conversation costs one reprocess instead of one per step."""
+        carrying = [m for m in self._view_messages() if self._sent_images(m)]
+        kept = 0
+        dropped = 0
+        for message in reversed(carrying):
+            if kept < keep:
+                kept += len(self._sent_images(message))
+                continue
+            dropped += len(self._sent_images(message))
+            message[self.HIDDEN_IMAGES_KEY] = True
+        if dropped:
+            self._rewrite_jsonl()
+        return dropped
 
     def trim_to_budget(self, budget_tokens: int, min_keep: int = 6) -> bool:
         """Fallback: advance the model-view cut while retaining full history for the UI."""

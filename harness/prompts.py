@@ -106,12 +106,41 @@ def system_prompt(mode: str, work_mode: str | None = None) -> str:
     return {"chat": CHAT, "agent": AGENT, "computer": COMPUTER}[mode]
 
 
-def build_system_prompt(mode: str, cfg, workspace, work_mode: str | None = None) -> str:
-    """Build the system prompt from the mode, workspace, memory and skill catalog.
+def memory_block(cfg, workspace, work_mode: str | None = None) -> str:
+    """Persistent memory, delivered as a dynamic context section.
 
-    Called at task start and after compression to refresh memory. Skill metadata remains visible so the model can load relevant instructions with read_skill."""
+    Memory must not live in the system prompt. It changes whenever the model
+    saves a fact, and the system prompt is the first thing in every request, so
+    one saved line invalidated the server's prompt cache and forced a full
+    reprocess of the whole conversation. Delivered at the end instead, a saved
+    fact costs the few hundred appended tokens it actually is."""
     from harness.memory import MemoryStore
+    return MemoryStore(cfg, workspace, work_mode).context_block()
+
+
+def skills_block(cfg, workspace) -> str:
+    """The skill catalogue, also delivered as a dynamic section.
+
+    Installing a skill or switching projects changes this list; keeping it out of
+    the system prompt is what makes that prompt stable for a whole session."""
     from harness.skills import SkillLibrary
+    skills = SkillLibrary(cfg, workspace).list()
+    if not skills:
+        return ""
+    lines = "\n".join(f"- {item.name}: {item.description}" for item in skills)
+    return ("## OPTIONAL SKILLS\n"
+            "Situational helpers you can load with read_skill. When a task clearly "
+            "falls into one of these areas, loading the skill is usually worth it;\n"
+            "otherwise continue without it.\n" + lines)
+
+
+def build_system_prompt(mode: str, cfg, workspace, work_mode: str | None = None) -> str:
+    """Build the stable system prompt from the mode and the workspace.
+
+    Everything that can change while a conversation runs - memory, the skill
+    catalogue, project snapshots - is delivered through the dynamic context
+    block instead, so this text stays byte-identical for the whole session and
+    the model never reprocesses the conversation from the start."""
     base = system_prompt(mode, work_mode)
     model = cfg.model()
     if (model.get("family") == "ornith" and cfg.data.get("thinking", True)):
@@ -133,12 +162,4 @@ complete solution over a fast scaffold."""
                  f"Relative paths in tools resolve against it. "
                  f"The user keeps project sources and documents there - read them with tools "
                  f"instead of asking the user to paste content.")
-    base += "\n\n" + MemoryStore(cfg, workspace, work_mode).context_block()
-    skills = SkillLibrary(cfg, workspace).list()
-    if skills:
-        lines = "\n".join(f"- {item.name}: {item.description}" for item in skills)
-        base += ("\n\n## OPTIONAL SKILLS\n"
-                 "Situational helpers you can load with read_skill. When a task clearly "
-                 "falls into one of these areas, loading the skill is usually worth it;\n"
-                 "otherwise continue without it.\n" + lines)
     return base

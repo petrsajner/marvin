@@ -75,6 +75,92 @@ class PromptPerformanceTests(unittest.TestCase):
         self.assertNotIn('COMPLETE_PINNED_SPECIFICATION', second[-1]['content'])
         self.assertEqual(json.loads(second[-1]['content'].split('\n\n', 1)[1]), {'plan': 'Verify'})
 
+    def test_saving_a_memory_fact_does_not_rewrite_the_system_prompt(self):
+        """Memory in the system prompt cost a full reprocess of the conversation.
+
+        Measured before this: a single saved line invalidated 140k processed
+        tokens and the next request spent 98 s re-reading the whole session."""
+        from harness.memory import MemoryStore
+        self.agent.refresh_system_prompt()   # As a task start does, before the first request.
+        first = self.agent._request_messages()
+        system = first[0]["content"]
+        self.assertNotIn("PERSISTENT MEMORY", system)
+        MemoryStore(self.cfg, None, self.agent.work_mode).append("Prefer short answers", "global")
+        self.agent.refresh_system_prompt()
+        self.session.add("assistant", "Saved.")
+        second = self.agent._request_messages()
+        self.assertEqual(second[0]["content"], system, "the system prompt must stay byte-identical")
+        self.assertEqual(second[: len(first)], first, "the processed prefix must survive")
+        self.assertIn("Prefer short answers", second[-1]["content"])
+
+    def test_memory_and_skills_are_delivered_as_dynamic_sections(self):
+        from harness.memory import MemoryStore
+        MemoryStore(self.cfg, None, self.agent.work_mode).append("Remembered fact", "global")
+        sections = self.agent._dynamic_context_sections()
+        self.assertIn("Remembered fact", sections["memory"])
+        self.assertIn("PERSISTENT MEMORY", sections["memory"])
+
+    def test_a_new_screenshot_never_rewrites_already_sent_history(self):
+        """The API view sent the newest 8 images and recomputed that set every
+        request, so the ninth screenshot removed the first one from a message the
+        server had already processed - 11 breaks in one measured session."""
+        sent = None
+        for step in range(12):
+            shot = self.root / ("shot-%02d.png" % step)
+            shot.write_bytes(b"\x89PNG\r\n\x1a\n" + bytes([step]) * 64)
+            self.session.add("user", "[The following image(s) were captured by tools:]",
+                             images=[shot])
+            with patch.object(self.agent, "_dynamic_context_sections", return_value={}):
+                current = self.agent._request_messages()
+            if sent is not None:
+                self.assertEqual(current[: len(sent)], sent,
+                                 "screenshot %d rewrote the prefix" % step)
+            sent = current
+            self.session.add("assistant", "Observed step %d." % step)
+        images = sum(1 for m in sent for part in (m["content"] if isinstance(m["content"], list) else [])
+                     if part.get("type") == "image_url")
+        self.assertEqual(images, 12, "every screenshot stays in the prompt until pruned")
+
+    def test_pruning_is_the_only_thing_that_drops_images_and_it_persists(self):
+        shots = []
+        for step in range(6):
+            shot = self.root / ("frame-%02d.png" % step)
+            shot.write_bytes(b"\x89PNG\r\n\x1a\n" + bytes([step]) * 64)
+            shots.append(shot)
+            self.session.add("user", "Frame %d" % step, images=[shot])
+        before = self.session.estimate_context_tokens(include_pins=False)
+        self.assertEqual(self.session.prune_images(keep=2), 4)
+        after = self.session.estimate_context_tokens(include_pins=False)
+        self.assertLess(after, before)
+        self.assertEqual(self.session.prune_images(keep=2), 0, "pruning twice must be a no-op")
+        rendered = self.session.to_api_messages(include_pins=False)
+        self.assertFalse([m for m in rendered if Session.HIDDEN_IMAGES_KEY in m],
+                         "the pruning flag is internal and must not reach the model")
+        kept = [m for m in rendered if isinstance(m.get("content"), list)]
+        self.assertEqual(len(kept), 2)
+        self.assertIn("Frame 5", kept[-1]["content"][0]["text"])
+        reloaded = Session.load(self.cfg, self.session.id)
+        self.assertEqual(reloaded.to_api_messages(include_pins=False), rendered,
+                         "the decision has to survive a reload, or the prefix changes again")
+        self.assertEqual(reloaded.context_breakdown()["images"], 6)
+        self.assertEqual(reloaded.context_breakdown()["images_sent"], 2)
+
+    def test_context_pressure_gives_up_screenshots_before_summarizing(self):
+        for step in range(8):
+            shot = self.root / ("big-%02d.png" % step)
+            shot.write_bytes(b"\x89PNG\r\n\x1a\n" + bytes([step]) * 64)
+            self.session.add("user", "Step %d" % step, images=[shot])
+        notes = []
+        self.agent.emit = lambda kind, text, **rest: notes.append(str(text))
+        with patch.object(self.agent, "_ctx_limit", return_value=12000), \
+                patch("harness.context.summarize_messages") as summarize:
+            self.agent._maybe_compress()
+        summarize.assert_not_called()
+        # The notice carries the picture marker in every language.
+        self.assertTrue(any(note.startswith("🖼") for note in notes), notes)
+        self.assertEqual(sum(1 for m in self.session.to_api_messages(include_pins=False)
+                             if isinstance(m.get("content"), list)), 4)
+
     def test_native_progress_survives_openai_sdk_stream_without_visible_output(self):
         progress = {'total': 12000, 'cache': 10000, 'processed': 11000, 'time_ms': 9500}
         payloads = [

@@ -116,7 +116,7 @@ def test_config() -> None:
               "An old installation configuration cannot restore the removed agent-step limit")
     finally:
         shutil.rmtree(legacy_file.parent, ignore_errors=True)
-    from harness.prompts import build_system_prompt
+    from harness.prompts import build_system_prompt, skills_block
     discussion_prompt = build_system_prompt("chat", cfg, ROOT, "discussion")
     research_prompt = build_system_prompt("chat", cfg, ROOT, "research")
     development_prompt = build_system_prompt("agent", cfg, ROOT, "development")
@@ -127,11 +127,12 @@ def test_config() -> None:
     check("ORNITH DELIBERATE REASONING POLICY" in development_prompt
           and "Do not optimize for speed" in development_prompt,
           "Ornith xhigh receives explicit deep-reasoning guidance")
-    skills_prompt = build_system_prompt("chat", cfg, ROOT, "discussion")
-    check("## OPTIONAL SKILLS" in skills_prompt
-          and "research-synthesis" in skills_prompt
-          and "translation-craft" in skills_prompt,
-          "The system prompt includes the skill catalog without requiring list_skills")
+    skills_catalog = skills_block(cfg, ROOT)
+    check("## OPTIONAL SKILLS" in skills_catalog
+          and "research-synthesis" in skills_catalog
+          and "translation-craft" in skills_catalog
+          and "## OPTIONAL SKILLS" not in discussion_prompt,
+          "The skill catalog reaches the model without entering the system prompt")
     from harness.version import APP_VERSION, _version_candidates
     # Installed copies keep version.txt at the root; development copies keep it under installer/.
     version_files = [p for p in _version_candidates() if p.exists()]
@@ -160,7 +161,7 @@ def test_config() -> None:
 def test_memory_layers() -> None:
     print("[memory layers]")
     from harness.memory import MemoryStore
-    from harness.prompts import build_system_prompt
+    from harness.prompts import build_system_prompt, memory_block
 
     tmp = Path(tempfile.mkdtemp())
     try:
@@ -204,12 +205,16 @@ def test_memory_layers() -> None:
               "Each work mode has its own memory document")
         research = MemoryStore(cfg, workspace, "research")
         research.append("Research rule", "mode")
+        research_memory = memory_block(cfg, workspace, "research")
         research_prompt = build_system_prompt("chat", cfg, workspace, "research")
-        check("Universal preference" in research_prompt
-              and "Research rule" in research_prompt
-              and "Project decision" in research_prompt
-              and "Development rule" not in research_prompt,
+        check("Universal preference" in research_memory
+              and "Research rule" in research_memory
+              and "Project decision" in research_memory
+              and "Development rule" not in research_memory,
               "Research sees its three memory layers without development memory")
+        check("PERSISTENT MEMORY" not in research_prompt
+              and "Universal preference" not in research_prompt,
+              "Memory stays out of the system prompt so saving a fact keeps the prompt cache")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

@@ -348,6 +348,16 @@ check that failed, timed out or could not start.
 
 ## Live progress
 
+While the model reads the context, the line reports how much of the conversation
+the server still had from the previous request, as a share of the whole prompt,
+plus an estimate of the time left at the rate being observed.
+
+A high share is the normal case: the harness only appends to a request, so the
+model re-reads nothing. A low share means something near the start of the
+conversation changed and all of it is being processed again. Two things do that
+on purpose - compression, and giving up older screenshots when the context fills.
+Both are reported in the chat when they happen.
+
 The live chat distinguishes:
 
 - Thinking/reasoning.
@@ -511,7 +521,9 @@ Do not pin ordinary source files that the model can read on demand, large logs, 
 
 ## Manual and automatic compression
 
-At approximately 85% of the selected model context, the harness summarizes older messages. The visible chat history is never deleted; only the model's request view changes to system prompt + summary + recent messages.
+At approximately 85% of the selected model context, the harness first stops sending all but the four newest screenshots. In Computer mode they are by far the largest part of the conversation, so giving them up is usually enough and the text of the conversation is kept intact. The pictures stay visible in the chat; only the model stops receiving the older ones, and that decision is permanent for those messages.
+
+If that is not enough, the harness summarizes older messages. The visible chat history is never deleted; only the model's request view changes to system prompt + summary + recent messages.
 
 Use **Context > Compress** to compress earlier. If the model reports an overflow, the agent performs one automatic compression-and-retry cycle. A second overflow is reported instead of looping forever.
 

@@ -103,6 +103,7 @@ _PROTOCOL_MARKS = ("[TASK PROTOCOL", "[WRITING PROTOCOL", "[PROGRESS UPDATE",
 TOOL_STEPS_BEFORE_UPDATE = 4   # Request an update after this many tool steps without user-facing text.
 MIN_TOOLS_FOR_SUMMARY = 3      # Tasks using at least this many tools require a structured summary.
 COMPRESS_AT = 0.85             # Compress automatically at 85 percent of the context limit.
+IMAGES_KEPT = 4                # Screenshots still sent once context pressure forces pruning.
 OVERFLOW_RE = re.compile(
     r"exceeds.{0,40}context|context.{0,40}(exceed|full|too (large|long))|"
     r"prompt is too long|maximum context",
@@ -248,9 +249,11 @@ class Agent:
 
     # ------------------------------------------------------------------
     def refresh_system_prompt(self) -> None:
-        """Refresh the system prompt with the work mode, workspace and persistent memory.
+        """Rebuild the system prompt for the current work mode and workspace.
 
-        Called when a task starts and after compression so the model receives current global and project memory."""
+        The result is deliberately stable: memory and skills moved to the dynamic
+        context block, so a task start no longer changes the first tokens of the
+        request and the server keeps its processed prompt."""
         from harness.prompts import build_system_prompt
         if self.session.messages and self.session.messages[0]["role"] == "system":
             prompt = build_system_prompt(
@@ -258,7 +261,15 @@ class Agent:
             self.session.messages[0]["content"] = prompt
 
     def _dynamic_context_sections(self) -> dict[str, str]:
+        from harness.prompts import memory_block, skills_block
         blocks: dict[str, str] = {}
+        # Memory and skills belong here rather than in the system prompt: both can
+        # change mid-conversation, and a section update appends instead of
+        # rewriting the prefix the server has already processed.
+        blocks["memory"] = memory_block(self.cfg, self.ctx.project_workspace, self.work_mode)
+        skills = skills_block(self.cfg, self.ctx.project_workspace)
+        if skills:
+            blocks["skills"] = skills
         if self.ctx.repo_index and WORK_MODES[self.work_mode].repo_snapshot:
             blocks["project"] = "## CURRENT PROJECT SNAPSHOT\n" + self.ctx.repo_index.summary()
         elif self.ctx.repo_index:
@@ -536,6 +547,16 @@ class Agent:
         est = self.estimate_context_tokens()
         if not force and est < int(limit * COMPRESS_AT):
             return
+        # Old screenshots are the largest items here and the cheapest to give up,
+        # so try them before summarizing away the conversation itself. Both
+        # rewrite the processed prompt; this one keeps the text history.
+        dropped = self.session.prune_images(keep=IMAGES_KEPT)
+        if dropped:
+            est = self.estimate_context_tokens()
+            self.emit("info", t("🖼 Older screenshots no longer sent (count: {count}) - context ~{est} tokens",
+                                count=dropped, est=est))
+            if not force and est < int(limit * COMPRESS_AT):
+                return
         self.emit("info", t("📦 Context ~{est} tokens (over 85% of {limit}) - summarizing the earlier conversation ...",
                             est=est, limit=limit))
         try:
