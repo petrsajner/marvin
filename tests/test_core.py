@@ -3,6 +3,7 @@
 Run with the project's Python interpreter: tests/test_core.py."""
 from __future__ import annotations
 
+import atexit
 import json
 import shutil
 import sys
@@ -33,6 +34,23 @@ from harness.tools.base import AgentContext, ToolRegistry
 
 PASS = 0
 FAIL = 0
+
+
+_SCRATCH_SESSIONS = Path(tempfile.mkdtemp(prefix="marvin-test-sessions-"))
+atexit.register(shutil.rmtree, _SCRATCH_SESSIONS, ignore_errors=True)
+_LIVE_SESSIONS = load_config().path("paths.sessions_dir")
+_LIVE_SESSIONS_BEFORE = ({item.name for item in _LIVE_SESSIONS.iterdir()}
+                         if _LIVE_SESSIONS.is_dir() else set())
+
+
+def scratch_sessions(config):
+    """Point a configuration at a throwaway conversation directory.
+
+    Several checks build a Session from the real configuration. Run from an
+    installed copy they wrote into the owner's own conversation history, two
+    directories per run, until this was added."""
+    config.data["paths"]["sessions_dir"] = str(_SCRATCH_SESSIONS)
+    return config
 
 
 def check(cond: bool, label: str) -> None:
@@ -98,7 +116,7 @@ def test_config() -> None:
               "An old installation configuration cannot restore the removed agent-step limit")
     finally:
         shutil.rmtree(legacy_file.parent, ignore_errors=True)
-    from harness.prompts import build_system_prompt
+    from harness.prompts import build_system_prompt, skills_block
     discussion_prompt = build_system_prompt("chat", cfg, ROOT, "discussion")
     research_prompt = build_system_prompt("chat", cfg, ROOT, "research")
     development_prompt = build_system_prompt("agent", cfg, ROOT, "development")
@@ -109,18 +127,19 @@ def test_config() -> None:
     check("ORNITH DELIBERATE REASONING POLICY" in development_prompt
           and "Do not optimize for speed" in development_prompt,
           "Ornith xhigh receives explicit deep-reasoning guidance")
-    skills_prompt = build_system_prompt("chat", cfg, ROOT, "discussion")
-    check("## OPTIONAL SKILLS" in skills_prompt
-          and "research-synthesis" in skills_prompt
-          and "translation-craft" in skills_prompt,
-          "The system prompt includes the skill catalog without requiring list_skills")
+    skills_catalog = skills_block(cfg, ROOT)
+    check("## OPTIONAL SKILLS" in skills_catalog
+          and "research-synthesis" in skills_catalog
+          and "translation-craft" in skills_catalog
+          and "## OPTIONAL SKILLS" not in discussion_prompt,
+          "The skill catalog reaches the model without entering the system prompt")
     from harness.version import APP_VERSION, _version_candidates
     # Installed copies keep version.txt at the root; development copies keep it under installer/.
     version_files = [p for p in _version_candidates() if p.exists()]
     installer_version = (version_files[0].read_text(encoding="utf-8").strip()
                          if version_files else "")
-    check(bool(installer_version) and APP_VERSION == installer_version and APP_VERSION == "1.11.0",
-          "The visible application version matches installer version 1.11.0")
+    check(bool(installer_version) and APP_VERSION == installer_version and APP_VERSION == "1.16.1",
+          "The visible application version matches installer version 1.16.1")
     invariants = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     check(all(item in invariants for item in (
         "Language servers or an LSP runtime/distribution layer",
@@ -129,20 +148,21 @@ def test_config() -> None:
         "One-million-token context",
         "general plugin host, MCP ecosystem",
     )), "Permanent non-goals are recorded in the root product instructions")
-    web_source = (ROOT / "webapp.py").read_text(encoding="utf-8")
-    check(all(marker in web_source for marker in (
-        'elem_id="workspace-control-stack"',
-        't("Current task")', 't("Context")', 't("Runtime")',
-        't("Settings & help")', 'show_progress="hidden"',
-    )) and 't("Available skills"), open=' not in web_source
-          and 't("Help & manuals"), open=' not in web_source,
-          "The sidebar uses consistent information architecture")
+    # The sidebar check that stood here read the Gradio source for element ids.
+    # That interface is gone; the workspace is the React one, whose structure is
+    # checked by its own type build rather than by grepping a Python file.
+    workspace_source = (ROOT / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
+    check(all(marker in workspace_source for marker in (
+        '["results", "Results"]', '["progress", "Progress"]', '["context", "Context"]',
+    )), "The detail panel offers Results, Progress and Context")
+    check(not (ROOT / "webapp.py").exists() and not (ROOT / "qwen_app.py").exists(),
+          "The Gradio interface is gone, not merely unreachable")
 
 
 def test_memory_layers() -> None:
     print("[memory layers]")
     from harness.memory import MemoryStore
-    from harness.prompts import build_system_prompt
+    from harness.prompts import build_system_prompt, memory_block
 
     tmp = Path(tempfile.mkdtemp())
     try:
@@ -186,12 +206,16 @@ def test_memory_layers() -> None:
               "Each work mode has its own memory document")
         research = MemoryStore(cfg, workspace, "research")
         research.append("Research rule", "mode")
+        research_memory = memory_block(cfg, workspace, "research")
         research_prompt = build_system_prompt("chat", cfg, workspace, "research")
-        check("Universal preference" in research_prompt
-              and "Research rule" in research_prompt
-              and "Project decision" in research_prompt
-              and "Development rule" not in research_prompt,
+        check("Universal preference" in research_memory
+              and "Research rule" in research_memory
+              and "Project decision" in research_memory
+              and "Development rule" not in research_memory,
               "Research sees its three memory layers without development memory")
+        check("PERSISTENT MEMORY" not in research_prompt
+              and "Universal preference" not in research_prompt,
+              "Memory stays out of the system prompt so saving a fact keeps the prompt cache")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -453,8 +477,15 @@ def test_gpu_autofit() -> None:
     check(best_fit(cfg, 16.0) == ("q3", "q8_0_64k"),
           "auto-fit for 16 GB selects the measured IQ3_S / 64k profile")
     q3_profiles = cfg.kv_cache_profiles("q3")
-    check(set(q3_profiles) == {"q8_0", "q8_0_64k", "q8_0_128k", "q8_0_96k"},
+    check(set(q3_profiles) == {"q8_0", "q8_0_64k", "q8_0v4_96k", "q4_0_128k",
+                               "q8_0_128k", "q8_0_96k"},
           "IQ3 has only the approved 16 and 24 GB profiles")
+    check(set(cfg.kv_cache_profiles("q2")) == {"q8_0_96k_vision", "q8_0_64k_vision",
+                                               "q8_0_128k", "q4_0_192k", "q8_0_256k"},
+          "Q2 has the approved 16 GB profiles and one for a large card")
+    check(cfg.model("q2").get("optional_download") is True
+          and best_fit(cfg, 16.0) == ("q3", "q8_0_64k"),
+          "Q2 is offered for 16 GB but never chosen automatically")
     check(all("min_vram_gb" in p for p in q3_profiles.values()),
           "Every Q3 profile specifies min_vram_gb")
     check(set(download_keys(cfg, 32.0)) == {"q4", "q5", "ornith_q5",
@@ -2143,12 +2174,24 @@ def test_user_manuals() -> None:
               f"{filename} contains the version and key chapters")
 
 
+def test_live_sessions_untouched() -> None:
+    """The suite must never write a conversation into the real sessions directory."""
+    print("[live sessions]")
+    current = ({item.name for item in _LIVE_SESSIONS.iterdir()}
+               if _LIVE_SESSIONS.is_dir() else set())
+    leaked = sorted(current - _LIVE_SESSIONS_BEFORE)
+    check(not leaked,
+          "The suite left no conversation in the live sessions directory"
+          + (f" (leaked: {leaked})" if leaked else ""))
+
+
 def test_thinking_and_communication():
     print("[thinking and clean communication]")
     from harness.llm import ThinkStreamParser
     from harness.session import Session
     from harness.config import load_config
-    import webapp
+    cfg = load_config()
+    scratch_sessions(cfg)
 
     # 1) Parse reasoning tags split across stream chunks.
     text_accum, reason_accum = [], []
@@ -2165,7 +2208,7 @@ def test_thinking_and_communication():
           "ThinkStreamParser delivers the correct text and reasoning segments")
 
     # 2) Session reasoning persistence
-    cfg = load_config()
+    cfg = scratch_sessions(load_config())
     s = Session(cfg, transient=False)
     s.add("user", "Reasoning question")
     s.add("assistant", "Final response", reasoning="Internal model reasoning")
@@ -2179,29 +2222,13 @@ def test_thinking_and_communication():
     check(last_api.get("reasoning_content") == "Internal model reasoning" and "reasoning" not in last_api,
           "to_api_messages maps reasoning to reasoning_content for llama-server")
 
-    # 3) webapp thought box & chat view rendering
-    thought_open = webapp._format_thought_box("My reasoning", open_box=True, elapsed_s=4)
-    check('<details class="thought-box" open>' in thought_open and "Thinking…" in thought_open,
-          "_format_thought_box opens while reasoning streams and displays the timer")
-    thought_closed = webapp._format_thought_box("My reasoning", open_box=False, duration=3.5)
-    check('<details class="thought-box">' in thought_closed and "open" not in thought_closed
-          and "Thought for 4s" in thought_closed,
-          "_format_thought_box collapses after completion and displays the reasoning duration")
-
-    webapp.state.session = loaded
-    view = webapp.chat_view()
-    assistant_view = [m for m in view if m["role"] == "assistant"]
-    check(len(assistant_view) >= 1 and 'class="thought-box"' in assistant_view[-1]["content"]
-          and "Final response" in assistant_view[-1]["content"],
-          "chat_view renders a collapsible thought box and the final response")
-
-    # 4) tool box in chat view
+    # 3) A tool result is kept as its own message, which is what any interface
+    # renders from. The collapsible boxes this used to check were Gradio markup.
     loaded.add("tool", "contents of file abc.txt", name="read_file")
-    view_with_tool = webapp.chat_view()
-    tool_entry = view_with_tool[-1]
-    check('class="tool-box"' in tool_entry["content"] and "read_file" in tool_entry["content"]
-          and "contents of file abc.txt" in tool_entry["content"],
-          "chat_view renders tool output in a collapsible tool box")
+    tool_message = loaded.messages[-1]
+    check(tool_message["role"] == "tool" and tool_message.get("name") == "read_file"
+          and "contents of file abc.txt" in tool_message["content"],
+          "A tool result is stored with its name and output")
     Session.delete(cfg, s.id)
 
 
@@ -2212,8 +2239,8 @@ def test_harness_enhancements():
     from harness.tools.search import SearchProjectTool
     from harness.session import Session
     from harness.config import load_config
-    import webapp
     import tempfile
+    scratch_sessions(load_config())
 
     # 1) Head+Tail truncate
     short = "kratky text"
@@ -2242,7 +2269,7 @@ def test_harness_enhancements():
         td = Path(tmpdir)
         (td / "hello.py").write_text("def find_secret_token():\n    return 'xyz'\n", encoding="utf-8")
         (td / "doc.md").write_text("# Project Notes\nDatabase connection pooling configuration.\n", encoding="utf-8")
-        cfg = load_config()
+        cfg = scratch_sessions(load_config())
         s = Session(cfg, transient=True)
         ctx = AgentContext(cfg=cfg, session=s, workspace=td)
         tool = SearchProjectTool()
@@ -2274,31 +2301,14 @@ def test_harness_enhancements():
               "revert_last_task restored the exact original contents")
         Session.delete(cfg, s.id)
 
-    # 5) Slash command dispatcher
-    s_cmd = Session(cfg, transient=False)
-    webapp.state.session = s_cmd
-    webapp.state.rebuild_agent()
-    h1, p1 = webapp._handle_slash_command("/help")
-    check(h1 is True and "Available slash commands" in s_cmd.messages[-1]["content"],
-          "_handle_slash_command handles /help locally")
-    h2, p2 = webapp._handle_slash_command("/pins")
-    check(h2 is True and "pinned files" in s_cmd.messages[-1]["content"],
-          "_handle_slash_command handles /pins locally")
-    h3, p3 = webapp._handle_slash_command("/test")
-    check(h3 is False and "project checks" in (p3 or ""),
-          "_handle_slash_command extends the /test prompt")
-    h4, p4 = webapp._handle_slash_command("/skills")
-    check(h4 is True and "Available skills" in s_cmd.messages[-1]["content"]
-          and "excel-spreadsheet-craft" in s_cmd.messages[-1]["content"],
-          "_handle_slash_command handles /skills locally")
-    h5, p5 = webapp._handle_slash_command("/skill excel-spreadsheet-craft")
-    check(h5 is True and "was activated" in s_cmd.messages[-2]["content"]
-          and "[ACTIVE SKILL" in s_cmd.messages[-1]["content"],
-          "_handle_slash_command activates a skill in the context")
-    h6, p6 = webapp._handle_slash_command("/skill new my-analysis")
-    check(h6 is False and "SKILL DESIGNER" in (p6 or ""),
-          "_handle_slash_command starts the skill designer")
-    Session.delete(cfg, s_cmd.id)
+    # 5) Slash commands are dispatched by app_operations.execute_command, which
+    # the workspace uses. They were only ever covered through the Gradio handler -
+    # a second implementation of the same idea - so the coverage moved to
+    # tests/test_commands.py with that interface's removal rather than going with
+    # it. This keeps one check here so the catalogue cannot quietly empty out.
+    from harness.app_operations import COMMANDS
+    check(len(COMMANDS) >= 10 and "/help" in COMMANDS and "/skill" in COMMANDS,
+          "The slash command catalogue is populated")
 
     # 5b) Office and Spreadsheet tools (Excel, Word, PDF)
     from harness.tools.documents import ReadDocumentTool, EditSpreadsheetTool
@@ -2352,48 +2362,41 @@ def test_harness_enhancements():
 
 def test_clickable_skills_and_clipboard_images():
     print("--- test_clickable_skills_and_clipboard_images ---")
-    import base64
-    import json
-    import webapp
+    # The Gradio versions of these read rendered HTML for element ids. The
+    # workspace builds its own markup from data, so what is worth checking is the
+    # data: that the skill panel gets what it needs to list and activate a skill,
+    # and that images on a message come back as files the interface can display.
+    from harness.application import ApplicationService
+    from harness.config import load_config
     from harness.session import Session
-    cfg = webapp.cfg
+    from harness.skills import SkillLibrary
+    cfg = scratch_sessions(load_config())
 
-    # 1) Verify skill-information HTML.
-    info_html = webapp.skills_info_text()
-    check("skills-panel-list" in info_html, "skills_info_text contains the skills-panel-list container")
-    check("skill-chip-btn" in info_html, "skills_info_text contains clickable skill-chip-btn buttons")
-    check("data-skill=" in info_html, "skills_info_text contains data-skill attributes")
+    # 1) What the skills panel is built from.
+    skills = SkillLibrary(cfg, None).list()
+    check(len(skills) > 0, "The skill library lists skills")
+    first = skills[0]
+    check(all(getattr(first, field, None) for field in ("name", "description", "path")),
+          "Each skill carries the name, description and path the panel needs")
+    check(any(s.name == "excel-spreadsheet-craft" for s in skills),
+          "A known built-in skill is present in the catalogue")
 
-    # 2) Prepare pasted base64 image attachments.
-    sample_png_b64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-    pasted_json = json.dumps([
-        {"name": "test1.png", "data": sample_png_b64},
-        {"name": "test2.png", "data": sample_png_b64}
-    ])
-
-    orig_sess = webapp.state.session
+    # 2) Images on a message become displayable files.
+    service = ApplicationService.__new__(ApplicationService)
+    from harness.app_storage import EventStore
+    service.store = EventStore(cfg.path("paths.runtime_dir") / "checks.sqlite3")
     test_sess = Session(cfg, transient=True)
-    webapp.state.session = test_sess
-    webapp.state.agent.session = test_sess
     try:
-        sub_res, _, msg_up, pasted_up = webapp.prepare_submission("Analyzuj tyto 2 snimky", pasted_json)
-        check(sub_res.get("kind") == "run", "prepare_submission starts a run for a prompt with clipboard images")
-        check(pasted_up.get("value") == "[]", "prepare_submission clears the hidden pasted-image field")
-        user_img_msgs = [m for m in test_sess.messages if m.get("images")]
-        check(len(user_img_msgs) == 1 and len(user_img_msgs[0]["images"]) == 2,
-              "Two decoded images were attached to the user message")
-
-        # 3) Render image thumbnails in the conversation.
-        views = webapp.chat_view()
-        user_views = [v for v in views if v.get("role") == "user"]
-        check(len(user_views) > 0, "chat_view contains the user message")
-        last_user = user_views[-1]
-        check("chat-attached-gallery" in last_user["content"], "chat_view contains the chat-attached-gallery thumbnail gallery")
-        check("chat-msg-thumb" in last_user["content"], "chat_view contains chat-msg-thumb thumbnails")
-        check("/gradio_api/file=" in last_user["content"], "chat_view thumbnails reference displayable /gradio_api/file= URLs")
+        shot = cfg.path("paths.sessions_dir") / "pasted.png"
+        shot.parent.mkdir(parents=True, exist_ok=True)
+        shot.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 32)
+        test_sess.add("user", "Analyse these", images=[shot])
+        payload = service.message_payload(test_sess, test_sess.messages[-1])
+        check(len(payload["files"]) == 1, "An attached image reaches the message payload")
+        check(payload["files"][0]["url"].startswith("/api/files/"),
+              "The interface is given a URL it can fetch the image from")
+        check(payload["files"][0]["exists"], "The referenced image is actually on disk")
     finally:
-        webapp.state.session = orig_sess
-        webapp.state.agent.session = orig_sess
         Session.delete(cfg, test_sess.id)
 
 
@@ -2434,5 +2437,6 @@ if __name__ == "__main__":
     test_thinking_and_communication()
     test_harness_enhancements()
     test_clickable_skills_and_clipboard_images()
+    test_live_sessions_untouched()
     print(f"\n{'=' * 40}\nRESULT: {PASS} ✓ / {FAIL} ✗")
     sys.exit(1 if FAIL else 0)

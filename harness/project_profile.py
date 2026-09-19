@@ -10,6 +10,25 @@ from pathlib import Path
 from typing import Any
 
 NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
+# Virtual environment layouts a project may use, in preference order.
+VENV_DIRS = (".venv", "venv")
+VENV_BINARIES = (("Scripts", "python.exe"), ("bin", "python"))
+
+
+def project_python(workspace) -> str:
+    """Interpreter the project's checks should run with.
+
+    A project virtual environment carries the project's own dependencies, so it
+    always wins. Marvin's own interpreter is the last resort and will not have
+    them - a check running there reports the missing import, which is the honest
+    result rather than a silent pass."""
+    root = Path(workspace)
+    for name in VENV_DIRS:
+        for parts in VENV_BINARIES:
+            candidate = root.joinpath(name, *parts)
+            if candidate.is_file():
+                return str(candidate)
+    return sys.executable
 
 
 @functools.lru_cache(maxsize=16)

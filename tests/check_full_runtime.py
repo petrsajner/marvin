@@ -41,7 +41,7 @@ sys.path.insert(0, str(root))
 assert pathlib.Path(sys.base_prefix) == root / 'runtime/python'
 assert pathlib.Path(sys.prefix) == root / '.venv'
 assert not site.ENABLE_USER_SITE
-import fastapi, uvicorn, gradio, pypdfium2, pyautogui, mss, ssl
+import fastapi, uvicorn, pypdfium2, pyautogui, mss, ssl
 assert pathlib.Path(fastapi.__file__).is_relative_to(root / '.venv')
 assert tkinter.Tcl().eval('info patchlevel')
 from harness.config import Config, load_config

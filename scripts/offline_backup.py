@@ -90,6 +90,24 @@ def _runtime_sources(root: Path) -> list[tuple[Path, Path, str]]:
             if source.is_file():
                 rel = Path("payload") / "runtime" / "llama" / source.relative_to(llama)
                 sources.append((source, rel, "llama"))
+    whisper = runtime / "whisper"
+    if whisper.is_dir():
+        # The dictation program. Its models live under runtime/models and are
+        # already collected above.
+        for source in sorted(whisper.rglob("*")):
+            if source.is_file():
+                rel = Path("payload") / "runtime" / "whisper" / source.relative_to(whisper)
+                sources.append((source, rel, "whisper"))
+    openart = runtime / "openart"
+    if openart.is_dir():
+        # The image-generation program. It cannot reach its service without a
+        # connection, so it does nothing on an offline machine - but a machine
+        # set up from this backup should be complete, not complete except for one
+        # download it has to make later.
+        for source in sorted(openart.rglob("*")):
+            if source.is_file():
+                rel = Path("payload") / "runtime" / "openart" / source.relative_to(openart)
+                sources.append((source, rel, "openart"))
     webview = runtime / "webview2"
     if webview.is_dir():
         for source in sorted(webview.iterdir()):
@@ -411,6 +429,138 @@ def attach_installer(backup: Path, installer: Path) -> dict[str, Any]:
     return manifest
 
 
+# Application-level files that a version bump replaces. Weights, llama.cpp and
+# WebView2 do not follow the application version and are deliberately excluded:
+# re-copying them would mean hours of I/O for identical bytes.
+APPLICATION_FILES = (
+    ("Marvin-Manual-EN.pdf", "output/pdf/Marvin-Manual-EN.pdf"),
+    ("Marvin-Manual-CS.pdf", "output/pdf/Marvin-Manual-CS.pdf"),
+    ("INSTALL-EN.md", "docs/distribution/INSTALL-EN.md"),
+    ("INSTALL-CS.md", "docs/distribution/INSTALL-CS.md"),
+    ("requirements.txt", "requirements.txt"),
+    ("requirements-windows-py312.lock", "requirements-windows-py312.lock"),
+)
+
+
+def refresh_backup(root: Path, backup: Path) -> dict[str, Any]:
+    """Bring an existing offline backup up to the application's current version.
+
+    Replaces only what a version bump actually changes and says which files those
+    were, so the answer is measured rather than assumed. The Python dependency
+    archive is rebuilt only when requirements or the lock really moved; leaving a
+    stale archive beside new requirements would make the backup inconsistent."""
+    root, backup = root.resolve(), backup.resolve()
+    manifest = load_manifest(backup)
+    version = _version(root)
+    records = {item["path"]: item for item in manifest["files"]}
+    changed: list[str] = []
+
+    def put(relative: str, source: Path, component: str) -> None:
+        digest = sha256_file(source)
+        current = records.get(relative)
+        if current and current.get("sha256") == digest and (backup / relative).is_file():
+            return
+        _copy_with_hash(source, backup / relative)
+        records[relative] = {"path": relative, "size": source.stat().st_size,
+                             "sha256": digest, "component": component}
+        changed.append(relative)
+
+    installer = root / "dist" / f"Marvin-Setup-{version}-Full.exe"
+    if not installer.is_file():
+        installer = root / "dist" / f"Marvin-Setup-{version}-Minimal.exe"
+    if not installer.is_file():
+        raise FileNotFoundError(f"No Setup executable for {version} in {root / 'dist'}")
+    for stale in sorted(backup.glob("Marvin-Setup-*.exe")):
+        if stale.name != installer.name:
+            stale.unlink()
+            records.pop(stale.name, None)
+            changed.append("removed " + stale.name)
+    put(installer.name, installer, "installer")
+
+    for relative, source in APPLICATION_FILES:
+        candidate = root / source
+        if candidate.is_file():
+            put(relative, candidate, "metadata")
+
+    # Runtime payload a new version may have introduced - 1.12.0 added dictation.
+    # Files already recorded at the same size are left alone: re-reading the whole
+    # model payload to learn that nothing moved would cost half an hour.
+    for source, relative, component in _runtime_sources(root):
+        key = relative.as_posix()
+        recorded = records.get(key)
+        target = backup / relative
+        if recorded and target.is_file() \
+                and recorded.get("size") == source.stat().st_size \
+                and target.stat().st_size == source.stat().st_size:
+            continue
+        put(key, source, component)
+
+    requirements = root / "requirements.txt"
+    lock = root / "requirements-windows-py312.lock"
+    requirements_digest = sha256_file(requirements)
+    lock_digest = sha256_file(lock) if lock.is_file() else None
+    if (manifest.get("requirements_sha256") != requirements_digest
+            or manifest.get("lock_sha256") != lock_digest):
+        site_packages = root / ".venv" / "Lib" / "site-packages"
+        if not site_packages.is_dir():
+            raise FileNotFoundError(f"Installed Python dependencies not found: {site_packages}")
+        print("[REFRESH] Dependencies moved - rebuilding the archive ...")
+        size, digest = _create_dependency_archive(site_packages, backup / DEPENDENCY_ARCHIVE)
+        records[DEPENDENCY_ARCHIVE.as_posix()] = {
+            "path": DEPENDENCY_ARCHIVE.as_posix(), "size": size, "sha256": digest,
+            "component": "python-dependencies"}
+        changed.append(DEPENDENCY_ARCHIVE.as_posix())
+    else:
+        print("[REFRESH] Requirements and lock unchanged - dependency archive kept")
+
+    readme = backup / "README-OFFLINE.txt"
+    _write_readme(readme)
+    readme_digest = sha256_file(readme)
+    if records.get("README-OFFLINE.txt", {}).get("sha256") != readme_digest:
+        changed.append("README-OFFLINE.txt")
+    records["README-OFFLINE.txt"] = {"path": "README-OFFLINE.txt",
+                                     "size": readme.stat().st_size,
+                                     "sha256": readme_digest, "component": "metadata"}
+
+    manifest.update(app_version=version, requirements_sha256=requirements_digest,
+                    lock_sha256=lock_digest,
+                    updated=time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                    files=list(records.values()))
+    path = backup / MANIFEST_NAME
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(temporary, path)
+    print(f"[DONE] Offline backup refreshed to {version}; changed: "
+          + (", ".join(changed) if changed else "nothing"))
+    renamed = _rename_for_version(backup, version)
+    if renamed != backup:
+        manifest["path"] = str(renamed)
+        print(f"[DONE] Renamed to {renamed.name}")
+    return manifest
+
+
+def _rename_for_version(backup: Path, version: str) -> Path:
+    """Keep the folder name honest about what is inside it.
+
+    The name carries the version, and it was corrected by hand after every
+    release - which is exactly how the pointer inside an installation came to
+    name a version that no longer existed."""
+    import re
+    match = re.fullmatch(r"(?i)(Marvin-Offline-Backup-)(\d+(?:\.\d+)*)", backup.name)
+    if not match or match.group(2) == version:
+        return backup
+    target = backup.with_name(match.group(1) + version)
+    if target.exists():
+        print(f"[WARN] {target.name} already exists; the folder keeps its name")
+        return backup
+    try:
+        backup.rename(target)
+    except OSError as error:
+        print(f"[WARN] Could not rename the backup folder: {error}")
+        return backup
+    return target
+
+
 def _main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -423,9 +573,13 @@ def _main() -> int:
     restore.add_argument("--backup", required=True)
     restore.add_argument("--root", default=str(Path(__file__).resolve().parent.parent))
     restore.add_argument("--components", default=None,
-                         help="comma-separated components (models,llama,python-dependencies)")
+                         help="comma-separated components "
+                              "(models,llama,whisper,webview2,settings,python-dependencies)")
     info = sub.add_parser("info")
     info.add_argument("--backup", required=True)
+    refresh = sub.add_parser("refresh")
+    refresh.add_argument("--backup", required=True)
+    refresh.add_argument("--root", default=str(Path(__file__).resolve().parent.parent))
     attach = sub.add_parser("attach-installer")
     attach.add_argument("--backup", required=True)
     attach.add_argument("--installer", required=True)
@@ -441,6 +595,8 @@ def _main() -> int:
             restore_backup(Path(args.root), Path(args.backup), selected)
         elif args.command == "info":
             print(json.dumps(backup_info(Path(args.backup)), ensure_ascii=False, indent=2))
+        elif args.command == "refresh":
+            refresh_backup(Path(args.root), Path(args.backup))
         elif args.command == "attach-installer":
             attach_installer(Path(args.backup), Path(args.installer))
         return 0

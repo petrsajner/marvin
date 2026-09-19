@@ -618,5 +618,375 @@ class TransportTests(unittest.TestCase):
         timer.join()
 
 
+class OfflineBackupPointerTests(unittest.TestCase):
+    """A release renames the backup folder to the version it now holds, and the
+    recorded pointer used to be corrected by hand - which is how it came to name
+    a version that no longer existed."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        data = copy.deepcopy(load_config().data)
+        data["hardware"]["vram_gb"] = 32
+        self.cfg = Config(data, self.root)
+        self.service = ApplicationService(self.cfg, llm_factory=lambda c: None,
+                                          manage_model=False)
+        self.addCleanup(self.service.models.wait, 3)
+        self.addCleanup(self.service.close)
+        self.client = TestClient(create_app(self.cfg, service=self.service))
+        self.marker = self.cfg.path("paths.runtime_dir") / "offline-backup-path.txt"
+        self.marker.parent.mkdir(parents=True, exist_ok=True)
+
+    def make_backup(self, name: str, version: str) -> Path:
+        backup = self.root / name
+        backup.mkdir()
+        from scripts.offline_backup import FORMAT_VERSION
+        (backup / "manifest.json").write_text(json.dumps({
+            "format_version": FORMAT_VERSION,
+            "app_version": version, "created": "2026-09-19T00:00:00+1200",
+            "files": [{"path": "payload/runtime/models/x.gguf", "size": 10,
+                       "sha256": "0" * 64, "component": "models"}]}), encoding="utf-8")
+        return backup
+
+    def test_a_renamed_backup_is_found_and_the_pointer_corrected(self):
+        backup = self.make_backup("Marvin-Offline-Backup-1.12.1", "1.12.1")
+        self.marker.write_text(str(self.root / "Marvin-Offline-Backup-1.11.1"), encoding="utf-8")
+        answer = self.client.get("/api/backup").json()
+        self.assertTrue(answer["selected"])
+        self.assertEqual(Path(answer["path"]), backup.resolve())
+        self.assertEqual(self.marker.read_text(encoding="utf-8").strip(), str(backup))
+
+    def test_a_pointer_that_still_resolves_is_left_alone(self):
+        backup = self.make_backup("Marvin-Offline-Backup-1.12.1", "1.12.1")
+        self.marker.write_text(str(backup), encoding="utf-8")
+        self.assertTrue(self.client.get("/api/backup").json()["selected"])
+        self.assertEqual(self.marker.read_text(encoding="utf-8").strip(), str(backup))
+
+    def test_nothing_is_invented_when_no_backup_exists(self):
+        self.marker.write_text(str(self.root / "Marvin-Offline-Backup-1.11.1"), encoding="utf-8")
+        answer = self.client.get("/api/backup").json()
+        self.assertFalse(answer["selected"])
+        self.assertIn("error", answer)
+
+
+class ProjectsRootTests(unittest.TestCase):
+    """New projects always landed beside the installation; the folder is a choice now."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        data = copy.deepcopy(load_config().data)
+        data["hardware"]["vram_gb"] = 32
+        data["agent"].update(workspace=None, autonomy="auto")
+        self.cfg = Config(data, self.root)
+        self.service = ApplicationService(self.cfg, llm_factory=lambda c: None,
+                                          manage_model=False)
+        self.client = TestClient(create_app(self.cfg, service=self.service))
+
+    def tearDown(self):
+        self.service.close()
+        self.service.models.wait(3)
+        self.temp.cleanup()
+
+    def test_a_new_project_is_created_in_the_chosen_folder(self):
+        chosen = self.root / "Elsewhere"
+        chosen.mkdir()
+        self.client.patch("/api/settings", json={"projects_root": str(chosen)}).raise_for_status()
+        self.assertEqual(self.client.get("/api/state").json()["projects_root"],
+                         str(chosen.resolve()))
+        project = self.client.post("/api/projects", json={"name": "Somewhere"}).json()["project"]
+        self.assertEqual(Path(project["path"]).parent, chosen.resolve())
+
+    def test_an_existing_project_keeps_its_folder(self):
+        """Changing the setting must not move anything already on disk."""
+        first = self.client.post("/api/projects", json={"name": "First"}).json()["project"]
+        chosen = self.root / "Elsewhere"
+        chosen.mkdir()
+        self.client.patch("/api/settings", json={"projects_root": str(chosen)}).raise_for_status()
+        listed = {item["name"]: item["path"]
+                  for item in self.client.get("/api/state").json()["projects"]}
+        self.assertEqual(listed["First"], first["path"])
+        self.assertTrue(Path(first["path"]).is_dir())
+
+    def test_the_default_can_be_restored(self):
+        chosen = self.root / "Elsewhere"
+        chosen.mkdir()
+        self.client.patch("/api/settings", json={"projects_root": str(chosen)})
+        self.client.patch("/api/settings", json={"projects_root": ""}).raise_for_status()
+        self.assertEqual(self.client.get("/api/state").json()["projects_root"],
+                         str(self.root / "projects"))
+
+    def test_an_unusable_folder_is_refused_and_nothing_is_stored(self):
+        from harness.projects import validate_root
+        before = self.client.get("/api/state").json()["projects_root"]
+        for value in ("", "projects", str(self.root / "missing"),
+                      str(self.cfg.path("paths.runtime_dir"))):
+            with self.assertRaises(ValueError):
+                validate_root(value, self.cfg)
+        self.assertEqual(
+            self.client.patch("/api/settings",
+                              json={"projects_root": str(self.root / "missing")}).status_code,
+            400)
+        self.assertEqual(self.client.get("/api/state").json()["projects_root"], before)
+
+    def test_the_choice_survives_a_restart(self):
+        chosen = self.root / "Elsewhere"
+        chosen.mkdir()
+        self.client.patch("/api/settings", json={"projects_root": str(chosen)})
+        self.service.close()
+        self.service.models.wait(3)
+        revived = ApplicationService(Config(copy.deepcopy(self.cfg.data), self.root),
+                                     llm_factory=lambda c: None, manage_model=False)
+        try:
+            self.assertEqual(revived.preferences["projects_root"], str(chosen.resolve()))
+            from harness.projects import Projects
+            self.assertEqual(Projects(revived.cfg).root_dir, chosen.resolve())
+        finally:
+            revived.close()
+            revived.models.wait(3)
+            self.service = revived
+
+
+class PrefillInterruptionTests(unittest.TestCase):
+    """Measured on a 109k context: interrupting the prompt read cost the whole
+    cached prefix and a quarter of an hour to rebuild it. A clarification has to
+    wait for the prefill; an explicit stop must not."""
+
+    @staticmethod
+    def _chunk(text=None, progress=None):
+        delta = SimpleNamespace(content=text, tool_calls=None,
+                                reasoning_content=None, reasoning=None)
+        return SimpleNamespace(
+            choices=[SimpleNamespace(delta=delta)] if text is not None else [],
+            prompt_progress=progress, timings=None, usage=None)
+
+    def _client(self, chunks, interrupt_after=1):
+        """A client whose interruption arrives while the prompt is being read."""
+        from harness.config import Config, load_config
+        from harness.llm import LLMClient
+        cfg = Config(copy.deepcopy(load_config().data), Path("."))
+        client = LLMClient(cfg)
+        state = {"stop": False, "delivered": 0, "closed": False}
+
+        class Stream:
+            """Closeable like the SDK response the client expects."""
+
+            def __iter__(self):
+                for chunk in chunks:
+                    state["delivered"] += 1
+                    if state["delivered"] >= interrupt_after:
+                        state["stop"] = True
+                    yield chunk
+
+            def close(self):
+                state["closed"] = True
+
+        def create(**params):
+            return Stream()
+
+        client.client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+        return client, state
+
+    def test_a_clarification_waits_for_the_prompt_read(self):
+        chunks = [self._chunk(progress={"total": 100, "processed": 50}),
+                  self._chunk(progress={"total": 100, "processed": 100}),
+                  self._chunk("Hello."),
+                  self._chunk(" More.")]
+        client, state = self._client(chunks)
+        result = client.stream([{"role": "user", "content": "x"}],
+                               should_stop=lambda: state["stop"],
+                               may_abort_prefill=lambda: False)
+        # The read was allowed to finish, so the answer actually started.
+        self.assertTrue(result.stopped)
+        self.assertIn("Hello.", result.content)
+
+    def test_an_explicit_stop_does_not_wait(self):
+        chunks = [self._chunk(progress={"total": 100, "processed": 50}),
+                  self._chunk(progress={"total": 100, "processed": 100}),
+                  self._chunk("Hello.")]
+        client, state = self._client(chunks)
+        result = client.stream([{"role": "user", "content": "x"}],
+                               should_stop=lambda: state["stop"],
+                               may_abort_prefill=lambda: True)
+        self.assertTrue(result.stopped)
+        self.assertEqual(result.content, "")
+
+    def test_without_a_policy_nothing_changes(self):
+        chunks = [self._chunk(progress={"total": 100, "processed": 50}),
+                  self._chunk("Hello.")]
+        client, state = self._client(chunks)
+        result = client.stream([{"role": "user", "content": "x"}],
+                               should_stop=lambda: state["stop"])
+        self.assertTrue(result.stopped)
+        self.assertEqual(result.content, "")
+
+
+class StopReasonTests(unittest.TestCase):
+    """The reason for an interruption decides whether the prefill may be cut."""
+
+    def _service(self, directory):
+        data = copy.deepcopy(load_config().data)
+        data["agent"].update(workspace=None, autonomy="auto")
+        return ApplicationService(Config(data, Path(directory)),
+                                  llm_factory=lambda c: None, manage_model=False)
+
+    def test_stop_and_steer_record_different_reasons(self):
+        with tempfile.TemporaryDirectory() as directory:
+            service = self._service(directory)
+            try:
+                self.assertEqual(service.abort_reason, "")
+                session = service.new_session(work_mode="discussion")
+                service.active = {"id": "run-1", "session_id": session.id, "text": ""}
+
+                service.submit(session.id, "a clarification", delivery="steer")
+                self.assertEqual(service.abort_reason, "steer")
+                self.assertTrue(service.abort.is_set())
+
+                service.stop(session.id)
+                self.assertEqual(service.abort_reason, "stop")
+            finally:
+                service.active = None
+                service.close()
+                service.models.wait(3)
+
+    def test_a_steering_message_during_the_prompt_read_says_it_is_waiting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            service = self._service(directory)
+            try:
+                session = service.new_session(work_mode="discussion")
+                service.active = {"id": "run-1", "session_id": session.id, "text": ""}
+                service.live[session.id] = {"phase": "reading_context"}
+                service.submit(session.id, "a clarification", delivery="steer")
+                kinds = [n.get("kind") for n in service.store.notices(session.id)]
+                self.assertIn("steer_deferred", kinds)
+            finally:
+                service.active = None
+                service.close()
+                service.models.wait(3)
+
+
+class FailureAdviceTests(unittest.TestCase):
+    """A failed task has to leave something the user can act on."""
+
+    def test_known_failures_get_a_next_step(self):
+        from harness.failures import advise
+        self.assertIn("environment of its own",
+                      advise("ModuleNotFoundError: No module named pygame"))
+        self.assertIn("did not start", advise("RuntimeError: Model server is not ready"))
+        self.assertIn("moved or removed",
+                      advise("Project folder is unavailable: C:/gone"))
+        self.assertIn("ran out of memory", advise("llama-server stopped: ram_pressure"))
+
+    def test_an_unknown_failure_gets_no_invented_advice(self):
+        from harness.failures import advise
+        self.assertEqual(advise("something nobody anticipated"), "")
+        self.assertEqual(advise(""), "")
+
+    def test_every_hint_has_a_czech_translation(self):
+        from harness.failures import HINTS, STATE_HINTS
+        locale = json.loads(
+            (Path(__file__).resolve().parent.parent / "harness" / "locales"
+             / "cs.json").read_text(encoding="utf-8"))["messages"]
+        every = [hint for _, hint in HINTS] + list(STATE_HINTS.values())
+        missing = [hint for hint in every if not locale.get(hint, "").strip()]
+        self.assertEqual(missing, [], "Missing Czech hints: %s" % missing)
+
+    def test_a_check_state_advises_when_the_output_does_not(self):
+        from harness.failures import advise_check
+        self.assertIn("longer timeout", advise_check("timeout", ""))
+        self.assertIn("could not start", advise_check("error", ""))
+        # Output the adviser recognises wins over the generic state hint.
+        self.assertIn("environment of its own",
+                      advise_check("fail", "No module named pygame"))
+        self.assertEqual(advise_check("fail", "an ordinary assertion failure"), "")
+
+    def test_a_failed_tool_result_carries_its_advice(self):
+        """The hint is stored with the message, so it survives a reload."""
+        from harness.session import Session
+        from harness.tools.base import ToolOutcome
+        with tempfile.TemporaryDirectory() as directory:
+            data = copy.deepcopy(load_config().data)
+            data["paths"]["sessions_dir"] = str(Path(directory) / "sessions")
+            cfg = Config(data, Path(directory))
+            session = Session(cfg, session_id="advice", system_prompt="SYS")
+            failed = session.add(
+                "tool",
+                ToolOutcome("ERROR: ModuleNotFoundError: No module named pygame",
+                            status="error", tool="run_command"),
+                tool_call_id="c1", name="run_command")
+            self.assertEqual(failed["tool_status"], "error")
+            self.assertIn("environment of its own", failed["hint"])
+            fine = session.add("tool", ToolOutcome("ok", tool="read_file"),
+                               tool_call_id="c2", name="read_file")
+            self.assertNotIn("hint", fine)
+
+    def test_the_notice_survives_the_toast(self):
+        """run_status only raises a toast; the notice is what remains."""
+        with tempfile.TemporaryDirectory() as directory:
+            data = copy.deepcopy(load_config().data)
+            data["agent"].update(workspace=None, autonomy="auto")
+            cfg = Config(data, Path(directory))
+            service = ApplicationService(cfg, llm_factory=lambda c: None,
+                                         manage_model=False)
+            try:
+                session = service.new_session(work_mode="discussion")
+                service._emit_failure(session.id, "run-1",
+                                      "ModuleNotFoundError: No module named pygame")
+                notices = service.store.notices(session.id)
+                self.assertEqual(len(notices), 1)
+                self.assertEqual(notices[0]["kind"], "failure")
+                self.assertIn("pygame", notices[0]["text"])
+                self.assertIn("environment of its own", notices[0]["hint"])
+                # An empty failure leaves nothing behind.
+                service._emit_failure(session.id, "run-2", "   ")
+                self.assertEqual(len(service.store.notices(session.id)), 1)
+            finally:
+                service.close()
+                service.models.wait(3)
+
+
+class AtomicWriteTests(unittest.TestCase):
+    """A reader holding the target must not turn into a failed task.
+
+    Reproduced for real in the project check runner: on Windows os.replace
+    raises while another handle has the file open, the exception left the
+    worker thread, and the whole run was lost."""
+
+    def test_replace_is_retried_while_a_reader_holds_the_file(self):
+        import os
+        from unittest.mock import patch
+        from harness.changes import atomic_write_text
+        real, calls = os.replace, []
+
+        def blocked(source, target):
+            calls.append(1)
+            if len(calls) < 3:
+                raise PermissionError(5, "used by another process")
+            return real(source, target)
+
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "status.json"
+            atomic_write_text(target, "first")
+            with patch("harness.changes.os.replace", side_effect=blocked):
+                atomic_write_text(target, "second")
+            self.assertEqual(target.read_text(encoding="utf-8"), "second")
+            self.assertEqual(len(calls), 3)
+
+    def test_a_persistent_failure_still_raises_and_leaves_no_litter(self):
+        from unittest.mock import patch
+        from harness.changes import atomic_write_text
+
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "status.json"
+            with patch("harness.changes.os.replace",
+                       side_effect=PermissionError(5, "locked")):
+                with self.assertRaises(PermissionError):
+                    atomic_write_text(target, "value")
+            # The temporary file is cleaned up even when the replace never works.
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
+
 if __name__ == "__main__":
     unittest.main()

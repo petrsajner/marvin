@@ -15,19 +15,41 @@ MEASUREMENT_ID = "profile-remeasurement-2026-09-15"
 MTP_MEASUREMENT_ID = "mtp-speculative-2026-09-17"
 
 
-def profile(context, gpu_class, measured, *, precision="q8_0", cpu_layers=0, cpu_vision=False, speculative=False):
+SHORT = {"q8_0": "Q8", "f16": "F16", "q5_1": "Q5", "q4_0": "Q4"}
+
+
+def profile(context, gpu_class, measured, *, precision="q8_0", value_precision=None,
+            cpu_layers=0, cpu_vision=False, speculative=False, gpu_vision=False,
+            measurement=None):
+    """One approved placement. `measured` is what it really allocated on a GPU.
+
+    Keys and values are separate because they do not tolerate quantisation
+    equally: values take it far better, so a q8_0 key with a q4_0 value is a real
+    middle step rather than a compromise in name only."""
     args = ["--fit", "off"]
     if cpu_layers:
         args += ["--n-cpu-moe", str(cpu_layers)]
     if cpu_vision:
         args += ["--no-mmproj-offload"]
-    label = f"{'Q8' if precision == 'q8_0' else 'F16'} · {context}k"
+    values = value_precision or precision
+    label = SHORT.get(precision, precision)
+    if values != precision:
+        label += "/" + SHORT.get(values, values)
+        label += " cache"
+    label += f" · {context}k"
+    if gpu_vision:
+        # Worth saying only where the alternative is the processor, which is the
+        # case on a 16 GB card and nowhere else.
+        label += " · vision on GPU"
     if speculative:
         label += " · MTP"
     spec = {"cache_type": precision, "ctx_size": context * 1024,
             "gpu_class": gpu_class, "min_vram_gb": measured,
             "label": label, "server_args": args,
-            "measurement_id": MTP_MEASUREMENT_ID if speculative else MEASUREMENT_ID}
+            "measurement_id": (measurement or
+                               (MTP_MEASUREMENT_ID if speculative else MEASUREMENT_ID))}
+    if values != precision:
+        spec["value_cache_type"] = values
     if speculative:
         # The draft model is resolved and verified by servermgmt at launch time;
         # it is deliberately not part of server_args so recovery can toggle it.
@@ -35,10 +57,34 @@ def profile(context, gpu_class, measured, *, precision="q8_0", cpu_layers=0, cpu
     return spec
 
 
+SMALL_CARD_MEASUREMENT = "profiles-16gb-2026-09-19"
+
 PROFILES = {
+    # The smallest quant. Two gigabytes less than IQ3_S, which buys either twice
+    # the context or the vision projector back on the graphics card.
+    "q2": {
+        "q8_0_96k_vision": profile(96, 16, 14.19, gpu_vision=True,
+                                   measurement=SMALL_CARD_MEASUREMENT),
+        "q8_0_64k_vision": profile(64, 16, 12.96, gpu_vision=True,
+                                   measurement=SMALL_CARD_MEASUREMENT),
+        "q8_0_128k": profile(128, 16, 14.31, cpu_vision=True,
+                             measurement=SMALL_CARD_MEASUREMENT),
+        "q4_0_192k": profile(192, 16, 13.73, precision="q4_0", cpu_vision=True,
+                             measurement=SMALL_CARD_MEASUREMENT),
+        # On a large card the weights are small and the context fills it instead:
+        # 256k with the projector on the GPU, at 97 tokens a second against 62 for
+        # Q5. 384k and 512k were measured to fit and are deliberately not offered,
+        # because no Qwen profile here has been approved beyond 256k.
+        "q8_0_256k": profile(256, 32, 20.27, gpu_vision=True,
+                             measurement=SMALL_CARD_MEASUREMENT),
+    },
     "q3": {
         "q8_0_64k": profile(64, 16, 13.617, cpu_vision=True),
         "q8_0": profile(48, 16, 13.008, cpu_vision=True),
+        "q8_0v4_96k": profile(96, 16, 14.08, value_precision="q4_0", cpu_vision=True,
+                              measurement=SMALL_CARD_MEASUREMENT),
+        "q4_0_128k": profile(128, 16, 14.05, precision="q4_0", cpu_vision=True,
+                             measurement=SMALL_CARD_MEASUREMENT),
         "q8_0_128k": profile(128, 24, 17.162),
         "q8_0_96k": profile(96, 24, 16.147),
     },

@@ -12,7 +12,7 @@ StepResult.status values:
   ERROR: API or parsing failure."""
 from __future__ import annotations
 
-from .i18n import input_pattern
+from .i18n import input_pattern, t
 
 import enum
 import json
@@ -103,6 +103,8 @@ _PROTOCOL_MARKS = ("[TASK PROTOCOL", "[WRITING PROTOCOL", "[PROGRESS UPDATE",
 TOOL_STEPS_BEFORE_UPDATE = 4   # Request an update after this many tool steps without user-facing text.
 MIN_TOOLS_FOR_SUMMARY = 3      # Tasks using at least this many tools require a structured summary.
 COMPRESS_AT = 0.85             # Compress automatically at 85 percent of the context limit.
+IMAGES_KEPT = 4                # Screenshots still sent once context pressure forces pruning.
+PRUNE_WORTH = 0.05             # Pruning must free this share of the context to earn its rewrite.
 OVERFLOW_RE = re.compile(
     r"exceeds.{0,40}context|context.{0,40}(exceed|full|too (large|long))|"
     r"prompt is too long|maximum context",
@@ -136,7 +138,8 @@ class Agent:
                  abort_flag: threading.Event | None = None,
                  process_manager: ProcessManager | None = None,
                  browser_manager: Any | None = None,
-                 work_mode: str | None = None):
+                 work_mode: str | None = None,
+                 may_abort_prefill: Callable[[], bool] | None = None):
         self.cfg = cfg
         self.llm = llm
         self.session = session
@@ -150,6 +153,8 @@ class Agent:
             llm.on_prompt_progress = lambda progress: self.emit("prompt_progress", progress)
             llm.on_generation_started = lambda: self.emit("generation_started", None)
         self.abort_flag = abort_flag or threading.Event()
+        # Whether an interruption may cut the prompt read short. See llm.stream.
+        self.may_abort_prefill = may_abort_prefill
         configured_workspace = cfg.agent.get("workspace")
         candidate_workspace = (Path(configured_workspace).resolve()
                                if configured_workspace else None)
@@ -245,9 +250,11 @@ class Agent:
 
     # ------------------------------------------------------------------
     def refresh_system_prompt(self) -> None:
-        """Refresh the system prompt with the work mode, workspace and persistent memory.
+        """Rebuild the system prompt for the current work mode and workspace.
 
-        Called when a task starts and after compression so the model receives current global and project memory."""
+        The result is deliberately stable: memory and skills moved to the dynamic
+        context block, so a task start no longer changes the first tokens of the
+        request and the server keeps its processed prompt."""
         from harness.prompts import build_system_prompt
         if self.session.messages and self.session.messages[0]["role"] == "system":
             prompt = build_system_prompt(
@@ -255,7 +262,15 @@ class Agent:
             self.session.messages[0]["content"] = prompt
 
     def _dynamic_context_sections(self) -> dict[str, str]:
+        from harness.prompts import memory_block, skills_block
         blocks: dict[str, str] = {}
+        # Memory and skills belong here rather than in the system prompt: both can
+        # change mid-conversation, and a section update appends instead of
+        # rewriting the prefix the server has already processed.
+        blocks["memory"] = memory_block(self.cfg, self.ctx.project_workspace, self.work_mode)
+        skills = skills_block(self.cfg, self.ctx.project_workspace)
+        if skills:
+            blocks["skills"] = skills
         if self.ctx.repo_index and WORK_MODES[self.work_mode].repo_snapshot:
             blocks["project"] = "## CURRENT PROJECT SNAPSHOT\n" + self.ctx.repo_index.summary()
         elif self.ctx.repo_index:
@@ -311,6 +326,17 @@ class Agent:
 
     def _request_messages(self) -> list[dict]:
         messages = self._api_messages()
+        # Remember the uncorrected size of this request, so the server's own
+        # count of it can correct the estimate afterwards.
+        self._last_sent = self.session.tokens_for(*self._sent_size(messages))
+        # Record what is actually sent. The conversation on disk shows the final
+        # state, so anything rewritten in place looks as though it always was that
+        # way - which is exactly the case a lost prompt cache needs explained.
+        try:
+            from harness import request_trace
+            request_trace.record(self.session.dir / "requests", messages, step=self._steps)
+        except Exception:
+            pass
         # Keep the exact context that preceded this response. Removing an ephemeral
         # tail on the next tool step invalidates the cache for the generated reply.
         if messages and messages[-1].get("role") == "user":
@@ -325,11 +351,46 @@ class Agent:
         return sum(self.context_usage_breakdown().values())
 
     def context_usage_breakdown(self) -> dict[str, int]:
-        import json as _json
+        scale = self.session.token_scale()
         messages = self.session.estimate_context_tokens(include_pins=False)
-        dynamic = len(self._context_update(self.session.to_api_messages(include_pins=False))) * 10 // 36
-        schemas = len(_json.dumps(self.registry.schemas(), ensure_ascii=False)) * 10 // 36
-        return {"messages": messages, "dynamic": dynamic, "tool_schemas": schemas}
+        dynamic = self.session.tokens_for(
+            len(self._context_update(self.session.to_api_messages(include_pins=False))), 0, scale)
+        return {"messages": messages, "dynamic": dynamic,
+                "tool_schemas": self.session.tokens_for(self._schema_chars(), 0, scale)}
+
+    def _schema_chars(self) -> int:
+        """How many characters of tool definitions travel with every request."""
+        import json as _json
+        try:
+            return len(_json.dumps(self.registry.schemas(), ensure_ascii=False))
+        except (TypeError, ValueError):
+            return 0
+
+    def _sent_size(self, messages: list[dict]) -> tuple[int, int]:
+        """Characters and pictures in exactly what is about to be sent.
+
+        Calibration has to compare like with like: the server counts the tool
+        definitions too, so they belong in the figure the server's count is
+        measured against."""
+        import json as _json
+        chars = self._schema_chars()
+        images = 0
+        for message in messages:
+            content = message.get("content")
+            if isinstance(content, list):
+                for part in content:
+                    if not isinstance(part, dict):
+                        continue
+                    if part.get("type") == "text":
+                        chars += len(str(part.get("text", "")))
+                    elif part.get("type") == "image_url":
+                        images += 1
+            else:
+                chars += len(str(content or ""))
+            chars += len(str(message.get("reasoning_content") or message.get("reasoning") or ""))
+            if message.get("tool_calls"):
+                chars += len(_json.dumps(message["tool_calls"], ensure_ascii=False))
+        return chars, images
 
     def new_task(self, text: str, images: list[Path] | None = None) -> None:
         """Record user input and reset task counters."""
@@ -533,7 +594,27 @@ class Agent:
         est = self.estimate_context_tokens()
         if not force and est < int(limit * COMPRESS_AT):
             return
-        self.emit("info", f"📦 Context ~{est} tokens (>85% of {limit}) - summarizing the earlier conversation ...")
+        # Old screenshots are the largest items here and the cheapest to give up,
+        # so try them before summarizing away the conversation itself. Both
+        # rewrite the processed prompt; this one keeps the text history.
+        #
+        # Only when the saving is worth that rewrite, though. Measured on the
+        # owner's own session: after a first prune of 21 pictures, every later
+        # screenshot made exactly one prunable again, and each of those rewrote
+        # the prompt from that picture onwards - some 45k tokens, about fifty
+        # seconds of reprocessing - to free 1400. Below this bar, summarising is
+        # the honest answer instead of a rewrite that pays for nothing.
+        _, saving = self.session.prunable_images(keep=IMAGES_KEPT)
+        dropped = (self.session.prune_images(keep=IMAGES_KEPT)
+                   if saving >= int(limit * PRUNE_WORTH) else 0)
+        if dropped:
+            est = self.estimate_context_tokens()
+            self.emit("info", t("🖼 Older screenshots no longer sent (count: {count}) - context ~{est} tokens",
+                                count=dropped, est=est))
+            if not force and est < int(limit * COMPRESS_AT):
+                return
+        self.emit("info", t("📦 Context ~{est} tokens (over 85% of {limit}) - summarizing the earlier conversation ...",
+                            est=est, limit=limit))
         try:
             from harness.context import summarize_messages
             keep_tokens = int(limit * 0.35)
@@ -542,7 +623,8 @@ class Agent:
                 self.session.trim_to_budget(int(limit * 0.5))
                 new_est = self.estimate_context_tokens()
                 self.refresh_system_prompt()
-                self.emit("info", f"📦 Context trimmed: ~{est} → ~{new_est} tokens")
+                self.emit("info", t("📦 Context trimmed: ~{est} to ~{new} tokens",
+                                    est=est, new=new_est))
                 return
             start = self.session.compression["cut"] if self.session.compression else (
                 1 if self.session.messages and self.session.messages[0].get("role") == "system" else 0
@@ -562,12 +644,14 @@ class Agent:
             new_est = self.estimate_context_tokens()
             # Refresh current persistent memory after compression.
             self.refresh_system_prompt()
-            self.emit("info", f"📦 Context compressed: ~{est} → ~{new_est} tokens (the UI retains the full history)")
+            self.emit("info", t("📦 Context compressed: ~{est} to ~{new} tokens; the full history is kept",
+                                est=est, new=new_est))
         except Exception as e:
             if self.abort_flag.is_set():
                 return
             self.session.trim_to_budget(int(limit * 0.5))
-            self.emit("info", f"📦 Summarization failed ({type(e).__name__}: {e}) - applied a hard trim")
+            self.emit("info", t("📦 Summarization failed ({error}) - applied a hard trim",
+                                error=f"{type(e).__name__}: {e}"))
 
     def _step(self, approve: bool | None = None) -> StepResult:
         # 1) Pending confirmations.
@@ -613,7 +697,7 @@ class Agent:
         if self.work_mode == "research":
             run = self.ctx.research.current()
             if run and not run.get("plan"):
-                self.emit("info", "Preparing the research plan before searching...")
+                self.emit("info", t("Preparing the research plan before searching..."))
                 try:
                     plan = plan_research(
                         self.llm, run.get("question", ""),
@@ -641,6 +725,7 @@ class Agent:
                 on_tool_delta=lambda name, args: self.emit("tool_delta", (name, args)),
                 on_prompt_progress=lambda progress: self.emit("prompt_progress", progress),
                 should_stop=self.abort_flag.is_set,
+                may_abort_prefill=self.may_abort_prefill,
             )
         except KeyboardInterrupt:
             raise
@@ -648,7 +733,7 @@ class Agent:
             # Context overflow: compress immediately and retry once per task.
             if not self._overflow_retried and OVERFLOW_RE.search(str(e)):
                 self._overflow_retried = True
-                self.emit("info", "Context overflow: compressing and retrying...")
+                self.emit("info", t("Context overflow: compressing and retrying..."))
                 self._maybe_compress(force=True)
                 return StepResult(Status.CONTINUE,
                                   text="The context was compressed after an overflow; continuing the task.")
@@ -660,6 +745,17 @@ class Agent:
         if getattr(res, "usage", None):
             self.session.meta["last_usage"] = res.usage
             self.session._save_meta()
+            # The server has just told us exactly how long that prompt was. Use it:
+            # an estimate that disagrees with the measurement is the reason the
+            # context figure beside the composer drifted away from the one shown
+            # while the prompt was being read.
+            prompt_tokens = 0
+            try:
+                prompt_tokens = int((res.usage or {}).get("prompt_tokens") or 0)
+            except (AttributeError, TypeError, ValueError):
+                prompt_tokens = 0
+            if prompt_tokens:
+                self.session.calibrate_tokens(prompt_tokens, getattr(self, "_last_sent", 0))
             self.emit("usage", res.usage)
 
         if res.stopped:
@@ -730,7 +826,7 @@ class Agent:
             if run and run.get("status") == "collecting" and run.get("sources"):
                 if (res.content or "").strip():
                     self.session.add("assistant", res.content, reasoning=res.reasoning)
-                self.emit("info", "Preparing the final synthesis from all loaded sources...")
+                self.emit("info", t("Preparing the final synthesis from all loaded sources..."))
                 try:
                     res.content = synthesize_research(
                         self.llm, run, should_stop=self.abort_flag.is_set,
@@ -820,13 +916,22 @@ class Agent:
                 return
 
 
-def build_registry(mode: str, work_mode: str | None = None) -> ToolRegistry:
+def build_registry(mode: str, work_mode: str | None = None, cfg=None) -> ToolRegistry:
     """Build the tool registry for the selected work mode.
 
-    Every mode can read/write files and view images: research and discussion also need sources and saved results. Repository, Git and shell tools are limited to Development and Computer modes."""
+    Every mode can read/write files and view images: research and discussion also need sources and saved results. Repository, Git and shell tools are limited to Development and Computer modes.
+
+    cfg is optional because several callers only want the names. Without it the
+    tools that depend on a setting are left out, which is the safe direction: a
+    tool in the schema is a promise to the model."""
     from harness.tools import browser, code, computer, context, documents, fs, git, history, memory, search, semantic, shell, skills, task, vision, web
     selected = normalize_work_mode(work_mode, mode)
     reg = ToolRegistry()
+    if cfg is not None:
+        from harness import openart
+        if openart.enabled(cfg):
+            from harness.tools import imagegen
+            imagegen.register_image_tools(reg)
     memory.register_memory_tools(reg)  # Discussion mode includes memory tools.
     history.register_history_tools(reg)
     web.register_web_tools(reg)        # Web search and fetching are available in every mode.

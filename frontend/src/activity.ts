@@ -28,6 +28,7 @@ function labelFor(path: string): string {
     [/rename/, "Renaming"],
     [/move/, "Moving conversation"],
     [/submit/, "Sending message"],
+    [/stop_process/, "Stopping the background process"],
     [/stop/, "Stopping task"],
     [/preview|library|read_skill/, "Loading content"],
     [/maintenance/, "Starting maintenance"],

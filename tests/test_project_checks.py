@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from harness import project_checks
 from harness.application import ApplicationService
 from harness.config import Config, load_config
-from harness.project_profile import ProjectProfile
+from harness.project_profile import ProjectProfile, project_python
 from harness.web_api import create_app
 
 PASSING_TEST = """import unittest
@@ -43,7 +43,7 @@ class DetectionTests(unittest.TestCase):
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
-        return ProjectProfile(self.root, project_checks._python_for(self.root))
+        return ProjectProfile(self.root, project_python(self.root))
 
     def test_root_level_test_module_is_detected(self):
         check = self._profile({"test_arkanoid.py": PASSING_TEST}).select()
@@ -74,6 +74,20 @@ class DetectionTests(unittest.TestCase):
                                  "pyproject.toml": "[tool.ruff]\n[tool.mypy]\n"})
         with patch("harness.project_profile._module_available", return_value=False):
             self.assertEqual([item.kind for item in profile.checks()], ["test"])
+
+    def test_a_project_virtual_environment_wins_over_marvins(self):
+        """Checks must run with the project's own dependencies when it has them."""
+        for name in ("venv", ".venv"):
+            scripts = self.root / name / "Scripts"
+            scripts.mkdir(parents=True)
+            (scripts / "python.exe").write_text("", encoding="utf-8")
+            self.assertEqual(project_python(self.root), str(scripts / "python.exe"))
+        # .venv is preferred when a project carries both.
+        self.assertIn(".venv", project_python(self.root))
+
+    def test_without_a_project_environment_marvins_interpreter_is_used(self):
+        import sys as _sys
+        self.assertEqual(project_python(self.root), _sys.executable)
 
     def test_marvin_layout_keeps_its_entry_script(self):
         check = self._profile({"tests/test_core.py": PASSING_TEST}).select()

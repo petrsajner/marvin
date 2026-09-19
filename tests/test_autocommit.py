@@ -156,7 +156,9 @@ class AutocommitIntegrationTests(unittest.TestCase):
         self._enable(True)
         note = self.service._maybe_autocommit(
             self._agent(), self.session, {"text": "bump"}, "✅ Done\n- app.txt: v2")
-        self.assertTrue(note and note.startswith("Auto-committed 1 file"), note)
+        # The wording carries no plural agreement, so it translates into Czech.
+        self.assertTrue(note and note.startswith("Auto-committed as "), note)
+        self.assertIn("(1 files)", note)
         log = self._git(["log", "-1", "--format=%s%n%n%b"])
         self.assertIn("Bump app to version 2", log.stdout)
         self.assertIn("app.txt: v2", log.stdout)

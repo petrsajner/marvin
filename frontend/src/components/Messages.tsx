@@ -57,12 +57,14 @@ export const ChatMessage = memo(
     openFile,
     openSource,
     retry,
+    helpWith,
   }: {
     message: Message;
     cs: boolean;
     openFile: (f: FileItem) => void;
     openSource: (id: string) => void;
     retry: () => void;
+    helpWith?: (detail: string) => void;
   }) => {
     if (m.role === "tool")
       return (
@@ -76,6 +78,16 @@ export const ChatMessage = memo(
             {m.name}
           </summary>
           <pre>{m.content}</pre>
+          {m.tool_status === "error" && (
+            <>
+              {(m as any).hint && <p>{translate((m as any).hint, cs ? "cs" : "en")}</p>}
+              {helpWith && (
+                <button onClick={() => helpWith(String(m.content || ""))}>
+                  {translate("Work out what to do", cs ? "cs" : "en")}
+                </button>
+              )}
+            </>
+          )}
         </details>
       );
     return (

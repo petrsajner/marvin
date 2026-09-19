@@ -338,7 +338,11 @@ def main() -> int:
                              cwd=ROOT, creationflags=0x08000000)
         if rc:
             _close_splash()
-            _alert("Bundled Python environment could not be prepared. See runtime/launcher.log.")
+            detail = ROOT / "runtime" / "full-setup-error.log"
+            _alert(t("The bundled Python environment could not be prepared.\n\n"
+                     "Connect to the internet and start Marvin again, or install the "
+                     "Full package for this version.\n\nDetails: {path}",
+                     path=detail if detail.is_file() else ROOT / "runtime" / "launcher.log"))
             return 1
 
     # 1) Check environment, inference runtime and model files.
@@ -356,9 +360,15 @@ def main() -> int:
     if problems:
         _close_splash()
         _log("Missing: " + "; ".join(problems))
-        question = t("The app is not fully installed — missing:\n\n  • {items}\n\n"
-                     "Run the setup now? (downloads ~37 GB to the right place)",
-                     items="\n  • ".join(problems))
+        # A new release that adds a Python package is not a missing installation,
+        # and offering to download the models again would be alarming nonsense.
+        if problems == [t("Python dependencies (new requirements.txt version)")]:
+            question = t("This version needs a small update to its Python packages "
+                         "(a few MB).\n\nInstall it now?")
+        else:
+            question = t("The app is not fully installed — missing:\n\n  • {items}\n\n"
+                         "Run the setup now? (downloads ~37 GB to the right place)",
+                         items="\n  • ".join(problems))
         if _alert(question, question=True):
             if not _run_setup_console():
                 return 1
@@ -373,7 +383,7 @@ def main() -> int:
 
     # 2) Open the web workspace first; load the model in the background.
     # The window opens immediately and displays model startup progress.
-    webapp_proc = None
+    workspace_proc = None
     existing_port = _existing_web_port(web_port)
     webui_running = existing_port is not None
     if existing_port is not None:
@@ -386,8 +396,8 @@ def main() -> int:
            "QWEN_WEB_PORT": str(web_port)}
     if not webui_running:
         _log("Starting Web UI (model loads in the background) ...")
-        webapp_proc = subprocess.Popen(
-            [str(VENV_PYW), "webapp.py"], cwd=str(ROOT), env=env,
+        workspace_proc = subprocess.Popen(
+            [str(VENV_PYW), "marvin_web.py"], cwd=str(ROOT), env=env,
             creationflags=0x08000000)
         if not smoke:
             # Open the loading page immediately; it redirects when the UI is ready.
@@ -413,7 +423,7 @@ def main() -> int:
                 _log(f"Model autostart request failed: {exc}")
         import threading
         threading.Thread(target=start_existing_model, daemon=True, name="model-autostart").start()
-    if not (webapp_proc is not None and not smoke):
+    if not (workspace_proc is not None and not smoke):
         _log(f"Web UI ready: {url}")
 
     # 3) Closing the window stops its services and releases GPU memory.
@@ -424,8 +434,8 @@ def main() -> int:
             return
         cleaned["done"] = True
         _log("Shutting down: Web UI ...")
-        if webapp_proc is not None:
-            _kill_tree(webapp_proc.pid)
+        if workspace_proc is not None:
+            _kill_tree(workspace_proc.pid)
         _log("Stopping llama-server (freeing VRAM) ...")
         subprocess.call([str(VENV_PY), "scripts/server.py", "stop"],
                         cwd=str(ROOT), creationflags=0x08000000)
@@ -458,7 +468,10 @@ def main() -> int:
         import webview
         webview.create_window(f"Marvin v{APP_VERSION}", url,
                                width=1440, height=920, min_size=(960, 640),
-                               background_color="#0b0e14")
+                               background_color="#0b0e14",
+                               # pywebview disables selection unless asked: without
+                               # this nothing in the conversation can be copied.
+                               text_select=True)
         _log(f"Window opened: {url} (model may still be loading in the background)")
         webview.start(_focus_window)
     except ImportError:

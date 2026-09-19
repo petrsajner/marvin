@@ -1397,3 +1397,28 @@ button.nav-button {
     grid-row: 2;
   }
 }
+
+/* Command palette: a list of actions and search hits, one keystroke away. */
+.palette-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.palette-list button {
+  height: auto;
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  padding: 9px 10px;
+  font-size: 13px;
+}
+.palette-list button > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.palette-list small {
+  display: block;
+  color: var(--dim);
+}

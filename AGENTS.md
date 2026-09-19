@@ -61,8 +61,9 @@ expanding into these non-goals.
 - **Task Control & Execution**: Non-blocking STOP during reasoning, tool preparation, or
   execution. Live steering ("Clarify now") redirects the active run; "After completion" queues
   the next task durably.
-- **Legacy UI**: The Gradio UI remains accessible solely as a fallback compatibility surface
-  via `MARVIN_LEGACY_UI=1`.
+- **One interface**: the React workspace is the only one. The Gradio surface and its
+  two entry points were removed in 1.16.0; `marvin_web.py` starts the workspace and
+  the local API, and `launcher/launcher_app.py` is what Marvin.exe wraps.
 
 ## Harness Intelligence & Tooling
 

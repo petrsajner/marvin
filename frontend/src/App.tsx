@@ -12,12 +12,14 @@ import {
   PanelLeft,
   PanelRight,
   Ellipsis,
+  Mic,
   Paperclip,
   ArrowUp,
   Square,
   Play,
   RotateCw,
   CircleDashed,
+  Lightbulb,
   Wrench,
   X,
   Copy,
@@ -58,12 +60,17 @@ import {
 } from "./api";
 
 import { Attachment, ChatMessage } from "./components/Messages";
-import { DialogView } from "./components/Dialogs";
+import { DialogView, SETTINGS_SECTIONS } from "./components/Dialogs";
 import { ResizeHandle } from "./components/ResizeHandle";
 import { ActivityFeedback } from "./components/ActivityFeedback";
 
 type Dialog = { type: string; file?: FileItem; section?: string; data?: any };
 const COPYRIGHT = "© Petr Sajner 2026";
+// Documents a preview can render, as opposed to code or binaries.
+const READABLE = /\.(md|markdown|txt|rst|docx|pdf|html?|csv|xlsx)$/i;
+// Measured against what the server actually tokenised, not assumed. Keep this in
+// step with Session.CHARS_PER_TOKEN, or the two context figures disagree again.
+const CHARS_PER_TOKEN = 3.2;
 const phases: Record<string, string> = {
   preparing: "Preparing request",
   reading_context: "Reading context",
@@ -96,6 +103,7 @@ export function App() {
   const [toast, setToast] = useState(""),
     [search, setSearch] = useState(""),
     [searchResults, setSearchResults] = useState<any[] | null>(null),
+    [findings, setFindings] = useState<any[] | null>(null),
     [sending, setSending] = useState(false),
     [delivery, setDelivery] = useState("steer"),
     [connected, setConnected] = useState(true),
@@ -114,6 +122,9 @@ export function App() {
     liveRate = useRef<{ run: string; chars: number; at: number; rate: number } | null>(null),
     loadGeneration = useRef(0);
   const [now, setNow] = useState(Date.now());
+  const [listening, setListening] = useState(false),
+    [transcribing, setTranscribing] = useState(false),
+    [listenFrom, setListenFrom] = useState(0);
   const project = (app?.projects || []).find(
     (p: any) => p.path === chat?.meta.workspace,
   );
@@ -150,7 +161,14 @@ export function App() {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [app?.active?.session_id, sid]);
+  // The clock above only runs during a task; dictation needs its own.
+  useEffect(() => {
+    if (!listening) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [listening]);
   const cs = app?.preferences?.language === "cs";
+  const modeNames = ["Discussion", "Research", "Writing", "Development", "Computer"];
   useEffect(() => setChatLimit(20), [chat?.meta.workspace, search]);
   // While a chat is loading after a switch, keep the sidebar on the target
   // project's list instead of flashing the no-project conversations.
@@ -176,6 +194,44 @@ export function App() {
     if (!sidRef.current) setSid(next.session_id);
     return next;
   }, []);
+  // Dictation puts the text in the box and stops there. Nothing is ever sent
+  // without the owner pressing send.
+  const dictate = useCallback(async () => {
+    if (transcribing) return;
+    if (!listening) {
+      try {
+        await api("/api/voice/start", "POST");
+        setListenFrom(Date.now());
+        setNow(Date.now());
+        setListening(true);
+      } catch (e) {
+        error(e);
+      }
+      return;
+    }
+    setListening(false);
+    setTranscribing(true);
+    try {
+      const heard = await api<{ text: string; heard: boolean }>(
+        "/api/voice/stop",
+        "POST",
+      );
+      if (heard.heard) {
+        setText((current) =>
+          current && !/\s$/.test(current)
+            ? current + " " + heard.text
+            : current + heard.text,
+        );
+        textRef.current?.focus();
+      } else {
+        setToast(tr("Nothing was heard."));
+      }
+    } catch (e) {
+      error(e);
+    } finally {
+      setTranscribing(false);
+    }
+  }, [listening, transcribing, error, tr]);
   const refreshDetail = useCallback(async () => {
     const current = sidRef.current;
     if (current) {
@@ -231,6 +287,15 @@ export function App() {
       .catch(error);
     api("/api/sessions/" + sid + "/select", "POST").catch(error);
   }, [sid, error]);
+  // What remains is worth showing once, not until it is clicked away. Long enough
+  // to read an error, and the X is still there to dismiss it sooner. Not before
+  // the workspace has loaded: the startup screen uses the same text to say why it
+  // did not, and that must stay on screen.
+  useEffect(() => {
+    if (!app || !toast) return;
+    const timer = setTimeout(() => setToast(""), 8000);
+    return () => clearTimeout(timer);
+  }, [app, toast]);
   useEffect(() => {
     if (!app) return;
     document.title = "Marvin v" + app.version;
@@ -258,7 +323,7 @@ export function App() {
         if (!prev || prev.run !== p.run_id) {
           liveRate.current = { run: p.run_id, chars, at, rate: 0 };
         } else if (at > prev.at + 150) {
-          const inst = chars > prev.chars ? (chars - prev.chars) / 3.6 / ((at - prev.at) / 1000) : 0;
+          const inst = chars > prev.chars ? (chars - prev.chars) / CHARS_PER_TOKEN / ((at - prev.at) / 1000) : 0;
           prev.rate = inst > 0 ? (prev.rate ? prev.rate * 0.7 + inst * 0.3 : inst) : prev.rate * 0.85;
           prev.chars = chars;
           prev.at = at;
@@ -348,16 +413,51 @@ export function App() {
       });
     else setNewMessages(true);
   }, [chat?.messages, chat?.live]);
+  // One search over chats, project files, memory and decisions. Each of these was
+  // reachable from a different place, so remembering a sentence but not where it
+  // was written meant guessing which place to look in.
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (search.trim())
-        api("/api/search?query=" + encodeURIComponent(search.trim()))
-          .then(setSearchResults)
-          .catch(error);
-      else setSearchResults(null);
+      if (!search.trim()) {
+        setSearchResults(null);
+        setFindings(null);
+        return;
+      }
+      api(
+        "/api/find?query=" +
+          encodeURIComponent(search.trim()) +
+          (sid ? "&session_id=" + encodeURIComponent(sid) : ""),
+      )
+        .then((answer: any) => {
+          const groups = answer.groups || [];
+          const chats = groups.find((g: any) => g.kind === "chat");
+          setSearchResults(
+            (chats?.items || []).map((item: any) => ({
+              id: item.open.session_id,
+              title: item.title,
+              snippet: item.snippet,
+            })),
+          );
+          setFindings(groups.filter((g: any) => g.kind !== "chat"));
+        })
+        .catch(error);
     }, 250);
     return () => clearTimeout(timer);
-  }, [search, error]);
+  }, [search, sid, error]);
+  // Ctrl+K anywhere. The palette is the keyboard route to the same places the
+  // interface already has, for someone who would rather type than hunt.
+  useEffect(() => {
+    const open = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        setDialog((current: any) =>
+          current?.type === "palette" ? null : { type: "palette" },
+        );
+      }
+    };
+    document.addEventListener("keydown", open);
+    return () => document.removeEventListener("keydown", open);
+  }, []);
   const act = useCallback(
     async (action: string, payload: any = {}) => {
       const result = await api(
@@ -427,6 +527,20 @@ export function App() {
       setUploading((n) => n - files.length);
     }
   };
+  // Every surface that reports a failure offers the same help, composed once.
+  const helpWith = useCallback(
+    (detail: string) =>
+      setText(
+        tr("The previous task failed with this error:") +
+          "\n\n" +
+          (detail || "").slice(0, 4000) +
+          "\n\n" +
+          tr(
+            "Work out what caused it and what I should do next. Explain it in plain language, and say what you would change before you change anything.",
+          ),
+      ),
+    [tr],
+  );
   const submit = async () => {
     if (sending || uploading || (!text.trim() && !attachments.length)) return;
     const current = sidRef.current;
@@ -468,8 +582,9 @@ export function App() {
       localStorage.removeItem("marvin.draft." + current);
       await refresh();
       await reloadChat();
-      if (result.status === "steering")
-        setToast(tr("Clarification received"));
+      // No toast for a message that was sent: it is already in the conversation,
+      // which is the thing the user is looking at. A toast is for something
+      // important that is visible nowhere else.
     } catch (e) {
       error(e);
     } finally {
@@ -486,6 +601,17 @@ export function App() {
     setSid(value.session_id);
     setNav(false);
     await refresh();
+  };
+  // Documents worth watching render as text; a binary would show nothing useful.
+  const watchDocument = async (path: string) => {
+    try {
+      const file = await api(
+        "/api/sessions/" + sid + "/register-file", "POST", { path },
+      );
+      setDialog({ type: "preview", file });
+    } catch (e) {
+      error(e);
+    }
   };
   const newChat = async () => {
     const project = app?.projects?.find(
@@ -632,10 +758,10 @@ export function App() {
           <label className="search">
             <Search />
             <input
-              aria-label={tr("Search chats")}
+              aria-label={tr("Search everything")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={tr("Search chats")}
+              placeholder={tr("Search everything")}
             />
           </label>
           <label className="section-label">{tr("PROJECT")}</label>
@@ -695,6 +821,58 @@ export function App() {
               {tr("Show recent only")}
             </button>}
           </nav>
+          {(findings || []).map((group: any) => (
+            <div key={group.kind}>
+              <label className="section-label">
+                {tr(
+                  group.kind === "file"
+                    ? "IN PROJECT FILES"
+                    : group.kind === "memory"
+                      ? "IN MEMORY"
+                      : "IN PROJECT DECISIONS",
+                )}
+              </label>
+              <nav className="chat-list">
+                {group.items.map((item: any, index: number) => (
+                  <button
+                    key={group.kind + index}
+                    onClick={() => {
+                      setNav(false);
+                      if (item.open.what === "file")
+                        setDialog({
+                          type: "preview",
+                          file: {
+                            id: item.open.path,
+                            name: item.title,
+                            path: item.open.path,
+                            url: "",
+                          },
+                        });
+                      else if (item.open.what === "memory")
+                        setDialog({
+                          type: "settings",
+                          section: "memory",
+                          data: { scope: item.snippet },
+                        });
+                      else setDialog({ type: "decisions" });
+                    }}
+                  >
+                    {item.open.what === "file" ? (
+                      <FileText />
+                    ) : item.open.what === "memory" ? (
+                      <Brain />
+                    ) : (
+                      <BookmarkCheck />
+                    )}
+                    <span>
+                      {item.title}
+                      <small>{item.snippet}</small>
+                    </span>
+                  </button>
+                ))}
+              </nav>
+            </div>
+          ))}
           <button
             className="nav-button"
             onClick={() => setDialog({ type: "library" })}
@@ -819,6 +997,7 @@ export function App() {
                     openFile={openFile}
                     openSource={openSource}
                     retry={retryAnswer}
+                    helpWith={helpWith}
                   />
                 ))}
                 {chat && !chat.messages.some(visibleMessage) && (
@@ -961,13 +1140,9 @@ export function App() {
                         ? tr("Summarizing conversation")
                         : tr(phases[live?.phase] || phases.preparing)}
                       {live?.tool && " · " + live.tool}
-                      {live?.phase === "reading_context" && live.prompt_progress && (
-                        " · " + Math.max(0, Math.min(100, Math.round(
-                          100 * (Number(live.prompt_progress.processed || 0) - Number(live.prompt_progress.cache || 0)) /
-                          Math.max(1, Number(live.prompt_progress.total || 0) - Number(live.prompt_progress.cache || 0)),
-                        ))) + "% · " + formatTokens(Number(live.prompt_progress.cache || 0)) +
-                        tr(" tok reused")
-                      )}
+                      {live?.phase === "reading_context" &&
+                        live.prompt_progress &&
+                        prefillSummary(live.prompt_progress, tr)}
                       {live?.tool_chars > 0 &&
                         " · " + Math.round(live.tool_chars / 1024) + " KB"}
                       {(live?.phase_started || live?.started) &&
@@ -980,7 +1155,7 @@ export function App() {
                             ((live?.text?.length || 0) +
                               (live?.reasoning?.length || 0) +
                               (live?.tool_chars || 0)) /
-                              3.6,
+                              CHARS_PER_TOKEN,
                           ),
                         ) +
                         " tok"}
@@ -1083,12 +1258,45 @@ export function App() {
                     </div>
                   )}
                   <div className="composer-toolbar">
+                    {app.voice?.enabled && (
+                      <button
+                        className={listening ? "danger" : "attach"}
+                        disabled={transcribing || (!listening && !app.voice?.ready)}
+                        title={
+                          app.voice?.ready
+                            ? ""
+                            : (app.voice?.missing || []).join(", ") ||
+                              app.voice?.capture_error ||
+                              ""
+                        }
+                        onClick={() => void dictate()}
+                      >
+                        {transcribing ? (
+                          <LoaderCircle className="spin" />
+                        ) : listening ? (
+                          <Square />
+                        ) : (
+                          <Mic />
+                        )}
+                        {transcribing
+                          ? tr("Transcribing")
+                          : listening
+                            ? tr("Stop dictation") +
+                              " · " +
+                              Math.max(
+                                0,
+                                Math.round((now - listenFrom) / 1000),
+                              ) +
+                              " s"
+                            : tr("Dictate")}
+                      </button>
+                    )}
                     <button
                       className="attach"
                       onClick={() => fileRef.current?.click()}
                     >
                       <Paperclip />
-                      Attach
+                      {tr("Attach")}
                     </button>
                     <input
                       ref={fileRef}
@@ -1100,6 +1308,13 @@ export function App() {
                         e.target.value = "";
                       }}
                     />
+                    <button
+                      className="attach"
+                      onClick={() => setDialog({ type: "capabilities" })}
+                    >
+                      <Lightbulb />
+                      {tr("What can I ask for?")}
+                    </button>
                     <select
                       aria-label={tr("Thinking")}
                       value={app.preferences.thinking}
@@ -1348,9 +1563,29 @@ export function App() {
                       </section>
                       <section>
                         <h3>{tr("Activity history")}</h3>
-                        {detail?.notices?.map((n: any) => (
-                          <p key={n.seq}>{n.text}</p>
-                        ))}
+                        {detail?.notices?.map((n: any) =>
+                          n.kind === "steer_deferred" ? (
+                            <p className="muted" key={n.seq}>
+                              {tr(
+                                "Your message is waiting for the context to finish loading. Interrupting now would discard it and reload it from the start.",
+                              )}
+                            </p>
+                          ) : n.kind === "failure" ? (
+                            <div className="file-row" key={n.seq}>
+                              <AlertCircle className="amber" />
+                              <div>
+                                <strong>{tr("The task did not finish")}</strong>
+                                <small>{n.text}</small>
+                                {n.hint && <small>{tr(n.hint)}</small>}
+                              </div>
+                              <button onClick={() => helpWith(n.text)}>
+                                {tr("Work out what to do")}
+                              </button>
+                            </div>
+                          ) : (
+                            <p key={n.seq}>{n.text}</p>
+                          ),
+                        )}
                       </section>
                       <section>
                         <h3>{tr("Processes")}</h3>
@@ -1374,6 +1609,7 @@ export function App() {
                             {p.status === "running" && (
                               <button
                                 className="danger"
+                                title={tr("This stops the background command only, not the task")}
                                 onClick={() =>
                                   act("stop_process", {
                                     id: p.process_id,
@@ -1381,7 +1617,7 @@ export function App() {
                                 }
                               >
                                 <Square />
-                                {tr("Stop")}
+                                {tr("Stop this command")}
                               </button>
                             )}
                           </div>
@@ -1408,20 +1644,31 @@ export function App() {
                         {detail?.changes?.files
                           ?.filter((f: any) => f.changed)
                           .map((f: any) => (
-                            <button
-                              key={f.path}
-                              className="file-diff-link"
-                              title={tr("Show changes")}
-                              onClick={() =>
-                                setDialog({
-                                  type: "diff",
-                                  data: { path: f.path },
-                                })
-                              }
-                            >
-                              <GitCompare />
-                              {f.path}
-                            </button>
+                            <div className="row" key={f.path}>
+                              <button
+                                className="file-diff-link"
+                                title={tr("Show changes")}
+                                onClick={() =>
+                                  setDialog({
+                                    type: "diff",
+                                    data: { path: f.path },
+                                  })
+                                }
+                              >
+                                <GitCompare />
+                                {f.path}
+                              </button>
+                              {READABLE.test(f.path) && (
+                                <button
+                                  className="icon"
+                                  title={tr("Watch this document")}
+                                  aria-label={tr("Watch this document")}
+                                  onClick={() => watchDocument(f.path)}
+                                >
+                                  <BookOpen />
+                                </button>
+                              )}
+                            </div>
                           ))}
                         <button
                           className="wide"
@@ -1469,7 +1716,20 @@ export function App() {
                                               c.time * 1000,
                                             ).toLocaleTimeString()}`}
                                   </small>
+                                  {c.hint && <small>{tr(c.hint)}</small>}
                                 </span>
+                                {c.hint && (
+                                  <button
+                                    className="icon"
+                                    aria-label={tr("Work out what to do")}
+                                    title={tr("Work out what to do")}
+                                    onClick={() =>
+                                      helpWith(c.summary || c.command)
+                                    }
+                                  >
+                                    <Wrench />
+                                  </button>
+                                )}
                               </div>
                             ))
                           )}
@@ -1655,8 +1915,66 @@ export function App() {
           </button>
         </div>
       )}
+      {/* The palette's actions are built here, where the callbacks live: it is a
+          second way into the interface, not a second implementation of it. */}
       {dialog && (
         <DialogView
+          actions={[
+            { id: "new-chat", label: tr("New chat"), run: () => newChat() },
+            {
+              id: "capabilities",
+              label: tr("What can I ask for?"),
+              run: async () => setDialog({ type: "capabilities" }),
+            },
+            ...(app.modes || []).map((m: any, index: number) => ({
+              id: "mode-" + m.id,
+              label: tr("Switch mode") + ": " +
+                (cs ? translate(modeNames[index], "cs") : m.label),
+              run: () => act("mode", { mode: m.id }),
+            })),
+            {
+              id: "decisions",
+              label: tr("Project decisions"),
+              run: async () => setDialog({ type: "decisions" }),
+            },
+            {
+              id: "context",
+              label: tr("Context"),
+              run: async () => {
+                setTab("context");
+                setPanel(true);
+              },
+            },
+            {
+              id: "progress",
+              label: tr("Task progress"),
+              run: async () => {
+                setTab("progress");
+                setPanel(true);
+              },
+            },
+            {
+              id: "changes",
+              label: tr("Changes"),
+              run: async () => {
+                setTab("changes");
+                setPanel(true);
+              },
+            },
+            {
+              id: "compress",
+              label: tr("Compress"),
+              run: () => act("compress"),
+            },
+            ...(app.voice?.enabled && app.voice?.ready
+              ? [{ id: "dictate", label: tr("Dictate"), run: () => dictate() }]
+              : []),
+            ...SETTINGS_SECTIONS.map(([section, label]) => ({
+              id: "settings-" + section,
+              label: tr("Settings") + ": " + tr(label),
+              run: async () => setDialog({ type: "settings", section }),
+            })),
+          ]}
           dialog={dialog}
           close={closeDialog}
           setDialog={setDialog}
@@ -1674,6 +1992,11 @@ export function App() {
           pick={pick}
           runtime={runtime}
           runtimeCommand={runtimeCommand}
+          setText={setText}
+          openPanel={(name: string) => {
+            setTab(name);
+            setPanel(true);
+          }}
         />
       )}
       <ActivityFeedback cs={cs} />
@@ -1701,6 +2024,55 @@ function reconcileMessages(old: Chat, next: Chat) {
     ? [...old.messages.slice(0, first), ...next.messages]
     : next.messages;
 }
+function formatDuration(seconds: number) {
+  return seconds >= 90
+    ? Math.round(seconds / 60) + " min"
+    : Math.max(1, Math.round(seconds)) + " s";
+}
+
+// What the wait costs, and why. Reuse is the number that matters: a prompt the
+// server still holds is free to send, so a low share means something near the
+// start of the conversation changed and all of it is being recomputed.
+function prefillSummary(
+  progress: { total?: number; cache?: number; processed?: number; time_ms?: number },
+  tr: (text: string) => string,
+) {
+  const total = Number(progress.total || 0);
+  const cache = Number(progress.cache || 0);
+  const processed = Number(progress.processed || 0);
+  const elapsed = Number(progress.time_ms || 0) / 1000;
+  const parts: string[] = [];
+  const todo = Math.max(1, total - cache);
+  const done = Math.max(0, processed - cache);
+  // Label it. A bare percentage after "Reading context" reads as how full the
+  // context is, which is a different number entirely - this one is progress
+  // through the part the server does not already hold.
+  parts.push(
+    tr("new") +
+      " " +
+      Math.max(0, Math.min(100, Math.round((100 * done) / todo))) +
+      "%",
+  );
+  if (total > 0) {
+    parts.push(
+      tr("reused") +
+        " " +
+        formatTokens(cache) +
+        "/" +
+        formatTokens(total) +
+        " (" +
+        Math.round((100 * cache) / total) +
+        "%)",
+    );
+  }
+  const rate = elapsed > 0 ? done / elapsed : 0;
+  const left = total - processed;
+  if (rate > 0 && left > rate) {
+    parts.push(tr("remaining") + " ~" + formatDuration(left / rate));
+  }
+  return " · " + parts.join(" · ");
+}
+
 function formatTokens(value: number) {
   return value >= 1000
     ? (value / 1000).toFixed(value < 10000 ? 1 : 0) + "k"

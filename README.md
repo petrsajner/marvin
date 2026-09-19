@@ -74,6 +74,12 @@ These are product decisions, not postponed roadmap items.
 - 🧩 **Hierarchical project guidance** — `AGENTS.md`, `QWEN.md` and `CLAUDE.md`
   are applied automatically from project root to the active file
 - 🔎 **Fast repository search** — ripgrep-backed literal/regex search and file globs
+- 🎙️ **Dictation (opt-in)** — speak instead of typing, in Czech or English. Runs
+  on the processor with whisper.cpp; the text lands in the prompt box for you to
+  check, and nothing is ever sent by voice alone.
+- 🪟 **Window-aware computer control** — lists the open windows, photographs one by
+  name even while another program covers it, and brings it to the front before
+  sending keys.
 - 🧲 **Semantic search (opt-in)** — meaning-based retrieval over project files and
   past conversations, Czech and English, hybrid with keyword FTS5; a small
   CPU-only embedding model serves it without touching the GPU
@@ -90,6 +96,12 @@ These are product decisions, not postponed roadmap items.
   the current sentence finishes
 - 📌 **Pinned files** — selected instructions or architecture stay in the context of
   that particular chat
+- 🧭 **Capability catalogue** — "What can I ask for?" beside Attach lists what
+  Marvin can do as requests with ready examples, marks what the current work mode
+  offers, and switches mode when a capability needs another one
+- 🆘 **Advice when something fails** — a failed task, tool or project check stays
+  in the conversation with a concrete next step where one is known, and otherwise
+  offers to hand the error to the model
 - 🧰 **Optional skills** — the model sees a short catalog and loads a full SKILL.md
   only when needed
 - 🎛️ **Separate work modes** — Discussion, Research, Writing, Development and
@@ -135,9 +147,9 @@ Context summaries use the work mode and process every input segment.
 
 Python remains the backend and Windows/Python 3.12 package versions are locked in
 `requirements-windows-py312.lock`. Node.js is needed only by source developers to
-build the frontend; the installer ships the compiled assets. The previous Gradio
-surface remains available for compatibility diagnostics through
-`MARVIN_LEGACY_UI=1`.
+build the frontend; the installer ships the compiled assets. The Gradio surface
+was removed in 1.16.0 along with the `gradio` dependency; the React workspace is
+the only interface.
 
 For a detailed technical specification of the application service, UI/UX components,
 and harness intelligence, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -145,13 +157,14 @@ and harness intelligence, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## Installation (one time)
 
 For a Windows installer distribution, see the [English installation guide](docs/distribution/INSTALL-EN.md)
-or [Czech installation guide](docs/distribution/INSTALL-CS.md). The release ZIP contains Setup,
-both PDF manuals and SHA-256 checksums. Model weights are downloaded during setup or
-restored from the separate `QwenHarness-Offline-Backup` directory; no personal data
-is included in the distribution.
+or [Czech installation guide](docs/distribution/INSTALL-CS.md). Each release publishes
+both installers, both PDF manuals and a SHA-256 checksum file. Model weights are
+downloaded during setup or restored from the separate `QwenHarness-Offline-Backup`
+directory; no personal data is included in the distribution.
 
-Release packaging after `installer/release.bat`: run `scripts/package_distribution.ps1`.
-Validate the ZIP and a clean Python dependency restore with
+Release packaging after `installer/release.bat`: run `scripts/package_distribution.ps1`,
+which stages the published assets under their release names and writes their checksums.
+Validate the staged assets and a clean Python dependency restore with
 `python tests/check_distribution.py --backup <backup-directory>`.
 
 **Minimal installer prerequisite:** install 64-bit **Python 3.12** from
@@ -200,20 +213,21 @@ See the [integration evidence](docs/design/2026-09-13-qwen38-flash-next-integrat
 # 2a) terminal UI
 .venv/Scripts/python tui.py
 
-# 2b) web UI → http://127.0.0.1:7860
-.venv/Scripts/python webapp.py
+# 2b) workspace → http://127.0.0.1:7860
+.venv/Scripts/python marvin_web.py
 ```
 
 The server can also be controlled from the TUI (`/server start|stop|status`) and
-from the web UI (buttons).
+from the workspace (buttons).
 
 ## Desktop app (Windows)
 
-**`qwen_app.py`** — a native window with the full lifecycle:
+**`launcher/launcher_app.py`** — the native window Marvin.exe wraps, with the full
+lifecycle:
 
 ```bash
-.venv/Scripts/pythonw qwen_app.py     # no console (for shortcuts)
-.venv/Scripts/python qwen_app.py      # with a diagnostic console
+.venv/Scripts/pythonw launcher/launcher_app.py   # no console (for shortcuts)
+.venv/Scripts/python launcher/launcher_app.py    # with a diagnostic console
 ```
 
 - **START**: automatically starts llama-server (if not running) + the web UI and
@@ -446,7 +460,7 @@ skills/           bundled optional SKILL.md procedures
 user-skills/      personal persistent skills (the installer never overwrites them)
 scripts/          current setup, build, release, backup and benchmark helpers
 tests/            current unit, service, browser and GPU verification
-webapp.py         current API/workspace entry point; Gradio compatibility fallback
+marvin_web.py     workspace and local API entry point
 runtime/          llama.cpp + deliberately retained GGUF models (gitignored)
 sessions/         development conversation history (gitignored)
 ```

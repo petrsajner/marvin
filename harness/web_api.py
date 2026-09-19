@@ -126,9 +126,11 @@ def create_app(cfg=None, *, service=None):
                 from harness.embedding_server import status as embeddings_status
                 semantic["server"] = embeddings_status(cfg)
             return {"version": APP_VERSION, "preferences": service.preferences,
+                "projects_root": str(Projects(cfg).root_dir),
                 "memory": {"vram_detected_gb": vram_total_gb(), "vram_budget_gb": budget,
                            "ram_total_gb": round(memory.total / 1024**3, 1),
                            "ram_available_gb": round(memory.available / 1024**3, 1)},
+                "voice": service.voice_state(),
                 "session_id": selected, "sessions": sessions, "projects": Projects(cfg).list_all(),
                 "modes": [{"id": key, "label": value.label} for key, value in WORK_MODES.items()],
                 "models": model_options, "semantic_search": semantic,
@@ -149,6 +151,71 @@ def create_app(cfg=None, *, service=None):
             return {"id": sid, "meta": session.meta, "messages": [service.message_payload(session, m) for m in messages[start:end]],
                     "before": start if start else None, "total": len(messages), "live": live,
                     "draft": read_json(session.dir / "draft.json"), "jobs": jobs}
+
+    @app.get("/api/voice")
+    def voice_state():
+        with service.lock:
+            return service.voice_state(devices=True)
+
+    @app.post("/api/voice/start")
+    def voice_start():
+        with service.lock:
+            try:
+                return service.voice_start()
+            except ValueError as error:
+                raise HTTPException(status_code=400, detail=str(error))
+
+    @app.post("/api/voice/stop")
+    def voice_stop():
+        # Outside the service lock: transcription takes seconds and must not
+        # block the rest of the interface while it runs.
+        try:
+            return service.voice_stop()
+        except (RuntimeError, OSError) as error:
+            raise HTTPException(status_code=400, detail=str(error))
+
+    @app.post("/api/voice/cancel")
+    def voice_cancel():
+        with service.lock:
+            return service.voice_cancel()
+
+    @app.post("/api/voice/install")
+    def voice_install():
+        with service.lock:
+            service.prepare_voice_input()
+            return service.voice_state()
+
+    @app.get("/api/openart")
+    def openart_state():
+        with service.lock:
+            return service.openart_state()
+
+    @app.post("/api/openart/enabled")
+    def openart_enabled(payload: dict):
+        with service.lock:
+            return service.set_openart_enabled(bool(payload.get("enabled")))
+
+    @app.post("/api/openart/install")
+    def openart_install():
+        with service.lock:
+            service.prepare_openart()
+            return service.openart_state()
+
+    @app.post("/api/openart/login")
+    def openart_login():
+        # Signing in opens a browser and is the account holder's to complete; this
+        # only starts it. Outside the lock so the settings panel stays responsive.
+        return service.openart_login()
+
+    @app.post("/api/openart/logout")
+    def openart_logout():
+        with service.lock:
+            return service.openart_logout()
+
+    @app.get("/api/capabilities")
+    def capabilities(mode: str = "discussion"):
+        from harness import capabilities as catalogue
+        return catalogue.catalogue(mode)
 
     @app.get("/api/sessions/{sid}/detail")
     def detail(sid: str):
@@ -405,6 +472,21 @@ def create_app(cfg=None, *, service=None):
                 for path in project_files(Path(workspace))
                 if path.suffix.lower() in (DOCUMENT_EXTENSIONS | {".xlsx", ".xlsm", ".png", ".jpg", ".webp"})]
 
+    @app.post("/api/sessions/{sid}/register-file")
+    def register_project_file(sid: str, payload: dict):
+        """Make a project file previewable. The preview resolves an id, not a path."""
+        session = service.session(sid)
+        workspace = session.meta.get("workspace")
+        if not workspace:
+            raise HTTPException(400, "Select a project first")
+        root = Path(workspace).resolve()
+        target = (root / payload["path"]).resolve() if not Path(payload["path"]).is_absolute()             else Path(payload["path"]).resolve()
+        if not target.is_relative_to(root):
+            raise HTTPException(400, "That file is outside the project")
+        if not target.is_file():
+            raise HTTPException(404, "File not found")
+        return service.store.register_file(target, sid, "project")
+
     @app.post("/api/sessions/{sid}/import-chat")
     def import_chat(sid: str, payload: dict):
         session = service.session(sid)
@@ -432,6 +514,33 @@ def create_app(cfg=None, *, service=None):
     def search(query: str):
         return HistoryIndex(cfg.path("paths.sessions_dir")).search(query)
 
+    @app.get("/api/find")
+    def find_everywhere(query: str, session_id: str | None = None):
+        """One search over chats, project files, memory and decisions.
+
+        Each was searchable from a different place, so remembering a sentence but
+        not where it was written meant guessing which place to look in."""
+        from harness import finder
+        with service.lock:
+            session = service.session(session_id) if session_id else None
+        workspace = None
+        work_mode = None
+        if session is not None:
+            raw = session.meta.get("workspace")
+            workspace = Path(raw) if raw else None
+            work_mode = session.meta.get("work_mode")
+        answer = finder.find(cfg, query, workspace=workspace, work_mode=work_mode)
+        # File hits are registered so the existing preview can open them: the
+        # preview resolves an id from the file store, not a path.
+        for group in answer["groups"]:
+            if group["kind"] != "file":
+                continue
+            for item in group["items"]:
+                record = service.store.register_file(item["open"]["path"],
+                                                     session_id, "project")
+                item["open"]["file"] = record
+        return answer
+
     @app.patch("/api/settings")
     def update_settings(payload: dict):
         with service.lock:
@@ -457,8 +566,15 @@ def create_app(cfg=None, *, service=None):
                     preset = candidate
                     payload["model"] = preset["model"]
                     payload["kv_cache_modes"] = {**payload.get("kv_cache_modes", {}), preset["model"]: preset["profile"]}
+            if "projects_root" in payload:
+                # Validated before it is stored, so a bad folder never persists.
+                payload["projects_root"] = service.apply_projects_root(payload["projects_root"])
             allowed = {"model", "thinking", "language", "theme", "density", "autonomy", "send_mode",
-                       "kv_cache_modes", "vram_gb", "semantic_search"}
+                       "kv_cache_modes", "vram_gb", "semantic_search", "projects_root",
+                       "voice_input", "voice_language", "voice_device"}
+            if payload.get("voice_input"):
+                # Fetch the pinned program and models once, in the background.
+                service.prepare_voice_input()
             if "semantic_search" in payload and not isinstance(payload["semantic_search"], bool):
                 raise ValueError("Semantic search must be enabled or disabled")
             if payload.get("semantic_search"):
@@ -469,6 +585,9 @@ def create_app(cfg=None, *, service=None):
                 if (cfg.model(key).get("adaptive_runtime")
                         and profile != service.preferences.get("kv_cache_modes", {}).get(key)):
                     service.preferences.setdefault("adaptive_kv_requests", {})[key] = profile
+            if "language" in payload:
+                from harness.i18n import set_language
+                set_language(payload["language"])
             service.preferences.update({key: value for key, value in payload.items() if key in allowed and key != "kv_cache_modes"})
             service.preferences.setdefault("kv_cache_modes", {}).update(payload.get("kv_cache_modes", {}))
             if (preset and cfg.model(preset["model"]).get("adaptive_runtime")
@@ -528,14 +647,39 @@ def create_app(cfg=None, *, service=None):
         runtime_cache["at"] = 0
         return {"ok": True, "switch": service.models.snapshot().__dict__}
 
+    def _recorded_backup() -> Path | None:
+        """The chosen offline backup, following it if a release renamed it.
+
+        A refresh renames the folder to the version it now holds, so a recorded
+        path can point at a name that no longer exists while the backup itself
+        sits right beside it."""
+        marker = cfg.path("paths.runtime_dir") / "offline-backup-path.txt"
+        if not marker.is_file():
+            return None
+        recorded = Path(marker.read_text(encoding="utf-8-sig").strip())
+        if (recorded / "manifest.json").is_file():
+            return recorded
+        import re
+        match = re.fullmatch(r"(?i)(Marvin-Offline-Backup-)(\d+(?:\.\d+)*)", recorded.name)
+        if not match or not recorded.parent.is_dir():
+            return recorded
+        siblings = sorted(
+            (item for item in recorded.parent.glob(match.group(1) + "*")
+             if (item / "manifest.json").is_file()),
+            key=lambda item: item.stat().st_mtime, reverse=True)
+        if not siblings:
+            return recorded
+        atomic_write_text(marker, str(siblings[0]))
+        return siblings[0]
+
     @app.get("/api/backup")
     def backup_info():
         from scripts.offline_backup import backup_info
-        path = cfg.path("paths.runtime_dir") / "offline-backup-path.txt"
-        if not path.is_file():
+        selected = _recorded_backup()
+        if selected is None:
             return {"selected": False}
         try:
-            return {"selected": True, **backup_info(Path(path.read_text(encoding="utf-8-sig").strip()))}
+            return {"selected": True, **backup_info(selected)}
         except Exception as exc:
             return {"selected": False, "error": str(exc)}
 

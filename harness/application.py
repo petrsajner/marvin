@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import subprocess
 import threading
 import time
 import uuid
@@ -44,6 +45,10 @@ class ApplicationService:
         self.live: dict[str, dict] = {}
         self.active: dict | None = None
         self.abort = threading.Event()
+        # Why the current run was interrupted: "stop", "steer" or nothing. A stop
+        # takes effect at once; a clarification waits for the prompt read so the
+        # cached prefix survives.
+        self.abort_reason = ""
         self.models = ModelSwitchController(cfg)
         self.store = EventStore(cfg.path("paths.runtime_dir") / "application.sqlite3")
         self.preferences_path = cfg.path("paths.runtime_dir") / "workspace-settings.json"
@@ -63,6 +68,22 @@ class ApplicationService:
             self.preferences["model"] = cfg.model_key()
         # Semantic search is opt-in; the runtime flag mirrors the saved preference.
         self.preferences.setdefault("semantic_search", False)
+        # Dictation is opt-in too, and the microphone belongs to the service: a
+        # reloaded page must not leave a stream open or start a second one.
+        self.preferences.setdefault("voice_input", False)
+        self.preferences.setdefault("voice_language", "auto")
+        self.preferences.setdefault("voice_device", None)
+        self.recorder = None
+        self._voice_install = {"running": False, "error": "", "done": 0, "total": 0}
+        self._openart_install = {"running": False, "error": "", "done": 0, "total": 0}
+        # Asking the CLI who is signed in starts a process, and the settings panel
+        # polls. The answer changes only when the owner signs in or out, so it is
+        # remembered briefly and cleared outright when they do either.
+        self._openart_account = {"at": 0.0, "value": None}
+        # Where new projects are created. Empty means the folder beside the
+        # installation, which is all that used to be possible.
+        self.preferences.setdefault("projects_root", "")
+        self.apply_projects_root(self.preferences["projects_root"])
         cfg.data["_semantic_search"] = bool(self.preferences["semantic_search"])
         self.preferences.setdefault("vram_gb", legacy.get("vram_gb", cfg.data.get("hardware", {}).get("vram_gb", "auto")))
         from harness.gpu import normalize_vram_setting
@@ -91,9 +112,12 @@ class ApplicationService:
             self.models.remember_configuration(previous, previous_key)
         if manage_model:
             self.fit_hardware()
-        from harness.i18n import detect_language
+        from harness.i18n import detect_language, set_language
         if not legacy.get("language") and not self.preferences_path.exists():
             self.preferences["language"] = detect_language(cfg.root) or "en"
+        # Only the legacy Gradio surface used to do this, so every message the
+        # harness itself produced stayed English in the Czech interface.
+        set_language(self.preferences["language"])
         for job in self.store.jobs(("running", "steering")):
             payload = job["payload"]
             if job["status"] == "running":
@@ -103,6 +127,175 @@ class ApplicationService:
             self.store.save_job(payload, "interrupted" if job["status"] == "running" else "queued")
         self.worker = threading.Thread(target=self._work, name="marvin-run-controller", daemon=True)
         self.worker.start()
+
+    # ---------------------------------------------------------------- dictation
+    def voice_state(self, devices: bool = False) -> dict:
+        """Dictation status. Device enumeration is skipped unless asked for: it
+        queries the audio system, and the interface polls the general state."""
+        from harness import speech
+        absent = speech.missing(self.cfg)
+        can_record, reason = speech.capture_available()
+        return {
+            "enabled": bool(self.preferences.get("voice_input")),
+            "ready": not absent and can_record,
+            "missing": absent,
+            "capture_error": reason,
+            "recording": bool(self.recorder and self.recorder.active),
+            "seconds": self.recorder.seconds if self.recorder else 0.0,
+            "language": self.preferences.get("voice_language", "auto"),
+            "device": self.preferences.get("voice_device"),
+            "devices": speech.input_devices() if devices else [],
+            "installing": self._voice_install["running"],
+            "install_error": self._voice_install["error"],
+            "install_done": self._voice_install["done"],
+            "install_total": self._voice_install["total"],
+        }
+
+    def voice_start(self) -> dict:
+        from harness import speech
+        from harness.i18n import t
+        absent = speech.missing(self.cfg)
+        if absent:
+            raise ValueError(t("Dictation is not installed yet: {items}",
+                               items=", ".join(absent)))
+        can_record, reason = speech.capture_available()
+        if not can_record:
+            raise ValueError(reason or t("No microphone is connected."))
+        self.cfg.data["speech"]["device"] = self.preferences.get("voice_device")
+        if self.recorder is None:
+            self.recorder = speech.Recorder(self.cfg)
+        self.recorder.start()
+        return self.voice_state()
+
+    def voice_cancel(self) -> dict:
+        if self.recorder:
+            self.recorder.cancel()
+        return self.voice_state()
+
+    def voice_stop(self) -> dict:
+        """Stop recording and return what was heard. Never sends anything."""
+        from harness import speech
+        if not (self.recorder and self.recorder.active):
+            return {"text": "", "heard": False, **self.voice_state()}
+        wav = self.recorder.stop()
+        if wav is None:
+            return {"text": "", "heard": False, **self.voice_state()}
+        try:
+            text = speech.transcribe(self.cfg, wav, self.preferences.get("voice_language"))
+        finally:
+            wav.unlink(missing_ok=True)
+        return {"text": text, "heard": bool(text), **self.voice_state()}
+
+    def prepare_voice_input(self) -> None:
+        """Download the pinned dictation assets once, in the background."""
+        from harness import speech
+        if speech.ready(self.cfg) or self._voice_install["running"]:
+            return
+        self._voice_install.update(running=True, error="", done=0,
+                                   total=speech.install_bytes())
+
+        def _install():
+            def advance(done: int, total: int) -> None:
+                self._voice_install.update(done=done, total=total)
+
+            try:
+                speech.install(self.cfg, on_progress=advance)
+            except Exception as error:
+                self._voice_install["error"] = f"{type(error).__name__}: {error}"
+            finally:
+                self._voice_install["running"] = False
+
+        threading.Thread(target=_install, name="marvin-voice-setup", daemon=True).start()
+
+    # ---------------------------------------------------------- image generation
+    OPENART_ACCOUNT_TTL = 30.0
+
+    def openart_state(self, refresh: bool = False) -> dict:
+        """Whether a picture can be generated, and what the owner still has to do."""
+        from harness import openart
+        installed = openart.installed(self.cfg)
+        account = None
+        if installed:
+            now = time.time()
+            fresh = now - self._openart_account["at"] < self.OPENART_ACCOUNT_TTL
+            if refresh or not fresh:
+                self._openart_account = {"at": now, "value": openart.account(self.cfg)}
+            account = self._openart_account["value"]
+        return {
+            "enabled": openart.enabled(self.cfg),
+            "installed": installed,
+            "signed_in": bool(openart.identity(account)),
+            # Identity and balance only; nothing that could be a credential.
+            "account": {"name": openart.identity(account),
+                        "plan": str(account.get("plan") or ""),
+                        "credits": account.get("credits")} if openart.identity(account) else None,
+            "models": [{"id": row[0], "description": row[1]} for row in openart.MODELS],
+            "installing": self._openart_install["running"],
+            "install_error": self._openart_install["error"],
+            "install_done": self._openart_install["done"],
+            "install_total": self._openart_install["total"],
+        }
+
+    def set_openart_enabled(self, value: bool) -> dict:
+        """The owner's switch. Independent of sign-in: signed in but off stays off."""
+        self.cfg.data.setdefault("openart", {})["enabled"] = bool(value)
+        if value:
+            self.prepare_openart()
+        return self.openart_state()
+
+    def prepare_openart(self) -> None:
+        """Download the pinned CLI once, in the background."""
+        from harness import openart
+        if openart.installed(self.cfg) or self._openart_install["running"]:
+            return
+        self._openart_install.update(running=True, error="", done=0,
+                                     total=openart.install_bytes())
+
+        def _install():
+            def advance(done: int) -> None:
+                self._openart_install["done"] = done
+
+            try:
+                openart.install(self.cfg, on_progress=advance)
+            except Exception as error:
+                self._openart_install["error"] = f"{type(error).__name__}: {error}"
+            finally:
+                self._openart_install["running"] = False
+
+        threading.Thread(target=_install, name="marvin-openart-setup", daemon=True).start()
+
+    def openart_login(self) -> dict:
+        """Open the browser sign-in. The owner completes it; this never sees it."""
+        from harness import openart
+        from harness.i18n import t
+        if not openart.installed(self.cfg):
+            return {"ok": False, "error": t("The image generation program is not installed.")}
+        try:
+            subprocess.Popen(openart.login_argv(self.cfg),
+                             creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
+        except OSError as error:
+            return {"ok": False, "error": f"{type(error).__name__}: {error}"}
+        self._openart_account = {"at": 0.0, "value": None}
+        return {"ok": True}
+
+    def openart_logout(self) -> dict:
+        from harness import openart
+        ok = openart.logout(self.cfg)
+        self._openart_account = {"at": 0.0, "value": None}
+        return {"ok": ok, **self.openart_state(refresh=True)}
+
+    def apply_projects_root(self, value: str) -> str:
+        """Point new projects at a folder, or back at the built-in one.
+
+        Projects reads projects.root_dir from the live configuration, which every
+        request shares, so this is the one place that has to set it."""
+        if not str(value or "").strip():
+            self.cfg.data.setdefault("projects", {}).pop("root_dir", None)
+            return ""
+        from harness.projects import validate_root
+        resolved = validate_root(value, self.cfg)
+        self.cfg.data.setdefault("projects", {})["root_dir"] = str(resolved)
+        return str(resolved)
 
     def save_preferences(self):
         atomic_write_text(self.preferences_path, json.dumps(self.preferences, ensure_ascii=False, indent=2))
@@ -283,7 +476,13 @@ class ApplicationService:
             if (self.active and self.active["session_id"] == session_id
                     and delivery == "steer" and kind == "message" and not text.startswith("/")):
                 status = "steering"
+                self.abort_reason = "steer"
                 self.abort.set()
+                if (self.live.get(session_id) or {}).get("phase") == "reading_context":
+                    # Say so, or the silence looks like the message was lost.
+                    self.store.emit(session_id, "notice", {
+                        "kind": "steer_deferred", "text": "",
+                        "run_id": self.active["id"], "created": time.time()})
             self.store.save_job(job, status)
             self.store.emit(session_id, "submission", {"id": request_id, "status": status, **job})
             self.wake.notify_all()
@@ -304,6 +503,7 @@ class ApplicationService:
         with self.lock:
             if self.active and (not session_id or self.active["session_id"] == session_id):
                 self.queue_paused = True
+                self.abort_reason = "stop"
                 self.abort.set()
                 self.store.emit(self.active["session_id"], "run_status", {"status": "stopping", "run_id": self.active["id"]})
                 return True
@@ -346,6 +546,7 @@ class ApplicationService:
                 job = jobs[0]["payload"]
                 self.active = job
                 self.abort = threading.Event()
+                self.abort_reason = ""
                 self.store.save_job(job, "running")
             try:
                 self._drive(job)
@@ -353,6 +554,7 @@ class ApplicationService:
                 status = "stopped" if self.abort.is_set() else "failed"
                 job["error"] = str(exc) if status == "failed" else ""
                 self.store.save_job(job, status)
+                self._emit_failure(job["session_id"], job["id"], job["error"])
                 self.store.emit(job["session_id"], "run_status", {"status": status, "error": job["error"], "run_id": job["id"]})
             finally:
                 with self.wake:
@@ -388,6 +590,18 @@ class ApplicationService:
             session.add("tool", "Execution was interrupted; outcome unknown. Inspect actual state before retrying.",
                         tool_call_id=call["id"], name=call["function"]["name"])
 
+    def _emit_failure(self, session_id: str, run_id: str, error: str) -> None:
+        """Leave a failure where the user can still find it.
+
+        run_status only raises a toast, which fades; someone who does not program
+        is then left with nothing. A notice is durable and carries the next step
+        when the failure is one we recognise."""
+        if not (error or "").strip():
+            return
+        from harness.failures import failure_notice
+        self.store.emit(session_id, "notice",
+                        failure_notice(error, run_id, time.time()))
+
     def _maybe_autocommit(self, agent, session, job, result_text: str) -> str | None:
         """Commit the task's changed files when the project opted into auto-commit.
 
@@ -409,11 +623,13 @@ class ApplicationService:
         message = self._autocommit_message(agent, session, job, result_text)
         if not message:
             return None
+        from harness.i18n import t
         result = commit_files(agent.ctx, paths, message)
         if not result.get("ok"):
-            return f"Auto-commit failed: {str(result.get('error'))[:300]}"
-        return (f"Auto-committed {len(paths)} file{'s' if len(paths) != 1 else ''} "
-                f"as {result.get('hash') or 'HEAD'}.")
+            return t("Auto-commit failed: {error}", error=str(result.get("error"))[:300])
+        # Phrased so it needs no plural agreement in either language.
+        return t("Auto-committed as {hash} ({count} files)",
+                 hash=result.get("hash") or "HEAD", count=len(paths))
 
     @staticmethod
     def _autocommit_message(agent, session, job, result_text: str) -> str:
@@ -471,8 +687,12 @@ class ApplicationService:
         if live.get("text") or live.get("reasoning"):
             session.add("assistant", live.get("text", ""), reasoning=live.get("reasoning", ""))
         self._seal_interrupted_tools(session)
-        self.store.emit(session.id, "notice", {"text": "Adjusting the memory profile and continuing the task.",
+        from harness.i18n import t
+        self.store.emit(session.id, "notice", {"text": t("Adjusting the memory profile and continuing the task."),
                                               "run_id": job["id"], "created": time.time()})
+        from harness import restart_log
+        restart_log.record_for(cfg, reason="memory_pressure_recovery", wanted=key,
+                               running=key, profile=profile, note=failure.get("code"))
         live.update(phase="loading_model", phase_started=time.time(), text="", reasoning="", prompt_progress=None)
         self.models.request(key, restart=True, kv_profile=profile, config=cfg,
                             on_success=self.model_became_ready,
@@ -609,9 +829,10 @@ class ApplicationService:
         if not session.messages or session.messages[0].get("role") != "system":
             session.messages.insert(0, {"role": "system", "content": "", "id": f"{sid}:system"})
         previous_agent = self.agents.get(sid)
-        agent = Agent(cfg, llm, session, build_registry(spec.agent_mode, mode),
+        agent = Agent(cfg, llm, session, build_registry(spec.agent_mode, mode, cfg),
                       SafetyPolicy(autonomy=cfg.agent["autonomy"]), mode=spec.agent_mode,
                       work_mode=mode, abort_flag=self.abort, on_event=event,
+                      may_abort_prefill=lambda: self.abort_reason != "steer",
                       process_manager=previous_agent.ctx.processes if previous_agent else None,
                       browser_manager=previous_agent.ctx.browser if previous_agent else None)
         if not session.meta.get("workspace"):
@@ -633,7 +854,19 @@ class ApplicationService:
                 key = cfg.model_key()
                 profile_changed = cfg.kv_cache_mode(key) != self.models.cfg.kv_cache_mode(key)
                 hardware_changed = cfg.data.get("hardware") != self.models.cfg.data.get("hardware")
-                if profile_changed or hardware_changed or not servermgmt.health(cfg) or servermgmt.running_model(cfg) != key:
+                # Ask each condition once and keep the answers. A restart throws
+                # away the processed prompt - 92 seconds for 150k tokens - and
+                # until now the decision recorded nothing about why it was taken.
+                healthy = servermgmt.health(cfg)
+                running = servermgmt.running_model(cfg)
+                if profile_changed or hardware_changed or not healthy or running != key:
+                    from harness import restart_log
+                    restart_log.record_for(
+                        cfg,
+                        reason=restart_log.reasons(profile_changed=profile_changed,
+                                                   hardware_changed=hardware_changed,
+                                                   healthy=healthy, running=running, wanted=key),
+                        wanted=key, running=running, profile=cfg.kv_cache_mode(key))
                     live["phase"] = "loading_model"
                     flush(True)
                     profile = cfg.kv_cache_mode(key)
@@ -696,6 +929,7 @@ class ApplicationService:
                         self.store.save_job(addition, "complete")
                     capture_context()
                     self.abort.clear()
+                    self.abort_reason = ""
                     continue
                 if result.status is Status.CONTINUE:
                     continue
@@ -726,6 +960,8 @@ class ApplicationService:
                 if commit_note:
                     self.store.emit(sid, "notice", {"text": commit_note,
                                                     "run_id": rid, "created": time.time()})
+                if status == "failed":
+                    self._emit_failure(sid, rid, job.get("error") or result.text)
                 self.store.emit(sid, "run_status", {"run_id": rid, "status": status,
                     "text": result.text, "pending": result.pending_summary if status == "waiting_confirmation" else [],
                     "usage": session.meta.get("last_usage", {})})
@@ -749,24 +985,44 @@ class ApplicationService:
                 value["files"].append(self.store.register_file(item["path"], session.id, "attachment"))
         return value
 
+    # Folders whose whole purpose is to hold something produced. Scanned rather
+    # than relying on the journal, so a picture is in Results whatever wrote it -
+    # including one made before the journal learned to record it.
+    OUTPUT_DIRECTORIES = ("exports", "generated-images")
+
     def discover_results(self, session, agent=None):
-        directories = [session.dir / "exports"]
+        roots = [session.dir]
         if session.meta.get("workspace"):
-            directories.append(Path(session.meta["workspace"]) / "exports")
-        for directory in directories:
-            if directory.is_dir():
-                for path in directory.iterdir():
-                    if path.is_file():
-                        self.store.register_file(path, session.id)
-        if agent:
-            for item in agent.ctx.changes.summary().get("files", []):
-                path = agent.ctx.workspace / item["path"]
+            roots.append(Path(session.meta["workspace"]))
+        for root in roots:
+            for name in self.OUTPUT_DIRECTORIES:
+                directory = Path(root) / name
+                if directory.is_dir():
+                    for path in directory.iterdir():
+                        if path.is_file():
+                            self.store.register_file(path, session.id)
+        # The journal, not only when an agent happens to be loaded. Agents live in
+        # memory for the conversations that have run a task since the program
+        # started, so asking only those meant Results was empty after every
+        # restart until the conversation was used again.
+        from harness.changes import ChangeJournal
+        workspace = Path(session.meta["workspace"]) if session.meta.get("workspace") else None
+        journal = agent.ctx.changes if agent else ChangeJournal(session, workspace or session.dir)
+        root = agent.ctx.workspace if agent else (workspace or session.dir)
+        # Every task this conversation has run, not only the most recent one. The
+        # journal starts a fresh manifest per task, so asking just the current one
+        # meant the finished program disappeared from Results the moment the next
+        # task touched a test script.
+        for task_id in journal.task_ids() or [None]:
+            for item in journal.summary(task_id).get("files", []):
+                path = Path(root) / item["path"]
                 if item["changed"] and path.is_file():
                     self.store.register_file(path, session.id, "changed")
 
     def close(self):
         with self.wake:
             self.closed = True
+            self.abort_reason = "stop"
             self.abort.set()
             self.wake.notify_all()
         self.worker.join(timeout=3)

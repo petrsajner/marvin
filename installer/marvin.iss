@@ -1,4 +1,4 @@
-; ============================================================
+﻿; ============================================================
 ;  Marvin - installer (Inno Setup 6)
 ;  Build:  installer\build_installer.bat  →  dist\Marvin-Setup-<version>.exe
 ;
@@ -10,7 +10,7 @@
 ; Override the version from the command line: ISCC /DMyAppVersion=x.y.z
 ; (installer\release.bat uses installer\version.txt)
 #ifndef MyAppVersion
-#define MyAppVersion "1.11.0"
+#define MyAppVersion "1.14.1"
 #endif
 
 #define MyAppName "Marvin"
@@ -52,6 +52,11 @@ ShowLanguageDialog=yes
 ; Remove the old executable after the product rename
 [InstallDelete]
 Type: files; Name: "{app}\QwenHarness.exe"
+; The Gradio interface and its entry points, removed in 1.16.0. Upgrading only
+; overwrites what the package ships, so without this they stay on disk - and
+; qwen_app.py would still open the interface this release exists to remove.
+Type: files; Name: "{app}\webapp.py"
+Type: files; Name: "{app}\qwen_app.py"
 ; Replace only packaged application code. User data, models and user-skills stay.
 Type: filesandordirs; Name: "{app}\_internal"
 Type: filesandordirs; Name: "{app}\harness"
@@ -108,8 +113,7 @@ Source: "..\dist\Marvin\_internal\*"; DestDir: "{app}\_internal"; Flags: ignorev
 Source: "..\build\full-payload-{#MyAppVersion}\crt\*.dll"; DestDir: "{app}\_internal"; Flags: ignoreversion
 #endif
 ; Supporting source (harness core, scripts and configuration)
-Source: "..\qwen_app.py"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\webapp.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\marvin_web.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\tui.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\run_app.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\run_cli.bat"; DestDir: "{app}"; Flags: ignoreversion

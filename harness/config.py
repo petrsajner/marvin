@@ -17,6 +17,14 @@ BUILTIN_MODELS: dict[str, dict[str, Any]] = {'q4': {'alias': 'Qwen3.8-27B Q4_K_M
         'file': 'Qwen3.8-27B-UD-Q4_K_M.gguf',
         'mmproj': 'mmproj-F16.gguf',
         'server_args': ['-fa', 'on']},
+ 'q2': {'alias': 'Qwen3.8-27B Q2_K_XL (9.8 GB, smallest quant - the most context on a 16 GB GPU)',
+        'status_label': 'Qwen 3.8 27B · Q2',
+        # Offered, never chosen for the owner: it trades weight quality for room.
+        'optional_download': True,
+        'repo': 'unsloth/Qwen3.8-27B-GGUF',
+        'file': 'Qwen3.8-27B-UD-Q2_K_XL.gguf',
+        'mmproj': 'mmproj-F16.gguf',
+        'server_args': ['-fa', 'on']},
  'q3': {'alias': 'Qwen3.8-27B IQ3_S (12.0 GB, borderline quality - for 16 GB GPUs)',
         'status_label': 'Qwen 3.8 27B · IQ3_S',
         'repo': 'unsloth/Qwen3.8-27B-GGUF',
@@ -103,6 +111,23 @@ DEFAULTS: dict[str, Any] = {
         "screenshot_grayscale": False,
         "failsafe": True,
         "pause_between_actions": 0.15,
+    },
+    # Dictation. Listed here and not only in config.yaml: an upgrade keeps the
+    # user's file, so a new section reaches an existing installation only through
+    # these defaults.
+    "speech": {
+        "enabled": False,
+        "language": "auto",
+        "device": None,
+        "threads": 0,
+        "max_seconds": 300,
+    },
+    # Image generation is the one feature that calls out to a paid service, so it
+    # is off until the owner turns it on, and off means off even when the CLI is
+    # installed and signed in. No credential lives here: the OpenArt CLI keeps its
+    # own in the user profile, so nothing reaches this file, an export or a backup.
+    "openart": {
+        "enabled": False,
     },
     "memory": {
         "directory": "memory",
@@ -300,8 +325,12 @@ class Config:
     def kv_cache_server_args(self, key: str | None = None) -> list[str]:
         mode = self.kv_cache_mode(key)
         # Compact profiles can override the actual cache_type independently of their key.
-        cache_type = str(self.kv_cache_profiles(key).get(mode, {}).get("cache_type") or mode)
-        return ["--cache-type-k", cache_type, "--cache-type-v", cache_type]
+        values = self.kv_cache_profiles(key).get(mode, {})
+        cache_type = str(values.get("cache_type") or mode)
+        # Keys and values can differ: values tolerate quantisation far better, so
+        # a smaller value cache buys context without touching the sensitive half.
+        value_type = str(values.get("value_cache_type") or cache_type)
+        return ["--cache-type-k", cache_type, "--cache-type-v", value_type]
 
     # -- server ------------------------------------------------------------
     @property

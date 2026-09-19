@@ -61,7 +61,7 @@ def main() -> int:
     print("DONE! Next steps:")
     print("  1) start server:  .venv/Scripts/python scripts/server.py start")
     print("  2) TUI:           .venv/Scripts/python tui.py")
-    print("     Web UI:        .venv/Scripts/python webapp.py  → http://127.0.0.1:7860")
+    print("     Workspace:     .venv/Scripts/python marvin_web.py  → http://127.0.0.1:7860")
     print("=" * 60)
     return 0
 

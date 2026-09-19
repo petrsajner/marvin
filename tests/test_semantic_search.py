@@ -7,6 +7,7 @@ import json
 import tempfile
 import time
 import unittest
+import zlib
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -24,14 +25,18 @@ DIM = 1024
 
 
 def mock_vectors(cfg_or_texts, texts=None):
-    """Deterministic normalized bag-of-words vectors; accepts (texts) or (cfg, texts)."""
+    """Deterministic normalized bag-of-words vectors; accepts (texts) or (cfg, texts).
+
+    The bucket comes from crc32, not the builtin hash: string hashing is salted
+    per process, so word collisions - and with them the ranking this test
+    asserts - changed with every interpreter start."""
     import numpy as np
     items = texts if texts is not None else cfg_or_texts
     out = []
     for text in items:
         vec = np.zeros(DIM, dtype="float32")
         for word in text.lower().split():
-            vec[hash(word) % DIM] += 1.0
+            vec[zlib.crc32(word.encode("utf-8")) % DIM] += 1.0
         norm = float(np.linalg.norm(vec))
         out.append(vec / norm if norm else vec)
     return np.stack(out) if out else np.zeros((0, DIM), dtype="float32")

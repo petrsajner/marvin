@@ -101,7 +101,7 @@ py -3.12 -m venv .venv
 .venv\Scripts\python scripts\setup_env.py --model auto
 npm --prefix frontend ci
 npm --prefix frontend run build
-.venv\Scripts\python qwen_app.py
+.venv\Scripts\python launcher\launcher_app.py
 ```
 
 For terminal use, run `run_cli.bat` or `.venv\Scripts\python tui.py`.
@@ -127,7 +127,7 @@ This chapter describes the 1.8.0 workspace. The top bar contains the model and i
 
 The navigation and detail columns can be resized by dragging their inner edges. Double-click an edge to reset its width; restarting or reloading the interface also restores the default widths. The conversation list initially shows the 20 most recent chats in the selected project. **Show older** reveals another 20; **Show recent only** collapses the list.
 
-The desktop launcher uses the data folder belonging to its own installation. Running a development checkout alongside an installed copy does not merge their conversations. For explicit access to an existing installation from source, run `python webapp.py --data-dir "C:\path\to\Marvin"`; this uses the existing data in place without converting or copying it.
+The desktop launcher uses the data folder belonging to its own installation. Running a development checkout alongside an installed copy does not merge their conversations. For explicit access to an existing installation from source, run `python marvin_web.py --data-dir "C:\path\to\Marvin"`; this uses the existing data in place without converting or copying it.
 
 The project selector opens the most recent chat of that project. **No project** opens an independent chat. Selecting another chat never rebinds the task that is already running elsewhere.
 
@@ -136,6 +136,44 @@ Work modes always appear in this order: **Discussion, Research, Writing, Develop
 Use **New chat** to create a conversation. Type into the title above the chat and press Enter to rename it. The chat's three-dot menu contains Move, Undo last turn, Branch, Export, and Delete. Selecting a destination moves the chat and updates its project context. Stop the chat's task before moving or deleting it.
 
 The three-dot menu beside the project selector creates a new project, attaches an existing folder, or removes the selected project. Attached folders are never deleted from disk. Search in the left sidebar searches saved conversations.
+
+## Finding anything you have written
+
+The box at the top of the sidebar searches **everything**, not only
+conversations: your chats, the text files in the open project, all three layers of
+memory, and the project's decisions. Results are grouped by where they live, and
+clicking one opens that place - the conversation, the document, the memory page,
+the decisions panel.
+
+Which project is searched follows the open conversation. With no project open,
+only conversations and global memory are searched, because there is nothing else
+to look in.
+
+## Go to - one keystroke
+
+**Ctrl+K** opens a small box you can type into. It offers the things the interface
+can do - new chat, switch work mode, the capability catalogue, the context,
+progress and changes panels, each settings page, dictation when it is ready - and
+below them, whatever your words found in your own work. Enter runs the first
+action; Escape closes it.
+
+It is a shortcut, not a separate feature: everything it offers is somewhere in the
+interface already.
+
+## What can I ask for?
+
+Beside **Attach** is **What can I ask for?**. It opens a catalogue of about twenty
+things Marvin can do, written as requests rather than as a list of functions, each
+with a ready example. **Use this** puts the example into the prompt, where it can be
+edited before sending; nothing is sent by pressing it.
+
+The catalogue shows what the current work mode offers. An entry belonging to a
+different mode is shown in grey with the mode it needs and a button that switches
+the conversation to it - proper research, for instance, is a Research-mode
+capability, not a way of phrasing a question. **Show everything** lists all of them
+regardless of mode. Where a capability already has its own place in the interface -
+memory, decisions, task changes, research sources - the entry links there instead
+of repeating it.
 
 ## Prompt, Attach, and image previews
 
@@ -146,6 +184,61 @@ Every pending image has a real thumbnail and an individual remove button. Removi
 PDF, DOCX, XLSX, CSV, Markdown, and text files can also be attached. The model receives their file paths and uses the document tools to read them. A text-only model cannot inspect image content; choose a vision-capable model when required. Draft text and uploaded attachments are retained when a request is rejected.
 
 Enter and Ctrl+Enter send; Shift+Enter inserts a new line. The composer clears after the service accepts the identified message. Draft text is stored per conversation.
+
+## Dictation
+
+Turn **Voice input** on in **Settings > Behavior**. The first time, about 556 MB
+is downloaded in the background: the speech program and a Czech-capable model.
+Everything then runs on the processor, on this computer, with nothing sent
+anywhere.
+
+A **Dictate** button appears beside Attach. Press it, speak, press it again. The
+text is written into the prompt box, where you read it and correct it before
+sending. Nothing is ever sent by voice alone.
+
+Say which language you speak under **Dictation language**; leaving it on the
+interface language is normal. Stating it is roughly twice as fast as letting the
+program work it out, because detection is a separate pass over the recording.
+
+What to expect: ordinary Czech comes back clean. Names, foreign words and
+technical terms are where mistakes appear, which is why the text lands in an
+editable box rather than being sent. Transcribing takes about four seconds,
+regardless of whether you spoke for two seconds or ten.
+
+If you press the button and then say nothing, you get "Nothing was heard" rather
+than a sentence the program invented - silence is detected before transcription
+starts.
+
+## Image generation
+
+Everything else in Marvin runs on your own computer. This one feature does not:
+it generates pictures through OpenArt, on your OpenArt account, and each picture
+costs credits. It is off until you turn it on.
+
+Turn **Allow paid image generation** on in **Settings > Behavior**. A 4 MB
+program is downloaded once. Then press **Sign in to OpenArt**: the sign-in opens
+in your browser and you complete it there. Marvin never sees your password, and
+never stores any credential - the OpenArt program keeps its own, in your user
+profile, and nothing about it reaches Marvin's settings file, an export or a
+backup. There is no API key to paste, because OpenArt does not use one.
+
+Once the account is connected it is shown as a highlighted label with your credit
+balance. **The switch is separate from being signed in**: turning it off stops
+image generation even while the account stays connected.
+
+The model can then generate a picture when one is actually wanted - a sprite, a
+texture, a mock-up - and it saves into `generated-images` inside the current
+project, where you can open it like any other file. It knows five models: Google
+Nano Banana 2 (the default, 4K with accurate text in the picture), OpenAI GPT
+Image 2.5 in a faster and a more precise variant, Nano Banana Pro for long text
+and consistent characters, and Seedream 4.5 for anime and illustration.
+
+What to expect: about seventeen seconds for one picture, and the price is quoted
+in the answer beside the file. A picture from Nano Banana 2 cost 20 credits when
+this was written. Marvin does not cap the spending; the switch is the control.
+
+Without an internet connection this is the one thing that cannot work. It says so
+and nothing else is affected.
 
 ## Running tasks and the message queue
 
@@ -172,7 +265,7 @@ Click the settings icon or the model status in the top bar. Settings are grouped
 - **Model and device**: model, KV profile, vision capability, GPU memory choice, runtime diagnostics, Start / Stop / Restart.
 - **Behavior**: autonomy and default handling of messages sent during work.
 - **Memory and skills**: edit global, mode, and project memory; read or use a skill; design a skill; open user and project skill folders.
-- **Data and backups**: export/import a complete project, import chat JSONL, create/select/verify the local runtime backup, and monitor maintenance operations.
+- **Data and backups**: choose where new projects are created, export/import a complete project, import chat JSONL, create/select/verify the local runtime backup, and monitor maintenance operations.
 - **Appearance and language**: dark, light, or system appearance; spacing; English or Czech.
 - **Help and manuals**: both PDF manuals and the slash command reference.
 
@@ -302,11 +395,46 @@ Choose **After completion** for a separate next request. A message in another ch
 
 **Stop** directly signals the independent run controller, including while no stream bytes arrive. It requests a graceful generation stop and normally allows the nearest sentence to finish. It also cancels the currently awaited browser operation or synchronous `run_command`, terminating that command's process tree. Finished partial text and captured command output are retained. A new prompt starts cleanly afterward.
 
-Long-running operating-system processes have their own termination controls in **Progress > Processes**. Stopping generation does not necessarily stop an already launched background process.
+Long-running operating-system processes have their own termination controls in **Progress > Processes**. Each is labelled **Stop this command** and ends only that background command; the task itself keeps running. Use **Stop task** beside the prompt to end the work.
+
+**Interrupting while the context is being read.** A large prompt is read once and
+then reused, so each further step only adds the new part. Cutting that read short
+discards everything already read, and the next request pays for all of it again -
+on a very large context that is minutes of work. A clarification therefore waits
+for the read to finish and is applied to the answer straight afterwards; the
+conversation says so while it waits. **Stop** is not made to wait, because it is an
+explicit instruction - but after stopping during a context read, the next message
+starts that read again from the beginning.
 
 **Stop task** beside the composer ends the current work and pauses the queue; the model can remain loaded. **stop** in **Model and device** stops the model server and releases its resources. Downloaded weights remain available for the next start.
 
+## When something fails
+
+A failed task leaves a message in **Progress > Activity history** instead of only
+a notification that fades. It shows what failed and, where Marvin recognises the
+cause, what to do about it: a project without its own virtual environment, a model
+that did not start, no model fitting the memory budget, a project folder that was
+moved, or the machine running out of memory.
+
+Where there is no known answer nothing is invented. **Work out what to do** puts a
+prepared question, including the error, into the prompt and hands it to the model,
+which can usually work the cause out. The question is not sent by itself, so it can
+be read and changed first.
+
+The same offer appears on a failed tool result in the conversation and on a project
+check that failed, timed out or could not start.
+
 ## Live progress
+
+While the model reads the context, the line reports how much of the conversation
+the server still had from the previous request, as a share of the whole prompt,
+plus an estimate of the time left at the rate being observed.
+
+A high share is the normal case: the harness only appends to a request, so the
+model re-reads nothing. A low share means something near the start of the
+conversation changed and all of it is being processed again. Two things do that
+on purpose - compression, and giving up older screenshots when the context fills.
+Both are reported in the chat when they happen.
 
 The live chat distinguishes:
 
@@ -329,6 +457,20 @@ Use for ordinary conversation, analysis, learning, brainstorming, planning, and 
 ## Research
 
 Use for web research, literature or market investigation, comparison, and evidence synthesis. Research creates a persistent plan and ledger, keeps all sources regardless of perceived trustworthiness, records contradictions, and produces a final synthesis.
+
+## Watching a document being written
+
+In the **Files changed** list, a document the task touched has a second button
+beside the difference view. It opens the document rendered, and **keeps it up to
+date while the model writes**: the view re-reads the file and redraws only when
+the content really changed, so it does not flicker.
+
+The button appears for what can be rendered - Markdown, text, DOCX, PDF, HTML,
+CSV and spreadsheets. Source code and binary files have nothing to show, so they
+only offer the difference view.
+
+This is the answer to the one question Writing mode could not answer while it
+worked: what does it look like now.
 
 ## Writing
 
@@ -357,6 +499,17 @@ Choose **No project** for conversations that should not access a project folder.
 3. Enter a project name and confirm.
 
 The application creates a new folder under its `projects` directory, registers it, creates project memory when needed, and uses it as the workspace.
+
+## Where new projects are created
+
+**Settings > Data and backups** chooses the folder for projects created by name.
+Until it is set they are created beside the installation. The folder has to exist,
+be writable, and lie outside the model runtime and the conversation history;
+anything else is refused with the reason.
+
+Changing it moves nothing. Projects that already exist keep the folder they were
+created in and continue to work from there - only the next one goes to the new
+place.
 
 ## Attaching an existing folder
 
@@ -460,7 +613,9 @@ Do not pin ordinary source files that the model can read on demand, large logs, 
 
 ## Manual and automatic compression
 
-At approximately 85% of the selected model context, the harness summarizes older messages. The visible chat history is never deleted; only the model's request view changes to system prompt + summary + recent messages.
+At approximately 85% of the selected model context, the harness first stops sending all but the four newest screenshots. In Computer mode they are by far the largest part of the conversation, so giving them up is usually enough and the text of the conversation is kept intact. The pictures stay visible in the chat; only the model stops receiving the older ones, and that decision is permanent for those messages.
+
+If that is not enough, the harness summarizes older messages. The visible chat history is never deleted; only the model's request view changes to system prompt + summary + recent messages.
 
 Use **Context > Compress** to compress earlier. If the model reports an overflow, the agent performs one automatic compression-and-retry cycle. A second overflow is reported instead of looping forever.
 
@@ -550,6 +705,8 @@ All work modes can use `web_search` and `web_fetch` for current information, pub
 For long pages, the model can find a specific phrase or read the next passage without downloading the page again. The complete fetched source remains in the research record within its technical storage limit; a focused excerpt does not replace it. This is particularly useful for large models that perform part of their computation in system RAM.
 
 During input processing, **Reading context** shows progress through new text and the number of tokens reused from cache. This is separate from generating reasoning and the answer. Reading a long document for the first time may be slow even when a follow-up question reuses nearly all prior context. These optimizations do not change reasoning effort or the chosen quantization.
+
+The percentage on that line is labelled **new**, because it is progress through the part of the prompt the model server does not already hold - not how full the context is. How full the context is appears beside the composer, as `Context: ~132k / 197k`. That figure is an estimate between requests, and it corrects itself: the server reports the exact prompt length with every reply, so the estimate is measured against it and adjusted. A new conversation starts from measured averages and becomes more accurate as it goes, because Czech prose, program code and screenshots each cost a different number of tokens per character.
 
 The default search backend is Google; `config.yaml` can select Google, Bing, or automatic fallback. Fetching is read-only HTTP/HTTPS.
 
@@ -662,7 +819,10 @@ Short commands run synchronously with a timeout. Their complete stdout/stderr is
 `project_validation_profile` lists detected test, lint, typecheck, and build commands. `start_project_check` starts the primary command or a named check:
 
 - This harness: `tests/test_core.py`.
-- Python: pytest/pyproject.
+- Python: a `tests/` directory, or `test_*.py` modules in the project root. The
+  stdlib `unittest` runner is used by default; pytest only when the project
+  configures it (`pytest.ini`, `conftest.py`, `[tool.pytest]`) and the
+  interpreter can import it.
 - Node: `npm test` or `npm run check`.
 - Rust: `cargo test`.
 - Go: `go test ./...`.
@@ -680,6 +840,21 @@ checks:
     timeout: 900
     primary: true
 ```
+
+Checks run with the project's own virtual environment (`.venv` or `venv`) when it
+has one, so they see the project's dependencies. Without one Marvin's interpreter
+runs them and a missing third-party import is reported as the failure reason.
+Lint and type checks are offered only when their tool is installed, so a detected
+check never fails merely by starting.
+
+**Project status.** The **Progress** panel lists the detected checks for the
+current project before they have ever run, runs them all without the model with
+**Run project checks**, and keeps the outcome per project in
+`.qwen/check-status.json` so it survives a restart. Each row shows pass or fail,
+when it ran, and its output tail on hover. **Fix failures with agent** opens a
+Development chat in that project and asks the agent to run the checks, fix what
+fails and iterate without weakening tests. Both buttons say so plainly when a
+project has no detectable checks.
 
 **Automatic task commits.** In the project dialog (three-dot menu beside the project
 selector), the switch **Commit each finished task automatically** makes every
@@ -714,7 +889,31 @@ The harness maps screenshot coordinates back to the real display resolution.
 - Left/right/middle click and double-click.
 - Scroll up/down at an optional location.
 - Type ASCII directly or paste Unicode/long text through the clipboard.
+- List the open windows, and photograph one of them by name even while another
+  program covers it. This is how the model watches a program it started without
+  taking the screen away from you: a plain screenshot shows whatever is in front,
+  which is usually not the program being tested.
+- Send keys straight into one program by window title, without bringing it
+  forward. Measured against a covered game window: presses, releases and
+  combinations such as Ctrl+S all arrive, while the window you are working in
+  receives nothing. This is how the model drives a program it started while you
+  carry on with something else.
+- Bring a window to the front by name, restoring it if it was minimised. This is
+  the fallback for programs that read the keyboard directly rather than through
+  window messages and can only be reached while in front - it takes the screen
+  from you, so the model tries the path above first. If the system refuses to
+  change the foreground, the model is told so instead of reporting success.
+- Run an SDL or pygame program with no window at all, when the question is about
+  behaviour rather than appearance: it renders into memory, saves a frame as a
+  picture the model can look at, and never touches your screen.
 - Press keys and combinations such as Enter, Escape, Ctrl+S, Alt+F4, or Win+D.
+  Keys go out as hardware scancodes, which games and other SDL or DirectInput
+  windows require: they identify keys by scancode and ignore a key sent without
+  one, which is why such a window used to react to nothing at all. A key is also
+  held down briefly so it cannot pass between two of the window's checks. If a
+  game still does not respond, ask for a longer hold; the older delivery path
+  stays available for the rare window that prefers it. The upper-left-corner
+  failsafe applies to both.
 
 ## Failsafe
 
@@ -1038,6 +1237,8 @@ Research saves intermediate evidence notes. Interrupted synthesis can reuse thos
 
 Open **Results > Restore points** or use `/checkpoint name`. A restore point captures working files while excluding generated dependencies and model/runtime directories. Task snapshots also reconcile file changes made through model commands. **Restore** reports later conflicting edits instead of silently overwriting them, and a partial failure is not marked fully restored.
 
+The compare button beside a restore point lists everything that changed in the workspace since it was taken - modified, deleted and newly created files - and each row opens the diff viewer against the saved version. This needs no model activity, so a restore point doubles as a way to review your own edits. A file created after the restore point has no saved version behind it: it can be viewed but not reverted.
+
 ## Portable projects
 
 Use **Settings > Data and backups > Export project**. The ZIP contains project files, project memory and skills, conversation history, attachments, and decision references. **Import project** creates a new project directory and new chat IDs, remapping stored attachment paths and source-chat links.
@@ -1048,4 +1249,4 @@ This project archive is separate from the model/runtime backup. The latter still
 
 End users choose Minimal or Full; Full includes Python 3.12 and runtime dependencies. Node.js is not a runtime prerequisite. Source developers build the frontend with `npm --prefix frontend ci` and `npm --prefix frontend run build`. Python serves the compiled `ui_dist` directory. Windows package versions are fixed in `requirements-windows-py312.lock`.
 
-The old Gradio surface remains available for compatibility diagnostics with `MARVIN_LEGACY_UI=1`; the new workspace is the default.
+The workspace is the only interface. The older Gradio surface was removed in 1.16.0, along with the dependency it needed.

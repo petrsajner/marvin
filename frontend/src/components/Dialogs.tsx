@@ -23,6 +23,7 @@ import {
   Download,
   History,
   GitCompare,
+  Lightbulb,
   Brain,
   HardDrive,
   ChevronDown,
@@ -46,6 +47,8 @@ import {
   Upload,
   Save,
   Sparkles,
+  Mic,
+  Image,
 } from "lucide-react";
 import {
   api,
@@ -60,6 +63,44 @@ import {
 import { DecisionEditor } from "./Decisions";
 import { ModelStatus } from "./ModelStatus";
 import { OperationProgress } from "./OperationProgress";
+
+const CAPABILITY_CATEGORIES: Record<string, string> = {
+  documents: "Documents",
+  finding: "Finding and memory",
+  web: "Internet",
+  images: "Pictures and screen",
+  project: "Working on a project",
+  long_work: "Longer work",
+  skills: "Skills",
+};
+
+function modeLabel(app: any, id: string, tr: (value: string) => string): string {
+  const found = (app?.modes || []).find((m: any) => m.id === id);
+  return found ? tr(found.label) : id;
+}
+
+// Shared with the command palette, so one list names the settings sections.
+// What a search hit is, in words rather than a field name.
+function kindLabel(kind: string) {
+  return kind === "chat"
+    ? "Conversation"
+    : kind === "file"
+      ? "Project file"
+      : kind === "memory"
+        ? "Memory"
+        : "Project decision";
+}
+
+
+export const SETTINGS_SECTIONS: [string, string][] = [
+  ["model", "Model and device"],
+  ["behavior", "Behavior"],
+  ["memory", "Memory and skills"],
+  ["data", "Data and backups"],
+  ["appearance", "Appearance and language"],
+  ["help", "Help and manuals"],
+];
+
 
 export function DialogView(props: any) {
   const {
@@ -80,7 +121,17 @@ export function DialogView(props: any) {
     pick,
     runtime,
     runtimeCommand,
+    setText,
+    openPanel,
+    actions,
   } = props;
+  const [palette, setPalette] = useState("");
+  const [paletteHits, setPaletteHits] = useState<any[]>([]);
+  const [voiceDevices, setVoiceDevices] = useState<any[] | null>(null);
+  const [voiceStatus, setVoiceStatus] = useState<any>(null);
+  // The followed status while a download runs, the general one otherwise.
+  const voice = voiceStatus || app?.voice || {};
+  const [openart, setOpenart] = useState<any>(null);
   const [content, setContent] = useState(""),
     [name, setName] = useState(""),
     [scope, setScope] = useState("global"),
@@ -91,16 +142,40 @@ export function DialogView(props: any) {
     [format, setFormat] = useState("pdf"),
     [diff, setDiff] = useState<any>(null),
     [drift, setDrift] = useState<any>(null),
+    [capabilities, setCapabilities] = useState<any>(null),
+    [everyMode, setEveryMode] = useState(false),
     [diffMode, setDiffMode] = useState("split"),
     [busy, setBusy] = useState(false);
   const memoryDirty = useRef(false);
   useEffect(() => {
     if (dialog.type !== "checkpoints") setDrift(null);
   }, [dialog.type]);
+  useEffect(() => {
+    if (dialog.type !== "capabilities") return;
+    setEveryMode(false);
+    api("/api/capabilities?mode=" + (chat?.meta.work_mode || "discussion"))
+      .then(setCapabilities)
+      .catch(error);
+  }, [dialog.type, chat?.meta.work_mode, error]);
   const section = dialog.section || "model";
   const project = app.projects.find(
     (p: any) => p.path === chat?.meta.workspace,
   );
+  const useExample = (example: string) => {
+    setText((previous: string) =>
+      previous.trim() ? previous.trimEnd() + "\n" + example : example,
+    );
+    close();
+  };
+  const openTarget = (opens: string) => {
+    const [kind, name] = opens.split(":");
+    if (kind === "settings") setDialog({ type: "settings", section: name });
+    else if (kind === "dialog") setDialog({ type: name });
+    else if (kind === "panel") {
+      openPanel(name);
+      close();
+    }
+  };
   const call = async (fn: () => Promise<any>) => {
     setBusy(true);
     try {
@@ -154,7 +229,47 @@ export function DialogView(props: any) {
       api("/api/backup").then(setBackup).catch(error);
       api("/api/maintenance").then(setMaintenance).catch(error);
     }
+    // Enumerating input devices touches the audio system, so it is asked for
+    // only while the section that lists them is open.
+    if (dialog.type === "settings" && section === "behavior") {
+      api("/api/voice")
+        .then((state: any) => {
+          setVoiceDevices(state.devices || []);
+          setVoiceStatus(state);
+        })
+        .catch(error);
+      api("/api/openart").then(setOpenart).catch(error);
+    }
   }, [dialog.type, section, sid, error]);
+  // Sign-in happens in a browser window outside this interface, and the download
+  // says nothing while it runs, so both are followed rather than waited for.
+  useEffect(() => {
+    if (dialog.type !== "settings" || section !== "behavior") return;
+    if (!openart?.enabled) return;
+    const timer = setInterval(() => {
+      api("/api/openart").then(setOpenart).catch(() => null);
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [dialog.type, section, openart?.enabled]);
+  // The general state arrives on events, which say nothing while a download
+  // runs, so the download is followed here - otherwise 556 MB looks like a
+  // sentence that never changes.
+  useEffect(() => {
+    if (dialog.type !== "settings" || section !== "behavior") return;
+    const follow = () =>
+      api("/api/voice")
+        .then((state: any) => {
+          setVoiceStatus(state);
+          return state;
+        })
+        .catch(() => null);
+    const timer = setInterval(async () => {
+      const state = await follow();
+      if (state && !state.installing && !(state.missing || []).length)
+        clearInterval(timer);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [dialog.type, section]);
   useEffect(() => {
     if (
       dialog.type === "settings" &&
@@ -175,6 +290,22 @@ export function DialogView(props: any) {
         .then((v) => setContent(v.content))
         .catch(error);
   }, [dialog.file, page, error]);
+  // Follow the file while it is being written. Writing mode had no feedback at
+  // all during work: the preview froze at the moment it was opened.
+  useEffect(() => {
+    const file = dialog.file;
+    if (
+      dialog.type !== "preview" || !file ||
+      imageFile(file) || file.name.toLowerCase().endsWith(".pdf")
+    )
+      return;
+    const timer = setInterval(() => {
+      api("/api/files/" + file.id + "/preview?start=" + page + "&count=50")
+        .then((v) => setContent((current) => (v.content === current ? current : v.content)))
+        .catch(() => {});
+    }, 1500);
+    return () => clearInterval(timer);
+  }, [dialog.type, dialog.file?.id, page]);
   const title =
     dialog.type === "settings"
       ? tr("Settings")
@@ -193,16 +324,11 @@ export function DialogView(props: any) {
               decisions: tr("Project decisions"),
               "queue-edit": tr("Queued message"),
               diff: (dialog.data?.path || "").split(/[\\/]/).pop() || tr("Changes"),
+              capabilities: tr("What can I ask for?"),
+              palette: tr("Go to"),
             } as any
           )[dialog.type] || dialog.type;
-  const settingsSections = [
-    ["model", "Model and device"],
-    ["behavior", "Behavior"],
-    ["memory", "Memory and skills"],
-    ["data", "Data and backups"],
-    ["appearance", "Appearance and language"],
-    ["help", "Help and manuals"],
-  ];
+  const settingsSections = SETTINGS_SECTIONS;
   const finishSelect = async (result: any) => {
     if (result?.session_id) setSid(result.session_id);
     await refresh();
@@ -233,6 +359,28 @@ export function DialogView(props: any) {
       clearInterval(timer);
     };
   }, [dialog.type, dialog.data?.id, sid, error]);
+  useEffect(() => {
+    if (dialog.type !== "palette") return;
+    if (!palette.trim()) {
+      setPaletteHits([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      api(
+        "/api/find?query=" + encodeURIComponent(palette.trim()) +
+          (sid ? "&session_id=" + encodeURIComponent(sid) : ""),
+      )
+        .then((answer: any) =>
+          setPaletteHits(
+            (answer.groups || []).flatMap((group: any) =>
+              group.items.map((item: any) => ({ ...item, kind: group.kind })),
+            ),
+          ),
+        )
+        .catch(() => setPaletteHits([]));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [dialog.type, palette, sid]);
   useEffect(() => {
     if (dialog.type !== "settings" || section !== "data") return;
     const timer = setInterval(() => {
@@ -488,6 +636,174 @@ export function DialogView(props: any) {
                 <p>
                   {tr("Drafts and received messages are saved automatically.")}
                 </p>
+                <h3>{tr("Dictation")}</h3>
+                <div className="row">
+                  <button
+                    className={app.preferences.voice_input ? "positive" : "outline"}
+                    onClick={() =>
+                      call(() =>
+                        settings({ voice_input: !app.preferences.voice_input }),
+                      )
+                    }
+                  >
+                    <Mic />
+                    {tr("Voice input")}
+                  </button>
+                </div>
+                {app.preferences.voice_input && (
+                  <>
+                    <p>
+                      {voice.installing
+                        ? tr("Downloading speech recognition") +
+                          " " +
+                          Math.round((voice.install_done || 0) / 1048576) +
+                          "/" +
+                          Math.round((voice.install_total || 0) / 1048576) +
+                          " MB (" +
+                          Math.min(
+                            100,
+                            Math.round(
+                              (100 * (voice.install_done || 0)) /
+                                Math.max(1, voice.install_total || 0),
+                            ),
+                          ) +
+                          "%)"
+                        : voice.install_error
+                          ? voice.install_error
+                          : (voice.missing || []).length
+                            ? tr("Still needed:") + " " + voice.missing.join(", ")
+                            : voice.capture_error
+                              ? voice.capture_error
+                              : tr("Dictation is ready. It runs on the processor and never leaves this computer.")}
+                    </p>
+                    <label>
+                      {tr("Dictation language")}
+                      <select
+                        value={app.preferences.voice_language || "auto"}
+                        onChange={(e) =>
+                          call(() => settings({ voice_language: e.target.value }))
+                        }
+                      >
+                        <option value="auto">{tr("Follow the interface")}</option>
+                        <option value="cs">{tr("Czech")}</option>
+                        <option value="en">{tr("English")}</option>
+                      </select>
+                    </label>
+                    <p className="muted">
+                      {tr("Stating the language is roughly twice as fast as letting it be detected.")}
+                    </p>
+                    <label>
+                      {tr("Microphone")}
+                      <select
+                        value={String(app.preferences.voice_device ?? "")}
+                        onChange={(e) =>
+                          call(() =>
+                            settings({
+                              voice_device:
+                                e.target.value === "" ? null : Number(e.target.value),
+                            }),
+                          )
+                        }
+                      >
+                        <option value="">{tr("System default")}</option>
+                        {(voiceDevices || []).map((device: any) => (
+                          <option key={device.index} value={device.index}>
+                            {device.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </>
+                )}
+                <h3>{tr("Image generation")}</h3>
+                <div className="row">
+                  <button
+                    className={openart?.enabled ? "positive" : "outline"}
+                    onClick={() =>
+                      call(async () =>
+                        setOpenart(
+                          await api("/api/openart/enabled", "POST", {
+                            enabled: !openart?.enabled,
+                          }),
+                        ),
+                      )
+                    }
+                  >
+                    <Image />
+                    {tr("Allow paid image generation")}
+                  </button>
+                  {openart?.signed_in && (
+                    <span className="chip positive">
+                      {tr("Account connected")}
+                      {openart.account?.credits !== null &&
+                      openart.account?.credits !== undefined
+                        ? " · " +
+                          openart.account.credits +
+                          " " +
+                          tr("credits")
+                        : ""}
+                    </span>
+                  )}
+                </div>
+                {openart?.enabled && (
+                  <>
+                    <p>
+                      {openart.installing
+                        ? tr("Downloading image generation") +
+                          " " +
+                          Math.min(
+                            100,
+                            Math.round(
+                              (100 * (openart.install_done || 0)) /
+                                Math.max(1, openart.install_total || 0),
+                            ),
+                          ) +
+                          "%"
+                        : openart.install_error
+                          ? openart.install_error
+                          : !openart.installed
+                            ? tr("Still needed:") +
+                              " " +
+                              tr("image generation program (4 MB)")
+                            : openart.signed_in
+                              ? tr(
+                                  "Signed in to OpenArt. Pictures are saved in the current project.",
+                                )
+                              : tr(
+                                  "Sign in to OpenArt to finish. The sign-in opens in your browser and Marvin never sees your password.",
+                                )}
+                    </p>
+                    {openart.installed && !openart.signed_in && (
+                      <div className="row">
+                        <button
+                          className="primary"
+                          onClick={() => call(() => api("/api/openart/login", "POST"))}
+                        >
+                          {tr("Sign in to OpenArt")}
+                        </button>
+                      </div>
+                    )}
+                    {openart.signed_in && (
+                      <div className="row">
+                        <button
+                          className="outline"
+                          onClick={() =>
+                            call(async () =>
+                              setOpenart(await api("/api/openart/logout", "POST")),
+                            )
+                          }
+                        >
+                          {tr("Sign out")}
+                        </button>
+                      </div>
+                    )}
+                    <p className="muted">
+                      {tr(
+                        "Generating a picture spends credits on your OpenArt account. This switch turns it off whatever the account says.",
+                      )}
+                    </p>
+                  </>
+                )}
               </>
             )}
             {dialog.type === "settings" && section === "appearance" && (
@@ -643,6 +959,40 @@ export function DialogView(props: any) {
             )}
             {dialog.type === "settings" && section === "data" && (
               <>
+                <h3>{tr("Where new projects are created")}</h3>
+                <p className="muted">{app.projects_root}</p>
+                <p className="muted">
+                  {tr(
+                    "Projects that already exist keep their own folder; this only decides where the next one is created.",
+                  )}
+                </p>
+                <div className="row">
+                  <button
+                    onClick={() =>
+                      call(async () => {
+                        const chosen = await pick(true);
+                        if (!chosen) return;
+                        await settings({ projects_root: chosen });
+                        await refresh();
+                      })
+                    }
+                  >
+                    <FolderOpen />
+                    {tr("Choose a folder")}
+                  </button>
+                  <button
+                    className="outline"
+                    disabled={!app.preferences?.projects_root}
+                    onClick={() =>
+                      call(async () => {
+                        await settings({ projects_root: "" });
+                        await refresh();
+                      })
+                    }
+                  >
+                    {tr("Use the default folder")}
+                  </button>
+                </div>
                 <h3>
                   {tr("Projects and conversations")}
                 </h3>
@@ -1316,6 +1666,150 @@ export function DialogView(props: any) {
             )}
             {dialog.type === "process-output" && (
               <pre className="document-preview">{content}</pre>
+            )}
+            {dialog.type === "palette" && (
+              <>
+                <input
+                  autoFocus
+                  aria-label={tr("Go to")}
+                  value={palette}
+                  placeholder={tr("An action, or anything you wrote")}
+                  onChange={(e) => setPalette(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    const first = (actions || []).filter((action: any) =>
+                      action.label.toLowerCase().includes(palette.trim().toLowerCase()),
+                    )[0];
+                    if (first) {
+                      close();
+                      Promise.resolve(first.run()).catch(error);
+                    }
+                  }}
+                />
+                <div className="palette-list">
+                  {(actions || [])
+                    .filter((action: any) =>
+                      action.label
+                        .toLowerCase()
+                        .includes(palette.trim().toLowerCase()),
+                    )
+                    .slice(0, 10)
+                    .map((action: any) => (
+                      <button
+                        key={action.id}
+                        onClick={() => {
+                          close();
+                          Promise.resolve(action.run()).catch(error);
+                        }}
+                      >
+                        {action.label}
+                      </button>
+                    ))}
+                </div>
+                {paletteHits.length > 0 && (
+                  <>
+                    <h3>{tr("Found in your work")}</h3>
+                    <div className="palette-list">
+                      {paletteHits.slice(0, 10).map((item: any, index: number) => (
+                        <button
+                          key={"hit" + index}
+                          onClick={() => {
+                            if (item.open.what === "chat") {
+                              setSid(item.open.session_id);
+                              close();
+                            } else if (item.open.what === "file")
+                              setDialog({
+                                type: "preview",
+                                file: {
+                                  id: item.open.path,
+                                  name: item.title,
+                                  path: item.open.path,
+                                  url: "",
+                                },
+                              });
+                            else if (item.open.what === "memory")
+                              setDialog({ type: "settings", section: "memory" });
+                            else setDialog({ type: "decisions" });
+                          }}
+                        >
+                          <span>
+                            {item.title}
+                            <small>{tr(kindLabel(item.kind))}</small>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+            {dialog.type === "capabilities" && (
+              <>
+                <p className="muted">
+                  {tr(
+                    "Ask for these in your own words; the example is only a starting point.",
+                  )}
+                </p>
+                <button
+                  className="outline"
+                  onClick={() => setEveryMode(!everyMode)}
+                >
+                  {everyMode ? tr("Only this mode") : tr("Show everything")}
+                </button>
+                {(capabilities?.categories || []).map((category: string) => {
+                  const rows = (capabilities?.capabilities || []).filter(
+                    (c: any) =>
+                      c.category === category && (everyMode || c.available),
+                  );
+                  if (!rows.length) return null;
+                  return (
+                    <div key={category}>
+                      <h3>{tr(CAPABILITY_CATEGORIES[category] || category)}</h3>
+                      {rows.map((c: any) => (
+                        <div className="file-row" key={c.id}>
+                          <Lightbulb />
+                          <div>
+                            <strong>{tr(c.title)}</strong>
+                            <small>{tr(c.summary)}</small>
+                            <small>
+                              {c.available
+                                ? tr(c.example)
+                                : tr("Available in another work mode") +
+                                  ": " +
+                                  modeLabel(app, c.modes[0], tr)}
+                            </small>
+                          </div>
+                          {c.opens && c.available && (
+                            <button
+                              className="icon"
+                              aria-label={tr("Open")}
+                              title={tr("Open")}
+                              onClick={() => openTarget(c.opens)}
+                            >
+                              <ExternalLink />
+                            </button>
+                          )}
+                          <button
+                            onClick={() =>
+                              c.available
+                                ? useExample(tr(c.example))
+                                : call(async () => {
+                                    await act("mode", { mode: c.modes[0] });
+                                    await refresh();
+                                    close();
+                                  })
+                            }
+                          >
+                            {c.available
+                              ? tr("Use this")
+                              : tr("Switch the chat to this mode")}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </>
             )}
             {dialog.type === "diff" && (
               <>

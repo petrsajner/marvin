@@ -190,13 +190,18 @@ class MemoryProfileTests(unittest.TestCase):
 
     def test_approved_menu_is_exact_for_each_card_class(self):
         expected = {
-            16: {"q3": {"q8_0": ["64k", "48k"]}},
+            # Approved on 2026-09-19 after measuring a 16 GB budget: a two-bit
+            # quant buys either the vision projector back on the card or twice
+            # the context, and quantising only the value half costs a gigabyte.
+            16: {"q2": {"q8_0": ["128k", "96k", "64k"], "q4_0": ["192k"]},
+                 "q3": {"q8_0": ["64k", "48k"], "q8_0/q4_0": ["96k"], "q4_0": ["128k"]}},
             24: {"q3": {"q8_0": ["128k", "96k"]},
                  "q4": {"q8_0": ["96k", "96k·MTP", "64k", "64k·MTP"]},
                  "q5": {"q8_0": ["96k", "64k"]},
                  "nemotron_q4": {"q8_0": ["512k", "256k"]},
                  "nemotron_q5": {"q8_0": ["512k", "256k"]}},
-            32: {"q4": {"q8_0": ["256k", "256k·MTP", "192k", "192k·MTP"], "f16": ["128k", "96k"]},
+            32: {"q2": {"q8_0": ["256k"]},
+                 "q4": {"q8_0": ["256k", "256k·MTP", "192k", "192k·MTP"], "f16": ["128k", "96k"]},
                  "q5": {"q8_0": ["192k", "192k·MTP", "128k", "128k·MTP"], "f16": ["128k", "96k"]},
                  "ornith_q5": {"q8_0": ["256k", "192k"]},
                  "nemotron_q4": {"q8_0": ["512k", "256k"]},
@@ -209,7 +214,12 @@ class MemoryProfileTests(unittest.TestCase):
                     continue
                 for profile in gpu.offered_profiles(self.cfg, key, capacity - .16).values():
                     context = f"{profile['ctx_size'] // 1024}k" + ("·MTP" if profile.get("speculative") else "")
-                    actual.setdefault(key, {}).setdefault(profile["cache_type"], []).append(context)
+                    # Keys and values can differ, and a menu that merged them
+                    # would hide the difference this table exists to record.
+                    cache = profile["cache_type"]
+                    if profile.get("value_cache_type"):
+                        cache += "/" + profile["value_cache_type"]
+                    actual.setdefault(key, {}).setdefault(cache, []).append(context)
             for groups in actual.values():
                 for contexts in groups.values():
                     contexts.sort(key=lambda c: (-int(c.split("k")[0]), "MTP" in c))

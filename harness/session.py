@@ -55,6 +55,11 @@ class Session:
                 msg[key] = getattr(self, key)
         if role == "tool":
             msg["tool_status"] = getattr(content, "status", "completed")
+            if msg["tool_status"] == "error":
+                from harness.failures import advise
+                hint = advise(str(content))
+                if hint:
+                    msg["hint"] = hint
         if reasoning:
             msg["reasoning"] = str(reasoning)
         if tool_calls:
@@ -111,20 +116,31 @@ class Session:
         summary_msg = {"role": "user", "content": self.SUMMARY_PREFIX + self.compression["summary"]}
         return head + [summary_msg] + self.messages[cut:]
 
-    def to_api_messages(self, max_images: int = 8, include_pins: bool = True) -> list[dict]:
-        """Render API messages, encoding only the most recent max_images images."""
+    # A message whose images were given up under context pressure. The flag is
+    # persisted because the set of images the model sees must not depend on how
+    # many arrived afterwards: silently dropping an image from a message the
+    # server has already processed changes the prompt prefix and costs a full
+    # reprocess of the conversation. See prune_images.
+    HIDDEN_IMAGES_KEY = "images_hidden"
+
+    def _sent_images(self, message: dict) -> list[str]:
+        if message.get(self.HIDDEN_IMAGES_KEY):
+            return []
+        return list(message.get("images") or [])
+
+    def to_api_messages(self, include_pins: bool = True) -> list[dict]:
+        """Render API messages, keeping every image that has not been pruned."""
         view = self._view_messages()
-        image_paths = [p for m in view for p in m.get("images", [])]
-        recent = set(image_paths[-max_images:])
         out: list[dict] = []
         for m in view:
             m2 = {k: v for k, v in m.items() if k not in
-                  ("images", "id", "created", "attachments", "request_id", "run_id", "step_id", "tool_status")}
+                  ("images", self.HIDDEN_IMAGES_KEY, "id", "created", "attachments",
+                   "request_id", "run_id", "step_id", "tool_status")}
             if "reasoning" in m2:
                 reasoning_val = m2.pop("reasoning", None)
                 if reasoning_val and "reasoning_content" not in m2:
                     m2["reasoning_content"] = reasoning_val
-            imgs = [p for p in m.get("images", []) if p in recent]
+            imgs = self._sent_images(m)
             if not imgs:
                 if not m2.get("content") and not m2.get("tool_calls"):
                     continue
@@ -159,15 +175,59 @@ class Session:
         return f"data:{mime};base64,{b64}"
 
     # -- context estimate / compression -----------------------------------------
-    IMAGE_TOKENS = 1400  # Approximate token cost per downscaled image.
+    #
+    # These two constants were measured against what the server actually
+    # tokenised, not assumed. An image-free conversation of 287,114 characters
+    # was 89,670 prompt tokens - 3.20 characters per token, not the 3.6 assumed
+    # before, because Czech prose and JSON tool output both tokenise worse than
+    # English. Given that ratio, a conversation carrying seven screenshots left
+    # 18,087 tokens unaccounted for: 2,583 per picture, not 1,400.
+    #
+    # Both errors ran the same way, so the harness believed the context was
+    # emptier than it was - by 17% in one measured session and 11% in another.
+    # That is why the figure beside the composer disagreed with the one the
+    # server reported while reading the prompt: one was measured, one was not.
+    IMAGE_TOKENS = 2600      # Measured cost of one downscaled screenshot.
+    CHARS_PER_TOKEN = 3.2    # Measured on Czech prose, Python and JSON mixed.
+    SCALE_KEY = "token_scale"
+
+    @classmethod
+    def tokens_for(cls, chars: int, images: int = 0, scale: float = 1.0) -> int:
+        """The one place characters and pictures become a token count."""
+        return int((chars / cls.CHARS_PER_TOKEN + images * cls.IMAGE_TOKENS) * scale)
+
+    def token_scale(self) -> float:
+        """The correction this conversation has learned from the server."""
+        try:
+            value = float(self.meta.get(self.SCALE_KEY) or 1.0)
+        except (TypeError, ValueError):
+            return 1.0
+        return value if 0.5 <= value <= 2.0 else 1.0
+
+    def calibrate_tokens(self, prompt_tokens: int, raw_estimate: int) -> float:
+        """Learn the real ratio from a request the server has counted for us.
+
+        Constants cannot know whether a conversation is Czech prose, Python or
+        screenshots, and the mix changes as the work does. The server reports the
+        exact prompt length with every response, so the estimate does not have to
+        keep guessing: it is corrected towards what was actually measured, gently
+        enough that one odd request cannot swing it."""
+        if prompt_tokens <= 0 or raw_estimate <= 0:
+            return self.token_scale()
+        observed = prompt_tokens / raw_estimate
+        if not 0.5 <= observed <= 2.0:
+            return self.token_scale()      # A truncated or retried request teaches nothing.
+        scale = round(self.token_scale() + (observed - self.token_scale()) * 0.3, 4)
+        self.meta[self.SCALE_KEY] = scale
+        self._save_meta()
+        return scale
 
     def estimate_context_tokens(self, include_pins: bool = True) -> int:
-        """Estimate the actual API input after limiting image references."""
+        """Estimate the actual API input, counting only images still being sent."""
         import json as _json
         view = self._view_messages()
-        image_paths = [p for m in view for p in m.get("images", [])]
-        recent = set(image_paths[-8:])
         total = 0
+        images = 0
         for m in view:
             c = m.get("content") or ""
             if isinstance(c, str):
@@ -178,15 +238,14 @@ class Session:
                         if part.get("type") == "text":
                             total += len(str(part.get("text", "")))
                         elif part.get("type") == "image_url":
-                            total += self.IMAGE_TOKENS * 4  # Character-equivalent cost, converted to tokens below.
-            total += sum(1 for p in m.get("images", []) if p in recent) * self.IMAGE_TOKENS * 4
+                            images += 1
+            images += len(self._sent_images(m))
             if m.get("tool_calls"):
                 total += len(_json.dumps(m["tool_calls"], ensure_ascii=False))
             total += len(str(m.get("reasoning") or m.get("reasoning_content") or ""))
         if include_pins:
             total += len(self.pinned_context_block())
-        # Approximately 3.6 characters per token for multilingual prose, code and JSON.
-        return total * 10 // 36
+        return self.tokens_for(total, images, self.token_scale())
 
     def pin_context_file(self, path: Path) -> bool:
         resolved = str(path.resolve())
@@ -238,6 +297,7 @@ class Session:
         view = self._view_messages()
         counts = _collections.Counter(m.get("role", "other") for m in view)
         images = sum(len(m.get("images", [])) for m in view)
+        images_sent = sum(len(self._sent_images(m)) for m in view)
         pins = [raw for raw in self.meta.get("pinned_files") or [] if Path(raw).is_file()]
         return {
             "estimated_tokens": self.estimate_context_tokens(),
@@ -245,6 +305,7 @@ class Session:
             "total_messages": len(self.messages),
             "roles": dict(counts),
             "images": images,
+            "images_sent": images_sent,
             "pinned_files": pins,
             "compressed": bool(self.compression),
         }
@@ -255,13 +316,10 @@ class Session:
         c = m.get("content") or ""
         if not isinstance(c, str):
             c = " ".join(str(p.get("text", "")) for p in c if isinstance(p, dict))
-        n = len(str(c)) * 10 // 36
-        n += len(str(m.get("reasoning") or m.get("reasoning_content") or "")) * 10 // 36
-        if m.get("images"):
-            n += len(m["images"]) * self.IMAGE_TOKENS
+        chars = len(str(c)) + len(str(m.get("reasoning") or m.get("reasoning_content") or ""))
         if m.get("tool_calls"):
-            n += len(_json.dumps(m["tool_calls"], ensure_ascii=False)) * 10 // 36
-        return n
+            chars += len(_json.dumps(m["tool_calls"], ensure_ascii=False))
+        return self.tokens_for(chars, len(self._sent_images(m)), self.token_scale())
 
     @classmethod
     def _is_user_boundary(cls, message: dict) -> bool:
@@ -312,6 +370,44 @@ class Session:
         self.compression_rev += 1
         self._save_compression()
         return True
+
+    def prunable_images(self, keep: int = 4) -> tuple[int, int]:
+        """How many images pruning would drop, and roughly what that frees.
+
+        Asked before pruning, because the rewrite costs the server every token
+        after the first dropped image: giving up one picture to save a couple of
+        thousand tokens is a minute of reprocessing for nothing."""
+        carrying = [m for m in self._view_messages() if self._sent_images(m)]
+        kept = 0
+        dropped = 0
+        for message in reversed(carrying):
+            count = len(self._sent_images(message))
+            if kept < keep:
+                kept += count
+                continue
+            dropped += count
+        return dropped, self.tokens_for(0, dropped, self.token_scale())
+
+    def prune_images(self, keep: int = 4) -> int:
+        """Give up all but the newest `keep` images and return how many were dropped.
+
+        This is the one place allowed to change history the model has already
+        seen, because images are by far the largest items in a computer-use
+        conversation and the cheapest to lose. It runs only under context
+        pressure - never as a side effect of taking another screenshot - so the
+        conversation costs one reprocess instead of one per step."""
+        carrying = [m for m in self._view_messages() if self._sent_images(m)]
+        kept = 0
+        dropped = 0
+        for message in reversed(carrying):
+            if kept < keep:
+                kept += len(self._sent_images(message))
+                continue
+            dropped += len(self._sent_images(message))
+            message[self.HIDDEN_IMAGES_KEY] = True
+        if dropped:
+            self._rewrite_jsonl()
+        return dropped
 
     def trim_to_budget(self, budget_tokens: int, min_keep: int = 6) -> bool:
         """Fallback: advance the model-view cut while retaining full history for the UI."""

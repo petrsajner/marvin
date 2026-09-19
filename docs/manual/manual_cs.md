@@ -94,7 +94,7 @@ py -3.12 -m venv .venv
 .venv\Scripts\python scripts\setup_env.py --model auto
 npm --prefix frontend ci
 npm --prefix frontend run build
-.venv\Scripts\python qwen_app.py
+.venv\Scripts\python launcher\launcher_app.py
 ```
 
 Pro terminál použijte `run_cli.bat` nebo `.venv\Scripts\python tui.py`.
@@ -120,7 +120,7 @@ Tato kapitola popisuje pracovní okno verze 1.8.0. Model a jeho stav najdete v h
 
 Šířku navigace i pravého detailu změníte tažením za jejich vnitřní okraj. Dvojklik na okraj obnoví výchozí šířku; totéž provede restart nebo obnovení stránky. Seznam konverzací nejprve ukáže 20 nejnovějších chatů vybraného projektu. **Zobrazit starší** přidá dalších 20, **Jen nejnovější** seznam opět zkrátí.
 
-Desktopový spouštěč používá data své vlastní instalace. Vývojová kopie a nainstalovaný Marvin neslučují konverzace. Pro výslovné otevření existujících dat z vývojové kopie slouží `python webapp.py --data-dir "C:\cesta\k\Marvinu"`. Data zůstávají na původním místě, bez převodu nebo kopírování.
+Desktopový spouštěč používá data své vlastní instalace. Vývojová kopie a nainstalovaný Marvin neslučují konverzace. Pro výslovné otevření existujících dat z vývojové kopie slouží `python marvin_web.py --data-dir "C:\cesta\k\Marvinu"`. Data zůstávají na původním místě, bez převodu nebo kopírování.
 
 Výběr projektu otevře jeho nejnovější chat. **Bez projektu** otevře samostatnou konverzaci. Přepnutí pohledu nepřesune ani nepřenastaví úlohu, která právě běží v jiném chatu.
 
@@ -129,6 +129,40 @@ Režimy mají vždy pořadí **Diskuze, Výzkum, Psaní, Vývoj, Počítač**. R
 Tlačítko **Nový chat** vytvoří konverzaci. Název nad chatem přejmenujete zadáním textu a Enterem. Třítečkové menu chatu obsahuje přesun, vrácení posledního kola, větev, export a smazání. Výběr cílového projektu chat přesune a přepočítá jeho projektový kontext. Před přesunem nebo smazáním zastavte úlohu tohoto chatu.
 
 Menu vedle výběru projektu vytvoří nový projekt, připojí existující složku nebo smaže projekt i jeho adresář. Vyhledávání vlevo prohledává uložené konverzace.
+
+## Jak najít cokoli, co jste napsal
+
+Pole v horní části panelu hledá **všude**, nejen v konverzacích: v chatech,
+v textových souborech otevřeného projektu, ve všech třech vrstvách paměti
+a v rozhodnutích projektu. Výsledky jsou rozdělené podle toho, kde leží, a
+kliknutím se otevře právě to místo — konverzace, dokument, stránka paměti, panel
+rozhodnutí.
+
+Který projekt se prohledává, se řídí otevřenou konverzací. Bez projektu se hledá
+jen v konverzacích a v globální paměti, protože jinde není co hledat.
+
+## Přejít na — jedna klávesa
+
+**Ctrl+K** otevře malé pole, do kterého se píše. Nabídne, co rozhraní umí — nový
+chat, přepnutí režimu, katalog schopností, panely Kontext, Průběh a Změny,
+jednotlivé stránky nastavení, diktování, když je připravené — a pod tím to, co
+vaše slova našla ve vaší vlastní práci. Enter spustí první akci, Escape zavře.
+
+Je to zkratka, ne samostatná funkce: vše, co nabízí, už v rozhraní někde je.
+
+## Co si můžu říct?
+
+Vedle tlačítka **Attach** je **Co si můžu říct?**. Otevře katalog zhruba dvaceti
+věcí, které Marvin umí, napsaných jako požadavky, ne jako seznam funkcí, a u každé
+je hotový příklad. **Použít** vloží příklad do promptu, kde ho lze upravit; samo
+o sobě nic neodešle.
+
+Katalog ukazuje, co nabízí aktuální pracovní režim. Položka z jiného režimu je
+šedá, píše, který režim potřebuje, a tlačítkem do něj konverzaci přepne — pořádná
+rešerše je například schopnost režimu Výzkum, ne způsob formulace otázky.
+**Zobrazit vše** vypíše všechny bez ohledu na režim. Kde má schopnost vlastní
+místo v rozhraní — paměť, rozhodnutí, změny úlohy, zdroje výzkumu — položka na ně
+odkáže, místo aby je zdvojovala.
 
 ## Prompt, Attach a náhledy obrázků
 
@@ -139,6 +173,41 @@ Každý připravený obrázek má skutečný náhled a vlastní křížek pro od
 Přiložit lze také PDF, DOCX, XLSX, CSV, Markdown a text. Model dostane cesty k dokumentům a přečte je příslušnými nástroji. Textový model neumí obsah obrázku; pro obrazové vstupy zvolte model s vision. Při odmítnutém požadavku zůstanou text i přílohy v draftu.
 
 Enter a Ctrl+Enter odešlou zprávu, Shift+Enter vloží nový řádek. Composer se vyčistí po přijetí identifikované zprávy službou. Rozepsaný text se ukládá pro každý chat zvlášť.
+
+## Diktování
+
+V **Nastavení > Chování** zapněte **Hlasový vstup**. Poprvé se na pozadí stáhne
+asi 556 MB: program pro rozpoznávání řeči a model, který umí česky. Pak vše běží
+na procesoru, v tomto počítači, a nic se nikam neposílá.
+
+Vedle Attach se objeví tlačítko **Diktovat**. Stisknete, mluvíte, stisknete znovu.
+Text se zapíše do pole promptu, kde si ho přečtete a opravíte, než odešlete.
+Samotným hlasem se nikdy nic neodešle.
+
+V **Jazyk diktování** uveďte, jakým jazykem mluvíte; ponechat jazyk rozhraní je
+běžné. Uvedený jazyk je zhruba dvakrát rychlejší než automatické rozpoznání,
+protože rozpoznání jazyka je samostatný průchod nahrávkou.
+
+Co čekat: běžná čeština se vrací čistá. Chyby dělají jména, cizí slova a odborné
+termíny — proto text končí v poli k úpravě a neodesílá se rovnou. Přepis trvá
+kolem čtyř sekund, ať mluvíte dvě sekundy nebo deset.
+
+Když tlačítko stisknete a nic neřeknete, dostanete „Nic jsem neslyšel" místo věty,
+kterou si program vymyslel — ticho se rozpozná ještě před přepisem.
+
+## Generování obrázků
+
+Všechno ostatní v Marvinovi běží na vašem počítači. Tahle jediná funkce ne: obrázky generuje přes OpenArt, na vašem účtu OpenArt, a každý obrázek stojí kredity. Dokud ji nezapnete, je vypnutá.
+
+V **Nastavení > Chování** zapněte **Povolit placené generování obrázků**. Jednorázově se stáhne 4MB program. Pak stiskněte **Přihlásit k OpenArt**: přihlášení se otevře v prohlížeči a dokončíte ho tam. Marvin vaše heslo nikdy nevidí a žádný credential neukládá — program OpenArt si drží vlastní ve vašem uživatelském profilu a nic z něj se nedostane do nastavení Marvina, exportu ani zálohy. Není co vkládat jako API klíč, protože OpenArt žádný nepoužívá.
+
+Jakmile je účet připojený, svítí zvýrazněný štítek se zůstatkem kreditů. **Přepínač je nezávislý na přihlášení**: když ho vypnete, generování se zastaví, i když účet zůstane připojený.
+
+Model pak umí vygenerovat obrázek, když je opravdu potřeba — sprite, texturu, návrh — a ukládá ho do složky `generated-images` v aktuálním projektu, kde ho otevřete jako každý jiný soubor. Zná pět modelů: Google Nano Banana 2 (výchozí, 4K s přesným textem v obrázku), OpenAI GPT Image 2.5 ve verzi rychlejší a přesnější, Nano Banana Pro na dlouhý text a konzistentní postavy a Seedream 4.5 na anime a ilustraci.
+
+Co čekat: jeden obrázek zhruba sedmnáct sekund a cena se napíše k výsledku vedle souboru. Obrázek z Nano Banana 2 stál v době psaní 20 kreditů. Marvin utrácení nestropuje; ovládáte ho tím přepínačem.
+
+Bez připojení k internetu je tohle jediná věc, která fungovat nemůže. Řekne to a nic jiného to neovlivní.
 
 ## Běžící úloha a fronta zpráv
 
@@ -165,7 +234,7 @@ Klikněte na ikonu nastavení nebo stav modelu nahoře. Nastavení je rozdělen�
 - **Model a zařízení**: model, KV profil, vision, paměť GPU, provozní diagnostika a Start / Stop / Restart.
 - **Chování**: autonomie a výchozí zacházení se zprávou přidanou během práce.
 - **Paměť a skilly**: úprava globální, režimové a projektové paměti; čtení, použití a návrh skillu; otevření uživatelské i projektové složky skillů.
-- **Data a zálohy**: export/import celého projektu, import JSONL chatu, vytvoření/výběr/kontrola lokální zálohy prostředí a stav údržby.
+- **Data a zálohy**: volba složky pro nové projekty, export/import celého projektu, import JSONL chatu, vytvoření/výběr/kontrola lokální zálohy prostředí a stav údržby.
 - **Vzhled a jazyk**: tmavý, světlý nebo systémový vzhled, rozestupy, angličtina a čeština.
 - **Nápověda a manuály**: oba PDF manuály a reference lomítkových příkazů.
 
@@ -254,7 +323,40 @@ Při volbě **Upřesnit nyní** další zpráva v právě běžícím chatu pře
 
 Rozlišujte **Zastavit úlohu** u zprávy a **stop** v nastavení modelu. První ukončí aktuální práci a pozastaví frontu, ale model může zůstat připravený v paměti. Druhé zastaví modelový server a uvolní jeho prostředky. Stažené modely zůstávají na disku pro další spuštění.
 
+Tlačítka v **Průběh > Procesy** se jmenují **Zastavit tento příkaz** a ukončí jen ten jeden příkaz na pozadí — úloha běží dál. Úlohu ukončíte tlačítkem u promptu.
+
+**Přerušení během čtení kontextu.** Velký prompt se přečte jednou a pak se používá
+znovu, takže každý další krok dopočítá jen nový kousek. Zkrátit to čtení znamená
+zahodit všechno už přečtené a příští požadavek za to zaplatí znovu — u opravdu
+velkého kontextu jsou to minuty. Připomínka proto počká, až se kontext dočte, a
+uplatní se na odpověď hned potom; konverzace to po dobu čekání oznámí. **Stop**
+čekat nenechává, protože je to výslovný pokyn — ale po zastavení během čtení
+kontextu začne další zpráva to čtení od začátku.
+
+## Když něco selže
+
+Selhaná úloha po sobě nechá zprávu v **Průběh > Historie aktivit**, ne jen
+oznámení, které zmizí. Ukáže, co selhalo, a tam, kde Marvin příčinu pozná, i co
+s tím: projekt bez vlastního virtuálního prostředí, model, který se nespustil,
+žádný model do limitu paměti, přesunutá složka projektu nebo došlá paměť.
+
+Kde odpověď známa není, nic se nevymýšlí. **Zjistit, co s tím** vloží do promptu
+připravenou otázku i s chybou a předá ji modelu, který na příčinu obvykle přijde.
+Otázka se sama neodešle, takže si ji můžete přečíst a upravit.
+
+Totéž nabídne chybný výsledek nástroje v konverzaci i kontrola projektu, která
+selhala, vypršela nebo se vůbec nespustila.
+
 ## Živý průběh
+
+Zatímco model čte kontext, řádek ukazuje, kolik konverzace měl server ještě
+z předchozího požadavku - podíl z celého promptu - a odhad zbývajícího času podle
+právě měřené rychlosti.
+
+Vysoký podíl je normální stav: harness požadavek jen doplňuje na konci, takže
+model nic nečte znovu. Nízký podíl znamená, že se změnilo něco blízko začátku
+konverzace a zpracovává se celá. Záměrně to dělají dvě věci - komprese a vzdání
+se starších snímků obrazovky, když se kontext plní. Obojí se v chatu ohlásí.
 
 UI rozlišuje reasoning, viditelný text, přípravu velkých tool callů, provádění nástrojů/příkazů/testů a sekundy bez tokenů. Při tvorbě velkého souboru ukazuje jméno souboru a rostoucí množství připravovaného obsahu.
 
@@ -277,6 +379,16 @@ Každý chat si pamatuje vlastní režim. Režimy jsou profily schopností stejn
 V třítečkovém menu vedle projektu vytvořte spravovaný projekt nebo pomocí **Připojit existující složku** zaregistrujte adresář bez kopírování.
 
 Projekt může mít libovolný počet chatů. Každý má vlastní historii, režim, kompresi, pins, research a task state; sdílejí složku a projektovou paměť.
+
+## Kde se zakládají nové projekty
+
+V **Nastavení > Data a zálohy** zvolíte složku pro projekty zakládané podle jména.
+Dokud není nastavená, vznikají vedle instalace. Složka musí existovat, být
+zapisovatelná a ležet mimo modelový runtime i historii konverzací; cokoli jiného
+se odmítne s uvedeným důvodem.
+
+Změna nic nepřesouvá. Už existující projekty si svou složku nechají a dál z ní
+fungují — nové místo platí až pro další projekt.
 
 ## Bez projektu a přesun chatu
 
@@ -308,7 +420,9 @@ Harness automaticky hledá `AGENTS.md`, `QWEN.md` a `CLAUDE.md` od kořene proje
 
 **Připnout soubor** vloží text vybraného souboru do následujících úloh tohoto chatu. Vhodné jsou architektura, specifikace, handoff a projektová pravidla. Limit je 10 souborů a asi 40 000 znaků. Větev pins kopíruje, nový chat ne.
 
-Při 85 % kontextu se starší část automaticky shrne. Viditelná historie se nemaže. Ruční komprese je v **Kontext > Komprimovat**. Při overflow agent jednou automaticky komprimuje a request zopakuje.
+Při 85 % kontextu se nejdřív přestanou posílat všechny snímky obrazovky kromě čtyř nejnovějších. V režimu Počítač jsou zdaleka největší částí konverzace, takže to obvykle stačí a text konverzace zůstane celý. Obrázky zůstanou vidět v chatu; jen je model u starších zpráv přestane dostávat, a to už trvale.
+
+Když to nestačí, starší část se automaticky shrne. Viditelná historie se nemaže. Ruční komprese je v **Kontext > Komprimovat**. Při overflow agent jednou automaticky komprimuje a request zopakuje.
 
 # 10. Tři vrstvy paměti
 
@@ -356,6 +470,8 @@ Všechny režimy mohou používat `web_search` a `web_fetch` pro aktuální info
 U dlouhých stránek může model vyhledat konkrétní výraz nebo načíst další pasáž bez opakovaného stahování. Celý načtený zdroj zůstává v evidenci výzkumu v rámci jejího technického limitu; užší výřez jej nenahrazuje. To pomáhá zvlášť u velkých modelů, které část výpočtu provádějí v systémové RAM.
 
 Během načítání vstupu se zobrazuje **Načítám kontext**, průběh nového textu a počet tokenů použitých z cache. Jde o jinou fázi než generování přemýšlení a odpovědi. První dlouhý dokument může být pomalý, i když navazující otázka využije téměř celou historii z cache. Úroveň přemýšlení a zvolená kvantizace se tímto zrychlením nemění.
+
+Procento na tomto řádku je označené jako **nové**, protože jde o postup tou částí promptu, kterou server modelu ještě nemá — ne o zaplněnost kontextu. Zaplněnost je vedle vstupního pole, jako `Kontext: ~132k / 197k`. Mezi požadavky je to odhad a sám se opravuje: server s každou odpovědí hlásí přesnou délku promptu, takže se odhad proti němu měří a upravuje. Nová konverzace začíná od změřených průměrů a postupně se zpřesňuje, protože česká próza, programový kód a snímky obrazovky stojí různý počet tokenů na znak.
 
 Výchozí vyhledávač je Google; v `config.yaml` lze zvolit Google, Bing nebo automatický fallback. Fetching je read-only HTTP/HTTPS.
 
@@ -446,7 +562,7 @@ Model umí číst status a diff a vytvořit lokální commit. `git_commit` stagu
 
 Krátké příkazy běží synchronně s timeoutem. Úplný stdout/stderr se ukládá do `sessions\<id-chatu>\command-logs`; model dostane začátek i konec, takže neztratí závěrečnou chybu. Stop aktivní synchronní příkaz ihned ukončí. Dlouhé příkazy na pozadí vrátí process ID a lze je pollovat, posílat jim stdin nebo ukončit celý strom procesů.
 
-`project_validation_profile` vypíše detekované test/lint/typecheck/build příkazy. `start_project_check` spustí primární nebo pojmenovanou kontrolu. Detekce pokrývá tento harness, pytest, Node scripts, Rust, Go a .NET.
+`project_validation_profile` vypíše detekované test/lint/typecheck/build příkazy. `start_project_check` spustí primární nebo pojmenovanou kontrolu. Detekce pokrývá tento harness, složku `tests/` i moduly `test_*.py` v kořeni projektu, Node scripts, Rust, Go a .NET. Ve výchozím stavu se používá standardní `unittest`; pytest jen tehdy, když si ho projekt nakonfiguruje (`pytest.ini`, `conftest.py`, `[tool.pytest]`) a interpret ho umí naimportovat.
 
 Projekt může detekci nahradit souborem `.qwen/project.yaml`:
 
@@ -460,6 +576,21 @@ checks:
     timeout: 900
     primary: true
 ```
+
+Kontroly běží ve vlastním virtuálním prostředí projektu (`.venv` nebo `venv`),
+pokud ho projekt má, takže vidí jeho závislosti. Bez něj je spustí interpret
+Marvina a chybějící cizí závislost se ohlásí jako důvod selhání. Lint a typovou
+kontrolu nabídne jen tehdy, když je nástroj nainstalovaný — detekovaná kontrola
+tedy neselže už při startu.
+
+**Stav projektu.** Panel **Průběh** vypíše detekované kontroly aktuálního
+projektu ještě předtím, než kdy běžely, tlačítkem **Spustit kontroly projektu**
+je všechny spustí bez modelu a výsledek uchová u projektu v
+`.qwen/check-status.json`, takže přežije restart. Každý řádek ukazuje, zda
+prošel nebo selhal, kdy běžel, a po najetí myší konec výstupu. **Nech agenta
+opravit selhání** otevře v projektu chat ve Vývoji a zadá agentovi, ať kontroly
+spustí, opraví co selhává a opakuje to, aniž by testy oslaboval. Obě tlačítka
+srozumitelně oznámí, když projekt žádné detekovatelné kontroly nemá.
 
 **Automatické commity úloh.** V dialogu projektu (třítečkové menu u výběru projektu)
 přepínač **Automaticky commitnout každou dokončenou úlohu** způsobí, že každá
@@ -493,7 +624,29 @@ Harness přepočítá souřadnice obrázku na skutečné rozlišení primárníh
 - Levé, pravé, prostřední kliknutí a dvojklik.
 - Scroll na volitelné pozici.
 - Přímé psaní ASCII nebo vložení Unicode/dlouhého textu přes schránku.
-- Klávesy a kombinace jako Enter, Escape, Ctrl+S, Alt+F4 nebo Win+D.
+- Vypsat otevřená okna a vyfotit jedno z nich podle jména, i když ho zakrývá jiný
+  program. Tak model sleduje program, který spustil, aniž by vám bral obrazovku:
+  běžný screenshot ukazuje to, co je vpředu, což obvykle není testovaný program.
+- Poslat klávesy přímo do jednoho programu podle titulku okna, bez přepnutí do
+  popředí. Změřeno na zakrytém herním okně: stisky, uvolnění i kombinace jako
+  Ctrl+S dorazí, zatímco okno, ve kterém pracujete, nedostane nic. Tak model
+  ovládá program, který spustil, a vy můžete dělat něco jiného.
+- Přepnout okno do popředí podle jména a obnovit ho, pokud bylo minimalizované.
+  To je záloha pro programy, které čtou klávesnici přímo místo přes okenní zprávy
+  a jde k nim dostat jen ve popředí — bere vám to obrazovku, takže model zkouší
+  nejdřív cestu výše. Když systém přepnutí odmítne, model se to dozví, místo aby
+  hlásil úspěch.
+- Spustit program na SDL nebo pygame úplně bez okna, když jde o chování a ne
+  o vzhled: kreslí do paměti, uloží snímek jako obrázek, na který se model
+  podívá, a vaší obrazovky se nedotkne.
+- Klávesy a kombinace jako Enter, Escape, Ctrl+S, Alt+F4 nebo Win+D. Klávesy
+  odcházejí jako hardwarové scancody, které hry a další okna na SDL nebo
+  DirectInput vyžadují: rozlišují klávesy podle scancodu a klávesu bez něj
+  ignorují, což je důvod, proč takové okno dřív nereagovalo na nic. Klávesa se
+  navíc chvíli drží stisknutá, aby neproletěla mezi dvěma dotazy okna. Když hra
+  pořád nereaguje, lze si vyžádat delší podržení; pro vzácné okno, které to
+  preferuje, zůstává k dispozici i starší způsob. Failsafe levého horního rohu
+  platí pro oba.
 
 ## Failsafe
 
@@ -651,6 +804,20 @@ Nástroje běžně požadujete přirozeným jazykem.
 | `list_task_changes`, `undo_task_changes` | Task journal a rollback. |
 | `view_image` | Vizuální analýza lokálního obrázku. |
 
+## Sledování dokumentu, který se právě píše
+
+V seznamu **Změněné soubory** má dokument, kterého se úloha dotkla, druhé tlačítko
+vedle zobrazení rozdílů. Otevře dokument vysázený a **drží ho aktuální, zatímco
+model píše**: náhled soubor znovu načítá a překresluje jen tehdy, když se obsah
+opravdu změnil, takže neproblikává.
+
+Tlačítko se objeví u toho, co jde vysázet — Markdown, text, DOCX, PDF, HTML, CSV
+a tabulky. Zdrojový kód a binární soubory nemají co ukázat, takže u nich zůstává
+jen zobrazení rozdílů.
+
+To je odpověď na jedinou otázku, kterou režim Psaní během práce neumělo
+zodpovědět: jak to teď vypadá.
+
 ## Psaní, Vývoj a Počítač
 
 | Nástroj | Schopnost |
@@ -752,6 +919,8 @@ Výzkum ukládá průběžné poznámky k důkazům. Po přerušení je syntéza
 
 Otevřete **Výsledky > Body obnovy** nebo použijte `/checkpoint název`. Bod zachytí pracovní soubory, nikoli generované závislosti nebo modely a runtime. Úlohový snapshot eviduje také změny provedené příkazy modelu. **Obnovit** oznámí konflikt s pozdější úpravou a nepřepíše ji tiše. Částečné selhání se neoznačí za kompletní obnovení.
 
+Tlačítko porovnání u bodu obnovy vypíše všechno, co se v projektu od jeho pořízení změnilo — upravené, smazané i nově vzniklé soubory — a každý řádek otevře prohlížeč rozdílů proti uložené verzi. Nevyžaduje to žádnou činnost modelu, takže bod obnovy slouží i k revizi vlastních úprav. Soubor vzniklý až po bodu obnovy za sebou uloženou verzi nemá: lze ho zobrazit, ale ne vrátit.
+
 ## Přenos projektu
 
 Použijte **Nastavení > Data a zálohy > Exportovat projekt**. ZIP zahrnuje projektové soubory, projektovou paměť a skilly, historii chatů, přílohy a odkazy na rozhodnutí. **Importovat projekt** vytvoří nový adresář a nové identifikátory chatů a upraví uložené cesty příloh i odkazy na původní konverzace.
@@ -762,4 +931,4 @@ Projektový archiv je oddělený od zálohy modelů a runtime. Ta nadále funguj
 
 Běžný uživatel volí Minimal nebo Full; Full obsahuje Python 3.12 i závislosti. Node.js není nutný pro provoz aplikace. Vývojář sestaví frontend příkazy `npm --prefix frontend ci` a `npm --prefix frontend run build`. Python obsluhuje výsledný adresář `ui_dist`. Ověřené Windows verze balíčků drží `requirements-windows-py312.lock`.
 
-Původní Gradio rozhraní zůstává pro diagnostiku kompatibility s `MARVIN_LEGACY_UI=1`; standardně se spouští nová pracovní plocha.
+Pracovní plocha je jediné rozhraní. Původní Gradio bylo ve verzi 1.16.0 odstraněno i se závislostí, kterou potřebovalo.

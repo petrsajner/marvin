@@ -115,16 +115,25 @@ def best_fit(cfg, vram_gb: float | None) -> tuple[str, str] | None:
         return cfg.model(key).get("family", "qwen" if key in ("q3", "q4", "q5") else key)
     related = [k for k in cfg.data["models"] if k != default_key and family(k) == family(default_key)]
     ordered = [default_key] + related + [k for k in cfg.data["models"] if k != default_key and k not in related]
-    best: tuple | None = None  # (order, Q8 preference, context, plain preference, has_limit, model, profile)
+    # A model that is not downloaded by default is not chosen by default either.
+    # The smallest quant buys context by giving up weight quality, and that is a
+    # trade the owner makes deliberately, not one made quietly on their behalf.
+    ordered = [k for k in ordered
+               if k == default_key or not cfg.model(k).get("optional_download")]
+    best: tuple | None = None  # (order, Q8, full cache, context, plain, has_limit, model, profile)
     for order, key in enumerate(ordered):
         for prof_key, prof in fitting_profiles(cfg, key, vram_gb).items():
-            candidate = (-order, prof.get("cache_type", prof_key) == "q8_0", int(prof.get("ctx_size", 0)),
+            candidate = (-order, prof.get("cache_type", prof_key) == "q8_0",
+                         # A reduced value cache is an option, never the default:
+                         # it costs recall over a long conversation, unmeasurably.
+                         not prof.get("value_cache_type"),
+                         int(prof.get("ctx_size", 0)),
                          prof.get("speculative") is None, "min_vram_gb" in prof, key, prof_key)
             if best is None or candidate > best:
                 best = candidate
     if best is None:
         return None
-    return best[5], best[6]
+    return best[6], best[7]
 
 
 def fits(cfg, model_key: str, profile_key: str, vram_gb: float | None) -> bool:
