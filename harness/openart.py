@@ -170,8 +170,32 @@ def account(cfg: Config) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
+def identity(payload) -> str:
+    """Who the account belongs to, as one line for the interface.
+
+    Observed shape: {"user": {"uid", "email"}, "plan", "credits"}. Read through a
+    helper because a flat "email" was assumed first and was wrong - and because
+    what counts as signed in has to be the same question in both places."""
+    if not isinstance(payload, dict):
+        return ""
+    user = payload.get("user")
+    if isinstance(user, dict):
+        for key in ("email", "name", "uid"):
+            if str(user.get(key) or "").strip():
+                return str(user[key]).strip()
+    for key in ("email", "name"):
+        if str(payload.get(key) or "").strip():
+            return str(payload[key]).strip()
+    return ""
+
+
 def signed_in(cfg: Config) -> bool:
-    return account(cfg) is not None
+    """A payload that does not name anybody is not a sign-in.
+
+    Deliberately stricter than "the call succeeded": whether the CLI reports a
+    signed-out state by exit code or by an empty payload could not be tested
+    without signing the owner out, so neither is relied on."""
+    return bool(identity(account(cfg)))
 
 
 def login_argv(cfg: Config) -> list[str]:
@@ -239,8 +263,11 @@ def generate(cfg: Config, prompt: str, *, model: str = DEFAULT_MODEL,
         return {"ok": False, "error": t("The image generation program is not installed.")}
     directory.mkdir(parents=True, exist_ok=True)
     before = {path for path in directory.glob("*") if path.is_file()}
+    # The CLI parses --timeout as a Go duration, so it needs a unit: a bare "420"
+    # is rejected outright. Found with --dry-run, which would otherwise have been
+    # found by the first real generation failing.
     arguments = ["generate", "image", prompt, "--model", model,
-                 "-o", str(directory), "--timeout", str(timeout)]
+                 "-o", str(directory), "--timeout", "%ds" % timeout]
     if reference is not None:
         arguments += ["--image", str(reference)]
     payload, message = _json(cfg, arguments, timeout=timeout + 60)

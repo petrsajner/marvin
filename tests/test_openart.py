@@ -80,6 +80,19 @@ class OpenArtTests(unittest.TestCase):
         an export or a backup. There is nothing here to leak."""
         self.assertEqual(set(DEFAULTS["openart"]), {"enabled"})
 
+    def test_a_payload_that_names_nobody_is_not_a_sign_in(self):
+        """Whether the CLI reports a signed-out state by exit code or by an empty
+        payload could not be tested without signing the owner out, so neither is
+        relied on: an answer has to name somebody to count."""
+        self.assertEqual(openart.identity({"user": {"uid": "u", "email": "a@b.c"}}), "a@b.c")
+        self.assertEqual(openart.identity({"user": {"uid": "u"}}), "u")
+        self.assertEqual(openart.identity({"email": "flat@b.c"}), "flat@b.c")
+        for empty in (None, {}, [], {"plan": "Plus"}, {"user": {}}, {"user": None}):
+            self.assertEqual(openart.identity(empty), "", repr(empty))
+        self._install_fake_cli()
+        with patch.object(openart, "account", return_value={"plan": "Plus", "credits": 0}):
+            self.assertFalse(openart.signed_in(self.cfg))
+
     def test_signing_in_is_handed_back_rather_than_performed(self):
         self._install_fake_cli()
         argv = openart.login_argv(self.cfg)
@@ -93,10 +106,16 @@ class OpenArtTests(unittest.TestCase):
         service._openart_install = {"running": False, "error": "", "done": 0, "total": 0}
         service._openart_account = {"at": 0.0, "value": None}
         self._install_fake_cli()
-        secret = {"email": "a@b.c", "plan": "pro", "credits": 500, "token": "SECRET-VALUE"}
-        with patch.object(openart, "account", return_value=secret):
+        # The shape the CLI actually returns, observed against v0.1.1. A flat
+        # "email" was assumed first, and reading it that way returned nothing.
+        observed = {"user": {"uid": "abc123", "email": "a@b.c"},
+                    "plan": "Plus", "credits": 27854, "token": "SECRET-VALUE"}
+        with patch.object(openart, "account", return_value=observed):
             state = ApplicationService.openart_state(service, refresh=True)
         self.assertEqual(set(state["account"]), {"name", "plan", "credits"})
+        self.assertEqual(state["account"]["name"], "a@b.c")
+        self.assertEqual(state["account"]["credits"], 27854)
+        self.assertTrue(state["signed_in"])
         self.assertNotIn("SECRET-VALUE", json.dumps(state))
 
     # -- the pinned download --------------------------------------------------
@@ -148,6 +167,24 @@ class OpenArtTests(unittest.TestCase):
         elsewhere.write_bytes(b"\x89PNG\r\n\x1a\n")
         found = openart._saved_files({"file": str(elsewhere)}, directory, set())
         self.assertEqual(found, [elsewhere])
+
+    def test_the_timeout_carries_a_unit_the_cli_accepts(self):
+        """The CLI parses --timeout as a Go duration and rejects a bare number:
+        `invalid argument "420" for "--timeout" flag: missing unit in duration`.
+        Every generation would have failed on it."""
+        self.cfg.data["openart"]["enabled"] = True
+        self._install_fake_cli()
+        seen = {}
+
+        def capture(cfg, arguments, timeout=0):
+            seen["args"] = arguments
+            return 1, "", "stopped before the service"
+
+        with patch.object(openart, "_run", side_effect=capture):
+            openart.generate(self.cfg, "a fox", directory=self.workspace / "out")
+        value = seen["args"][seen["args"].index("--timeout") + 1]
+        self.assertTrue(value.endswith("s"), value)
+        self.assertTrue(value[:-1].isdigit(), value)
 
     def test_a_generated_picture_lands_in_the_project_and_is_shown(self):
         self.cfg.data["openart"]["enabled"] = True

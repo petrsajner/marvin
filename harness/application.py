@@ -224,11 +224,11 @@ class ApplicationService:
         return {
             "enabled": openart.enabled(self.cfg),
             "installed": installed,
-            "signed_in": account is not None,
+            "signed_in": bool(openart.identity(account)),
             # Identity and balance only; nothing that could be a credential.
-            "account": {"name": str(account.get("email") or account.get("name") or ""),
+            "account": {"name": openart.identity(account),
                         "plan": str(account.get("plan") or ""),
-                        "credits": account.get("credits")} if isinstance(account, dict) else None,
+                        "credits": account.get("credits")} if openart.identity(account) else None,
             "models": [{"id": row[0], "description": row[1]} for row in openart.MODELS],
             "installing": self._openart_install["running"],
             "install_error": self._openart_install["error"],

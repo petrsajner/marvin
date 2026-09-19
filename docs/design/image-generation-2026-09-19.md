@@ -82,20 +82,36 @@ and the price is reported in the tool result beside the saved file. No cap and n
 confirmation: the owner asked for one switch and otherwise for it to work. The
 guard is that the switch exists and that the tool is `Risk.WRITE`.
 
-## What is not verified here
+## Verified against the real program, and what it caught
 
-The download, the checksum, the extraction, the refusals, the parsing of both
-price shapes and the saving into the project are covered by 18 tests. **The one
-thing no test can cover is a real generation**, which needs the owner's browser
-sign-in and spends real credits. Until that has been run once, this is a
-carefully built path that has never carried traffic.
+The binary was downloaded, checked against the published digest and extracted:
+4,066,696 bytes in, a 9,980,416-byte `openart.exe` out, reporting build
+`85fa0ad`. Then every call the harness makes, except the one that costs money:
 
-Two details are worth re-checking on that first run, because they were read from
-documentation rather than observed: that `--json` on `generate image` reports the
-saved file, and that `openart account` exits non-zero when nobody is signed in.
-Neither is load-bearing - the output directory is the authority on what arrived,
-and a missing account reads as "not signed in" either way - but both are
-assumptions until seen.
+**Two things read from documentation were wrong.**
+
+*The account payload is nested.* It is `{"user": {"uid", "email"}, "plan",
+"credits"}`, not a flat `email`, so the interface would have shown a signed-in
+account with no name against it. The test that "passed" was asserting against a
+shape invented to match the code. Identity now goes through one helper, and
+`signed_in` asks it rather than asking whether the call succeeded - deliberately
+stricter, because whether the CLI reports a signed-out state by exit code or by
+an empty payload could not be tested without signing the owner out.
+
+*`--timeout` is a Go duration and rejects a bare number.* `--timeout 420` fails
+with `missing unit in duration "420"`. **Every generation would have failed**, and
+the only reason it did not have to be found the expensive way is that `--dry-run`
+costs nothing. It is `420s` now, with a regression test.
+
+What was confirmed: all five catalogued model ids exist among the 28 the service
+offers; `model cost` parses to 20 credits for `nano-banana-2` at `text2image`;
+and `--dry-run` returns exactly the intended request -
+`POST /api/cli/v1/generate` with `{"model": "nano-banana-2", "media": "image",
+"mode": "text2image", "params": {"prompt": ...}}`.
+
+**The one thing still unverified is a real generation**, because it spends the
+owner's credits and that is his to authorise. Everything up to the paid call has
+now carried traffic.
 
 The CLI is at **v0.1.1**. That is an early version, and the interface may move;
 the pin is what protects against it moving underneath us.
