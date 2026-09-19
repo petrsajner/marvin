@@ -916,13 +916,22 @@ class Agent:
                 return
 
 
-def build_registry(mode: str, work_mode: str | None = None) -> ToolRegistry:
+def build_registry(mode: str, work_mode: str | None = None, cfg=None) -> ToolRegistry:
     """Build the tool registry for the selected work mode.
 
-    Every mode can read/write files and view images: research and discussion also need sources and saved results. Repository, Git and shell tools are limited to Development and Computer modes."""
+    Every mode can read/write files and view images: research and discussion also need sources and saved results. Repository, Git and shell tools are limited to Development and Computer modes.
+
+    cfg is optional because several callers only want the names. Without it the
+    tools that depend on a setting are left out, which is the safe direction: a
+    tool in the schema is a promise to the model."""
     from harness.tools import browser, code, computer, context, documents, fs, git, history, memory, search, semantic, shell, skills, task, vision, web
     selected = normalize_work_mode(work_mode, mode)
     reg = ToolRegistry()
+    if cfg is not None:
+        from harness import openart
+        if openart.enabled(cfg):
+            from harness.tools import imagegen
+            imagegen.register_image_tools(reg)
     memory.register_memory_tools(reg)  # Discussion mode includes memory tools.
     history.register_history_tools(reg)
     web.register_web_tools(reg)        # Web search and fetching are available in every mode.

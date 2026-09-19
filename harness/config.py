@@ -122,6 +122,13 @@ DEFAULTS: dict[str, Any] = {
         "threads": 0,
         "max_seconds": 300,
     },
+    # Image generation is the one feature that calls out to a paid service, so it
+    # is off until the owner turns it on, and off means off even when the CLI is
+    # installed and signed in. No credential lives here: the OpenArt CLI keeps its
+    # own in the user profile, so nothing reaches this file, an export or a backup.
+    "openart": {
+        "enabled": False,
+    },
     "memory": {
         "directory": "memory",
         "global_filename": "GLOBAL.md",

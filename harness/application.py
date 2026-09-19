@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import subprocess
 import threading
 import time
 import uuid
@@ -74,6 +75,11 @@ class ApplicationService:
         self.preferences.setdefault("voice_device", None)
         self.recorder = None
         self._voice_install = {"running": False, "error": "", "done": 0, "total": 0}
+        self._openart_install = {"running": False, "error": "", "done": 0, "total": 0}
+        # Asking the CLI who is signed in starts a process, and the settings panel
+        # polls. The answer changes only when the owner signs in or out, so it is
+        # remembered briefly and cleared outright when they do either.
+        self._openart_account = {"at": 0.0, "value": None}
         # Where new projects are created. Empty means the folder beside the
         # installation, which is all that used to be possible.
         self.preferences.setdefault("projects_root", "")
@@ -200,6 +206,83 @@ class ApplicationService:
                 self._voice_install["running"] = False
 
         threading.Thread(target=_install, name="marvin-voice-setup", daemon=True).start()
+
+    # ---------------------------------------------------------- image generation
+    OPENART_ACCOUNT_TTL = 30.0
+
+    def openart_state(self, refresh: bool = False) -> dict:
+        """Whether a picture can be generated, and what the owner still has to do."""
+        from harness import openart
+        installed = openart.installed(self.cfg)
+        account = None
+        if installed:
+            now = time.time()
+            fresh = now - self._openart_account["at"] < self.OPENART_ACCOUNT_TTL
+            if refresh or not fresh:
+                self._openart_account = {"at": now, "value": openart.account(self.cfg)}
+            account = self._openart_account["value"]
+        return {
+            "enabled": openart.enabled(self.cfg),
+            "installed": installed,
+            "signed_in": account is not None,
+            # Identity and balance only; nothing that could be a credential.
+            "account": {"name": str(account.get("email") or account.get("name") or ""),
+                        "plan": str(account.get("plan") or ""),
+                        "credits": account.get("credits")} if isinstance(account, dict) else None,
+            "models": [{"id": row[0], "description": row[1]} for row in openart.MODELS],
+            "installing": self._openart_install["running"],
+            "install_error": self._openart_install["error"],
+            "install_done": self._openart_install["done"],
+            "install_total": self._openart_install["total"],
+        }
+
+    def set_openart_enabled(self, value: bool) -> dict:
+        """The owner's switch. Independent of sign-in: signed in but off stays off."""
+        self.cfg.data.setdefault("openart", {})["enabled"] = bool(value)
+        if value:
+            self.prepare_openart()
+        return self.openart_state()
+
+    def prepare_openart(self) -> None:
+        """Download the pinned CLI once, in the background."""
+        from harness import openart
+        if openart.installed(self.cfg) or self._openart_install["running"]:
+            return
+        self._openart_install.update(running=True, error="", done=0,
+                                     total=openart.install_bytes())
+
+        def _install():
+            def advance(done: int) -> None:
+                self._openart_install["done"] = done
+
+            try:
+                openart.install(self.cfg, on_progress=advance)
+            except Exception as error:
+                self._openart_install["error"] = f"{type(error).__name__}: {error}"
+            finally:
+                self._openart_install["running"] = False
+
+        threading.Thread(target=_install, name="marvin-openart-setup", daemon=True).start()
+
+    def openart_login(self) -> dict:
+        """Open the browser sign-in. The owner completes it; this never sees it."""
+        from harness import openart
+        from harness.i18n import t
+        if not openart.installed(self.cfg):
+            return {"ok": False, "error": t("The image generation program is not installed.")}
+        try:
+            subprocess.Popen(openart.login_argv(self.cfg),
+                             creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
+        except OSError as error:
+            return {"ok": False, "error": f"{type(error).__name__}: {error}"}
+        self._openart_account = {"at": 0.0, "value": None}
+        return {"ok": True}
+
+    def openart_logout(self) -> dict:
+        from harness import openart
+        ok = openart.logout(self.cfg)
+        self._openart_account = {"at": 0.0, "value": None}
+        return {"ok": ok, **self.openart_state(refresh=True)}
 
     def apply_projects_root(self, value: str) -> str:
         """Point new projects at a folder, or back at the built-in one.
@@ -746,7 +829,7 @@ class ApplicationService:
         if not session.messages or session.messages[0].get("role") != "system":
             session.messages.insert(0, {"role": "system", "content": "", "id": f"{sid}:system"})
         previous_agent = self.agents.get(sid)
-        agent = Agent(cfg, llm, session, build_registry(spec.agent_mode, mode),
+        agent = Agent(cfg, llm, session, build_registry(spec.agent_mode, mode, cfg),
                       SafetyPolicy(autonomy=cfg.agent["autonomy"]), mode=spec.agent_mode,
                       work_mode=mode, abort_flag=self.abort, on_event=event,
                       may_abort_prefill=lambda: self.abort_reason != "steer",

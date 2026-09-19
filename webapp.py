@@ -251,7 +251,7 @@ class AppState:
         )
         self.abort = threading.Event()
         self.agent = Agent(cfg, llm, self.session,
-                           build_registry(self.mode, self.work_mode),
+                           build_registry(self.mode, self.work_mode, cfg),
                            safety, mode=self.mode, abort_flag=self.abort,
                            on_event=self.hub.on_event, process_manager=self.processes,
                            browser_manager=self.browser,

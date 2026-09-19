@@ -185,6 +185,33 @@ def create_app(cfg=None, *, service=None):
             service.prepare_voice_input()
             return service.voice_state()
 
+    @app.get("/api/openart")
+    def openart_state():
+        with service.lock:
+            return service.openart_state()
+
+    @app.post("/api/openart/enabled")
+    def openart_enabled(payload: dict):
+        with service.lock:
+            return service.set_openart_enabled(bool(payload.get("enabled")))
+
+    @app.post("/api/openart/install")
+    def openart_install():
+        with service.lock:
+            service.prepare_openart()
+            return service.openart_state()
+
+    @app.post("/api/openart/login")
+    def openart_login():
+        # Signing in opens a browser and is the account holder's to complete; this
+        # only starts it. Outside the lock so the settings panel stays responsive.
+        return service.openart_login()
+
+    @app.post("/api/openart/logout")
+    def openart_logout():
+        with service.lock:
+            return service.openart_logout()
+
     @app.get("/api/capabilities")
     def capabilities(mode: str = "discussion"):
         from harness import capabilities as catalogue

@@ -48,6 +48,7 @@ import {
   Save,
   Sparkles,
   Mic,
+  Image,
 } from "lucide-react";
 import {
   api,
@@ -130,6 +131,7 @@ export function DialogView(props: any) {
   const [voiceStatus, setVoiceStatus] = useState<any>(null);
   // The followed status while a download runs, the general one otherwise.
   const voice = voiceStatus || app?.voice || {};
+  const [openart, setOpenart] = useState<any>(null);
   const [content, setContent] = useState(""),
     [name, setName] = useState(""),
     [scope, setScope] = useState("global"),
@@ -229,14 +231,26 @@ export function DialogView(props: any) {
     }
     // Enumerating input devices touches the audio system, so it is asked for
     // only while the section that lists them is open.
-    if (dialog.type === "settings" && section === "behavior")
+    if (dialog.type === "settings" && section === "behavior") {
       api("/api/voice")
         .then((state: any) => {
           setVoiceDevices(state.devices || []);
           setVoiceStatus(state);
         })
         .catch(error);
+      api("/api/openart").then(setOpenart).catch(error);
+    }
   }, [dialog.type, section, sid, error]);
+  // Sign-in happens in a browser window outside this interface, and the download
+  // says nothing while it runs, so both are followed rather than waited for.
+  useEffect(() => {
+    if (dialog.type !== "settings" || section !== "behavior") return;
+    if (!openart?.enabled) return;
+    const timer = setInterval(() => {
+      api("/api/openart").then(setOpenart).catch(() => null);
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [dialog.type, section, openart?.enabled]);
   // The general state arrives on events, which say nothing while a download
   // runs, so the download is followed here - otherwise 556 MB looks like a
   // sentence that never changes.
@@ -699,6 +713,95 @@ export function DialogView(props: any) {
                         ))}
                       </select>
                     </label>
+                  </>
+                )}
+                <h3>{tr("Image generation")}</h3>
+                <div className="row">
+                  <button
+                    className={openart?.enabled ? "positive" : "outline"}
+                    onClick={() =>
+                      call(async () =>
+                        setOpenart(
+                          await api("/api/openart/enabled", "POST", {
+                            enabled: !openart?.enabled,
+                          }),
+                        ),
+                      )
+                    }
+                  >
+                    <Image />
+                    {tr("Allow paid image generation")}
+                  </button>
+                  {openart?.signed_in && (
+                    <span className="chip positive">
+                      {tr("Account connected")}
+                      {openart.account?.credits !== null &&
+                      openart.account?.credits !== undefined
+                        ? " · " +
+                          openart.account.credits +
+                          " " +
+                          tr("credits")
+                        : ""}
+                    </span>
+                  )}
+                </div>
+                {openart?.enabled && (
+                  <>
+                    <p>
+                      {openart.installing
+                        ? tr("Downloading image generation") +
+                          " " +
+                          Math.min(
+                            100,
+                            Math.round(
+                              (100 * (openart.install_done || 0)) /
+                                Math.max(1, openart.install_total || 0),
+                            ),
+                          ) +
+                          "%"
+                        : openart.install_error
+                          ? openart.install_error
+                          : !openart.installed
+                            ? tr("Still needed:") +
+                              " " +
+                              tr("image generation program (4 MB)")
+                            : openart.signed_in
+                              ? tr(
+                                  "Signed in to OpenArt. Pictures are saved in the current project.",
+                                )
+                              : tr(
+                                  "Sign in to OpenArt to finish. The sign-in opens in your browser and Marvin never sees your password.",
+                                )}
+                    </p>
+                    {openart.installed && !openart.signed_in && (
+                      <div className="row">
+                        <button
+                          className="primary"
+                          onClick={() => call(() => api("/api/openart/login", "POST"))}
+                        >
+                          {tr("Sign in to OpenArt")}
+                        </button>
+                      </div>
+                    )}
+                    {openart.signed_in && (
+                      <div className="row">
+                        <button
+                          className="outline"
+                          onClick={() =>
+                            call(async () =>
+                              setOpenart(await api("/api/openart/logout", "POST")),
+                            )
+                          }
+                        >
+                          {tr("Sign out")}
+                        </button>
+                      </div>
+                    )}
+                    <p className="muted">
+                      {tr(
+                        "Generating a picture spends credits on your OpenArt account. This switch turns it off whatever the account says.",
+                      )}
+                    </p>
                   </>
                 )}
               </>
