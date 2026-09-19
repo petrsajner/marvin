@@ -457,6 +457,8 @@ U dlouhých stránek může model vyhledat konkrétní výraz nebo načíst dal�
 
 Během načítání vstupu se zobrazuje **Načítám kontext**, průběh nového textu a počet tokenů použitých z cache. Jde o jinou fázi než generování přemýšlení a odpovědi. První dlouhý dokument může být pomalý, i když navazující otázka využije téměř celou historii z cache. Úroveň přemýšlení a zvolená kvantizace se tímto zrychlením nemění.
 
+Procento na tomto řádku je označené jako **nové**, protože jde o postup tou částí promptu, kterou server modelu ještě nemá — ne o zaplněnost kontextu. Zaplněnost je vedle vstupního pole, jako `Kontext: ~132k / 197k`. Mezi požadavky je to odhad a sám se opravuje: server s každou odpovědí hlásí přesnou délku promptu, takže se odhad proti němu měří a upravuje. Nová konverzace začíná od změřených průměrů a postupně se zpřesňuje, protože česká próza, programový kód a snímky obrazovky stojí různý počet tokenů na znak.
+
 Výchozí vyhledávač je Google; v `config.yaml` lze zvolit Google, Bing nebo automatický fallback. Fetching je read-only HTTP/HTTPS.
 
 ## Výzkumný workflow

@@ -675,6 +675,8 @@ For long pages, the model can find a specific phrase or read the next passage wi
 
 During input processing, **Reading context** shows progress through new text and the number of tokens reused from cache. This is separate from generating reasoning and the answer. Reading a long document for the first time may be slow even when a follow-up question reuses nearly all prior context. These optimizations do not change reasoning effort or the chosen quantization.
 
+The percentage on that line is labelled **new**, because it is progress through the part of the prompt the model server does not already hold - not how full the context is. How full the context is appears beside the composer, as `Context: ~132k / 197k`. That figure is an estimate between requests, and it corrects itself: the server reports the exact prompt length with every reply, so the estimate is measured against it and adjusted. A new conversation starts from measured averages and becomes more accurate as it goes, because Czech prose, program code and screenshots each cost a different number of tokens per character.
+
 The default search backend is Google; `config.yaml` can select Google, Bing, or automatic fallback. Fetching is read-only HTTP/HTTPS.
 
 ## Research workflow
