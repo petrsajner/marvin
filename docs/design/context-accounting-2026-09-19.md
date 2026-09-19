@@ -164,6 +164,34 @@ context, the profile he runs:
 Ninety-two seconds becomes one. The default 8192 MiB holds a 150k-token
 conversation across an interruption, so there is nothing to raise.
 
+### A real break, not a five-minute one
+
+Five minutes is not what the owner's pauses look like; twenty is. His own history
+cannot settle it, because all thirteen long-gap requests in it reused nothing -
+16, 33, 88, 103, 106, 147, 166, 199, 232, 236 and 586 minutes, every one at 0% -
+and every one of those gaps also contained a server restart. Time and restart are
+not separable there.
+
+Nothing in the settings should expire a prompt: the cache is bounded by size, not
+age, and the only time-based option, `--sleep-idle-seconds`, defaults to `-1` and
+is never passed. Measured rather than trusted, at 150k tokens in a 196,608
+context:
+
+| step | time |
+|---|---|
+| first, cold | **96.0 s** |
+| again, immediately | 0.3 s |
+| **after a 25-minute pause** | **0.5 s** |
+| an unrelated conversation takes the slot | 1.9 s |
+| back to the 150k conversation | 1.0 s |
+
+The server log shows it structurally: twenty-five minutes pass between one task
+and the next, and the next has no `prompt processing` line at all - it read no
+new tokens. Nothing was evicted; there is no "making room" line in the run.
+
+So a break costs nothing, however long. Every cold start the owner has actually
+suffered came from the server being restarted underneath him.
+
 ## What to do instead
 
 The first question is why there are 134 restarts. 26 are real model switches the
