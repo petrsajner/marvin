@@ -161,6 +161,52 @@ class PromptPerformanceTests(unittest.TestCase):
         self.assertEqual(sum(1 for m in self.session.to_api_messages(include_pins=False)
                              if isinstance(m.get("content"), list)), 4)
 
+    def test_every_request_is_recorded_so_a_lost_cache_can_be_explained(self):
+        """The conversation on disk shows the final state, so a message rewritten
+        in place looks as though it always was that way. The trace does not."""
+        from harness import request_trace
+        with patch.object(self.agent, "_dynamic_context_sections", return_value={}):
+            self.agent._request_messages()
+            self.session.add("assistant", "Read the evidence.")
+            self.agent._request_messages()
+        traces = self.session.dir / "requests"
+        self.assertEqual(len(list(traces.glob("request-*.json"))), 2)
+        report = request_trace.compare(traces)
+        self.assertEqual(len(report), 1)
+        self.assertTrue(report[0]["appended_only"], "appending must read as appending")
+
+    def test_a_rewritten_message_is_named_rather_than_guessed_at(self):
+        from harness import request_trace
+        first = [{"role": "system", "content": "rules"},
+                 {"role": "user", "content": "a question"},
+                 {"role": "assistant", "content": "an answer"}]
+        second = [{"role": "system", "content": "rules"},
+                  {"role": "user", "content": "a question"},
+                  {"role": "assistant", "content": "a different answer"},
+                  {"role": "user", "content": "next"}]
+        traces = self.root / "traces"
+        request_trace.record(traces, first, step=1)
+        request_trace.record(traces, second, step=2)
+        report = request_trace.compare(traces)
+        self.assertEqual(len(report), 1)
+        self.assertFalse(report[0]["appended_only"])
+        self.assertEqual(report[0]["agreed_for"], 2)
+        self.assertEqual(report[0]["first_difference"]["before"]["role"], "assistant")
+
+    def test_the_trace_keeps_only_the_recent_requests(self):
+        from harness import request_trace
+        traces = self.root / "bounded"
+        for index in range(request_trace.KEEP + 12):
+            request_trace.record(traces, [{"role": "user", "content": "step %d" % index}])
+        self.assertLessEqual(len(list(traces.glob("request-*.json"))), request_trace.KEEP)
+
+    def test_the_trace_records_shape_and_never_the_words(self):
+        from harness import request_trace
+        secret = "the lighthouse keeper refuses to leave"
+        entries = request_trace.fingerprint([{"role": "user", "content": secret}])
+        self.assertEqual(entries[0]["chars"], len(secret))
+        self.assertNotIn(secret, json.dumps(entries))
+
     def test_native_progress_survives_openai_sdk_stream_without_visible_output(self):
         progress = {'total': 12000, 'cache': 10000, 'processed': 11000, 'time_ms': 9500}
         payloads = [

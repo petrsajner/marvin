@@ -325,6 +325,14 @@ class Agent:
 
     def _request_messages(self) -> list[dict]:
         messages = self._api_messages()
+        # Record what is actually sent. The conversation on disk shows the final
+        # state, so anything rewritten in place looks as though it always was that
+        # way - which is exactly the case a lost prompt cache needs explained.
+        try:
+            from harness import request_trace
+            request_trace.record(self.session.dir / "requests", messages, step=self._steps)
+        except Exception:
+            pass
         # Keep the exact context that preceded this response. Removing an ephemeral
         # tail on the next tool step invalidates the cache for the generated reply.
         if messages and messages[-1].get("role") == "user":
