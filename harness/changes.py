@@ -176,13 +176,17 @@ class ChangeJournal:
 
         The journal is the truth about what changed; the model's one plain
         sentence per file only describes it. A missing or malformed CHANGES
-        block still leaves the rows, built from the journal alone."""
+        block still leaves the rows, built from the journal alone. The block
+        ends at a TESTREPORT block when the test-and-fix protocol added one."""
         import re
         kept = text or ""
         notes: dict[str, str] = {}
         heading = re.search(r"(?im)^\s*CHANGES\s*:\s*$", kept)
+        block_end = len(kept)
         if heading:
-            for line in kept[heading.end():].splitlines():
+            stop = re.search(r"(?im)^\s*TESTREPORT\s*:\s*$", kept[heading.end():])
+            block_end = (heading.end() + stop.start()) if stop else len(kept)
+            for line in kept[heading.end():block_end].splitlines():
                 item = re.match(r"^\s*[-*]\s*(?P<path>[^|]+?)\s*\|\s*(?P<note>.+?)\s*$", line)
                 if item:
                     key = item.group("path").strip().replace("\\", "/").lower()
@@ -207,7 +211,7 @@ class ChangeJournal:
         if not rows:
             return kept, []
         if heading:
-            kept = kept[:heading.start()].rstrip()
+            kept = (kept[:heading.start()] + kept[block_end:]).rstrip()
         return kept, rows
 
     def task_ids(self) -> list[str]:

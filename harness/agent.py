@@ -878,7 +878,10 @@ class Agent:
             return StepResult(Status.CONTINUE, text=res.content, reasoning=res.reasoning)
         content, changes = (self.ctx.changes.change_card(res.content)
                             if self.ctx.changes else (res.content, []))
-        self.session.add("assistant", content, reasoning=res.reasoning, changes=changes)
+        from harness.test_fix import split_test_report
+        content, checks = split_test_report(content)
+        self.session.add("assistant", content, reasoning=res.reasoning,
+                         changes=changes, checks=checks or None)
         self._save_task_state("complete", result=content)
         return StepResult(Status.FINAL, text=content, reasoning=res.reasoning)
 

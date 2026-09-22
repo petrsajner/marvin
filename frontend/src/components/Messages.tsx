@@ -13,7 +13,7 @@ import {
   GitCompare,
   History,
 } from "lucide-react";
-import { ChangeRow, FileItem, Message, imageFile } from "../api";
+import { ChangeRow, CheckRow, FileItem, Message, imageFile } from "../api";
 
 // A fenced block with its language named and one click to copy: the code a
 // task produces is a result, not decoration.
@@ -226,6 +226,20 @@ export const ChatMessage = memo(
                   >
                     <History />
                   </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {!!m.checks?.length && (
+            <div className="change-card">
+              <strong>{translate("Test report", cs ? "cs" : "en")}</strong>
+              {m.checks.map((row: CheckRow, index: number) => (
+                <div className="change-row" key={row.what + index}>
+                  <span aria-hidden="true">{row.ok ? "✅" : "❌"}</span>
+                  <div>
+                    <strong>{row.what}</strong>
+                    {!row.ok && row.note && <small>{row.note}</small>}
+                  </div>
                 </div>
               ))}
             </div>

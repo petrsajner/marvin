@@ -15,6 +15,11 @@ export type ChangeRow = {
   note?: string;
   task_id?: string;
 };
+export type CheckRow = {
+  what: string;
+  ok: boolean;
+  note?: string;
+};
 export type Message = {
   id: string;
   role: string;
@@ -28,6 +33,7 @@ export type Message = {
   name?: string;
   tool_status?: string;
   changes?: ChangeRow[];
+  checks?: CheckRow[];
 };
 export type Job = {
   id: string;

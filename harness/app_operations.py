@@ -6,6 +6,7 @@ import os
 import shlex
 import shutil
 import sys
+import time
 from pathlib import Path
 
 from harness.changes import ChangeJournal, atomic_write_text
@@ -179,6 +180,15 @@ def perform_action(app, sid, action, payload):
     if action in ("compress", "handoff", "checkpoint", "revert", "skill", "test", "plan", "review"):
         return app.submit(sid, "/" + action + " " + str(payload.get("argument", "")),
                           delivery="queue", kind="command")
+    if action == "test_fix":
+        from harness.test_fix import build_test_fix_prompt
+        if session.meta.get("work_mode") not in ("development", "computer"):
+            raise ValueError(
+                "Testing runs in the Development or Computer work mode; "
+                "switch the work mode and try again")
+        return app.submit(sid, build_test_fix_prompt(str(payload.get("path") or "")),
+                          request_id=f"test-fix-{sid}-{int(time.time())}",
+                          delivery="queue")
     if action == "export":
         fmt = payload.get("format", "md")
         if payload.get("research"):

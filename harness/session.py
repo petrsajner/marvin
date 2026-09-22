@@ -49,7 +49,8 @@ class Session:
     def add(self, role: str, content: Any, *, images: list[Path] | None = None,
             tool_calls: list[dict] | None = None, tool_call_id: str | None = None,
             name: str | None = None, reasoning: str | None = None,
-            changes: list[dict] | None = None) -> dict:
+            changes: list[dict] | None = None,
+            checks: list[dict] | None = None) -> dict:
         msg: dict[str, Any] = {"role": role, "content": content,
                                 "id": uuid.uuid4().hex, "created": time.time()}
         for key in ("run_id", "step_id", "request_id"):
@@ -73,6 +74,9 @@ class Session:
         if changes:
             # Per-file plain-language summary of a finished task's file edits.
             msg["changes"] = list(changes)
+        if checks:
+            # Rows of a test-and-fix report: what was checked and how it went.
+            msg["checks"] = list(checks)
         if self.transient and role == "user":
             self.persist()  # Persist the conversation when its first real message arrives.
         if images:

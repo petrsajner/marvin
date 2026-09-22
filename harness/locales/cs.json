@@ -916,7 +916,10 @@
     "Task failed": "Úloha selhala",
     "Loading workspace…": "Načítám pracovní prostředí…",
     "English PDF": "Anglické PDF",
-    "The embedding model download failed:": "Stažení modelu pro sémantické hledání selhalo:"
+    "The embedding model download failed:": "Stažení modelu pro sémantické hledání selhalo:",
+    "Test and fix": "Otestovat a opravit",
+    "Test report": "Zpráva z testu",
+    "Test the app in a browser and fix what is broken": "Otestuje aplikaci v prohlížeči a opraví, co je rozbité"
   },
   "legacy_profile_labels": {
     "16 bit - přesnější, kontext 128k": "16-bit - more precise, context 128k",

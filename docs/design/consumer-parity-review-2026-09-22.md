@@ -373,6 +373,12 @@ Czech in tool output strings (it apparently covers packaging, not
 
 ### R7. Self-verifying run-fix loop - the open differentiator (P1, L)
 
+*Status (22 September 2026): first step delivered* - the agent-driven "Test and
+fix" action (`harness/test_fix.py`, button on the Preview tab) with a bounded
+three-round protocol and a machine-readable `TESTREPORT` verdict rendered as a
+card in the chat. The automatic runtime-error watcher and the managed served
+apps of R2.2 remain open.
+
 *Problem:* `checks/fix` is one prompt-shot with no cap and no verdict; runtime
 errors in generated apps can only be noticed by the model polling
 `browser_console` on its own initiative.

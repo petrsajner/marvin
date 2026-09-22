@@ -1442,7 +1442,14 @@ export function App() {
                 </nav>
                 <div className="detail-body">
                   {tab === "preview" ? (
-                    <PreviewPane detail={detail} active={active} tr={tr} />
+                    <PreviewPane
+                      detail={detail}
+                      active={active}
+                      tr={tr}
+                      onTestFix={(path) =>
+                        act("test_fix", { path }).catch(error)
+                      }
+                    />
                   ) : tab === "results" ? (
                     <>
                       <section>
@@ -2142,10 +2149,12 @@ function PreviewPane({
   detail,
   active,
   tr,
+  onTestFix,
 }: {
   detail: any;
   active: boolean;
   tr: (text: string) => string;
+  onTestFix: (path: string) => void;
 }) {
   const [tick, setTick] = useState(0);
   const target = [...(detail?.results || [])]
@@ -2172,6 +2181,14 @@ function PreviewPane({
     <section>
       <h3>{target.name}</h3>
       <div className="row">
+        <button
+          className="positive"
+          title={tr("Test the app in a browser and fix what is broken")}
+          onClick={() => onTestFix(target.path)}
+        >
+          <Wrench />
+          {tr("Test and fix")}
+        </button>
         <button onClick={() => setTick((n) => n + 1)}>{tr("Refresh")}</button>
         <button onClick={() => window.open(src, "_blank")}>
           {tr("Open in browser")}
