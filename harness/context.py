@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,23 @@ Be precise with file paths and technical details. Do not include pleasantries.
 
 CONVERSATION TRANSCRIPT:
 """
+
+# A tool-trained model sometimes answers a tool-less request with call markup;
+# seen as a handoff "summary" that was just a read_file invocation
+# (2026-09-22). The tags are matched by regex so this source file never
+# contains one literally.
+_TOOL_CALL_RE = re.compile(r"<(?:tool_call\b|function=|/function>)")
+
+_SUMMARIZE_SYSTEM = ("Summarize faithfully; preserve requirements and references. "
+                     "You have no tools and cannot call any.")
+_NO_TOOLS_NOTE = (
+    "\n\nIMPORTANT: You have no tools. Never answer with tool-call XML tags; "
+    "reply with the markdown summary text only.")
+
+
+def looks_like_tool_call(text: str) -> bool:
+    """True when a 'summary' is really tool-call markup instead of prose."""
+    return bool(_TOOL_CALL_RE.search(text or ""))
 
 
 def render_messages_text(messages: list[dict], max_chars: int = 60_000) -> str:
@@ -78,16 +96,28 @@ def summarize_messages(llm: Any, messages: list[dict], should_stop=None) -> str:
         key = hashlib.sha256((mode + prompt + text).encode()).hexdigest()
         path = cache / (key + ".md")
         if path.is_file():
-            return path.read_text(encoding="utf-8")
-        res = llm.stream([
-            {"role": "system", "content": "Summarize faithfully; preserve requirements and references."},
-            {"role": "user", "content": prompt + text}],
-            sampling=llm.cfg.sampling(False), thinking=False, should_stop=should_stop)
-        if res.stopped:
-            raise RuntimeError("Summarization stopped by the user")
-        summary = (res.content or "").strip()
+            cached = path.read_text(encoding="utf-8")
+            if not looks_like_tool_call(cached):
+                return cached
+            # A cached tool-call answer from before validation: regenerate and
+            # overwrite it below.
+        summary = ""
+        for attempt in range(2):
+            request = prompt + text + (_NO_TOOLS_NOTE if attempt else "")
+            res = llm.stream([
+                {"role": "system", "content": _SUMMARIZE_SYSTEM},
+                {"role": "user", "content": request}],
+                sampling=llm.cfg.sampling(False), thinking=False, should_stop=should_stop)
+            if res.stopped:
+                raise RuntimeError("Summarization stopped by the user")
+            summary = (res.content or "").strip()
+            if summary and not looks_like_tool_call(summary):
+                break
         if not summary:
             raise RuntimeError("The model returned an empty summary")
+        if looks_like_tool_call(summary):
+            # A visible failure beats a handoff chat containing raw call markup.
+            raise RuntimeError("The model answered with a tool call instead of a summary")
         from harness.changes import atomic_write_text
         atomic_write_text(path, summary)
         return summary

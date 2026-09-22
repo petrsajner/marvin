@@ -1,13 +1,13 @@
-# Marvin 1.16.1 - instalace pro Windows
+# Marvin 1.17.1 - instalace pro Windows
 
 Veřejné stažení: **[Full](https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Full.exe)** · **[Minimal](https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Minimal.exe)**.
 Odkazy míří na nejnovější vydání. Veřejné soubory mají stálé názvy `Marvin-Setup-Full.exe` a `Marvin-Setup-Minimal.exe`; místní a offline balíčky obsahují také číslo verze v názvu.
 
 ## Minimal a Full
 
-- `Marvin-Setup-1.16.1-Minimal.exe`: menší instalátor. Vyžaduje samostatný 64bitový Python 3.12 s Python Launcherem (`py`). Balíčky a llama.cpp/CUDA získá při nastavení.
-- `Marvin-Setup-1.16.1-Full.exe`: obsahuje vlastní Python 3.12, uzamčené balíčky a ověřené llama.cpp/CUDA b10935. Systémový Python není potřeba. Modely nejsou součástí samotného EXE.
-- `Marvin-Offline-Backup-1.16.1`: úplná místní sada s Full instalátorem, modely včetně Flash-Next, jejich projektory, runtime, snapshotem závislostí a manifestem kontrolních součtů.
+- `Marvin-Setup-1.17.1-Minimal.exe`: menší instalátor. Vyžaduje samostatný 64bitový Python 3.12 s Python Launcherem (`py`). Balíčky a llama.cpp/CUDA získá při nastavení.
+- `Marvin-Setup-1.17.1-Full.exe`: obsahuje vlastní Python 3.12, uzamčené balíčky a ověřené llama.cpp/CUDA b10935. Systémový Python není potřeba. Modely nejsou součástí samotného EXE.
+- `Marvin-Offline-Backup-1.17.1`: úplná místní sada s Full instalátorem, modely včetně Flash-Next, jejich projektory, runtime, snapshotem závislostí a manifestem kontrolních součtů.
 
 Obě varianty vyžadují podporované 64bitové Windows a ovladač NVIDIA nainstalovaný uživatelem. WebView2 pro desktopové okno instalátor rozpozná a připraví automaticky. Minimal jej v případě potřeby stáhne; Full obsahuje celý runtime i pro instalaci bez internetu. Není potřeba otevírat stránky Microsoftu ani WebView2 instalovat samostatně. Microsoft Edge je nadále potřeba pro volitelné prohlížečové nástroje. Samostatný CUDA Toolkit ani Node.js nejsou potřeba.
 

@@ -51,6 +51,7 @@ def execute_command(app, agent, job):
     if command not in COMMANDS:
         return raw
     session.add("user", raw)
+    created = None  # a conversation this command created; touched at the end
     if command == "/help":
         result = "\n".join(f"- `{name}`: {description}" for name, description in COMMANDS.items())
     elif command == "/skills":
@@ -76,6 +77,7 @@ def execute_command(app, agent, job):
         result = json.dumps(agent.ctx.changes.revert_last_task(), ensure_ascii=False)
     elif command == "/clear":
         new = app.new_session(str(workspace) if workspace else None, agent.work_mode)
+        created = new
         app.store.emit(session.id, "navigate", {"session_id": new.id})
         result = "New conversation created."
     elif command in ("/compress", "/handoff"):
@@ -89,12 +91,17 @@ def execute_command(app, agent, job):
             result = "Earlier context compressed. Full original conversation remains available."
         else:
             new = app.new_session(str(workspace) if workspace else None, agent.work_mode)
+            created = new
             new.add("user", f"Continuation from chat {session.id}:\n\n{summary}")
             app.store.emit(session.id, "navigate", {"session_id": new.id})
             result = "Continuation chat: " + new.id
     else:
         result = "Task stopped."
     session.add("assistant", result)
+    if created is not None:
+        # The note above re-dated this old conversation a moment after the new
+        # one existed; without this the new chat lands second in the list.
+        created.touch()
     return None
 
 

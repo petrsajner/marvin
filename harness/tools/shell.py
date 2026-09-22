@@ -5,6 +5,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from functools import lru_cache
@@ -156,7 +157,10 @@ class RunCommandTool(Tool):
     description = (
         "Run a shell command and return stdout+stderr with exit code. "
         "shells: 'bash' (Git Bash - preferred, default), 'powershell', 'cmd'. "
-        "Avoid interactive commands (they would hang); use timeouts."
+        "Avoid interactive commands (they would hang); use timeouts. "
+        "Programs that must keep running (servers, games) belong in start_command: "
+        "detaching them here (start ... &, trailing &) leaves a process this "
+        "command cannot track."
     )
     parameters = {
         "command": {"type": "string", "description": "Command to execute"},
@@ -192,32 +196,54 @@ class RunCommandTool(Tool):
         flags = 0x08000000 if sys.platform == "win32" else 0
         if sys.platform == "win32":
             flags |= subprocess.CREATE_NEW_PROCESS_GROUP
-        try:
-            proc = subprocess.Popen(
-                argv, cwd=workdir, stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                encoding="utf-8", errors="replace", creationflags=flags,
-            )
-        except FileNotFoundError as e:
-            return f"ERROR: {e}"
+        # Output goes to files, never pipes. A detached child (start ... &)
+        # keeps the inherited pipe handles open, so waiting for pipe EOF blocks
+        # past every timeout and hangs the run controller outright - the
+        # game-launch hang of 2026-09-22. Files cannot be held hostage, and
+        # wait() depends on process death only.
+        # ignore_cleanup_errors: a detached child may hold the capture files
+        # open past this call; cleanup must not fail the command for that.
+        with tempfile.TemporaryDirectory(prefix="marvin-run-",
+                                         ignore_cleanup_errors=True) as scratch:
+            out_path = Path(scratch) / "stdout.log"
+            err_path = Path(scratch) / "stderr.log"
+            with open(out_path, "w", encoding="utf-8", errors="replace") as out_handle, \
+                 open(err_path, "w", encoding="utf-8", errors="replace") as err_handle:
+                try:
+                    proc = subprocess.Popen(
+                        argv, cwd=workdir, stdin=subprocess.DEVNULL,
+                        stdout=out_handle, stderr=err_handle,
+                        creationflags=flags,
+                    )
+                except FileNotFoundError as e:
+                    return f"ERROR: {e}"
 
-        deadline = time.monotonic() + max(1, int(timeout))
-        state = "finished"
-        while True:
+            deadline = time.monotonic() + max(1, int(timeout))
+            state = "finished"
+            while True:
+                try:
+                    proc.wait(timeout=0.2)
+                    break
+                except subprocess.TimeoutExpired:
+                    if ctx.abort_flag is not None and ctx.abort_flag.is_set():
+                        state = "aborted by user"
+                        break
+                    if time.monotonic() >= deadline:
+                        state = f"timed out after {timeout}s"
+                        break
+            if state != "finished":
+                _terminate_tree(proc)
+            # Reaping is bounded by process death, which the pipes cannot delay.
             try:
-                out, err = proc.communicate(timeout=0.2)
-                break
+                proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                if ctx.abort_flag is not None and ctx.abort_flag.is_set():
-                    state = "aborted by user"
-                    _terminate_tree(proc)
-                    out, err = proc.communicate()
-                    break
-                if time.monotonic() >= deadline:
-                    state = f"timed out after {timeout}s"
-                    _terminate_tree(proc)
-                    out, err = proc.communicate()
-                    break
+                proc.kill()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+            out = out_path.read_text(encoding="utf-8", errors="replace")
+            err = err_path.read_text(encoding="utf-8", errors="replace")
 
         out = (out or "").strip()
         err = (err or "").strip()

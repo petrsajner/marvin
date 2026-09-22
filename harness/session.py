@@ -106,6 +106,14 @@ class Session:
         shutil.copy2(path, dest)
         return dest
 
+    def touch(self) -> None:
+        """Mark this conversation as just used, for list ordering.
+
+        A conversation created by a command has to stay the most recently used
+        one even after the command writes its goodbye note into the old chat."""
+        self.meta["updated"] = time.time()
+        self._save_meta()
+
     # -- render for the API ----------------------------------------------------
     SUMMARY_PREFIX = ("[SESSION HISTORY SUMMARY - older conversation was auto-compressed. "
                       "Use it as context, do not re-ask the user about these facts:]\n\n")
