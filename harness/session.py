@@ -341,28 +341,58 @@ class Session:
         return (message.get("role") == "user" and isinstance(content, str)
                 and not content.startswith(cls.INTERNAL_USER_PREFIXES))
 
+    @classmethod
+    def _is_cut_boundary(cls, messages: list, index: int) -> bool:
+        """A place the model view can be cut without splitting a turn.
+
+        Preferred: a real user message - its request opens the retained part.
+        Fallback for agentic stretches (one request followed by a hundred tool
+        steps, no user message left in reach): the first assistant reply after
+        tool results, i.e. a completed turn. Never a tool message: cutting there
+        would orphan its tool_call and break the request."""
+        message = messages[index]
+        role = message.get("role")
+        if role == "user":
+            return cls._is_user_boundary(message)
+        if role == "assistant":
+            return index > 0 and messages[index - 1].get("role") == "tool"
+        return False
+
     def compression_cut(self, min_keep: int = 6,
                         keep_tokens: int | None = None) -> int | None:
-        """Find a user-message boundary for the retained recent conversation segment."""
+        """Find a cut for the retained recent conversation segment.
+
+        User-message boundaries are preferred; when an agentic stretch holds
+        none in reach, the earliest completed turn instead (see
+        _is_cut_boundary) - without that fallback one request followed by a
+        hundred tool steps can never be shortened."""
         msgs = self.messages
         head_len = 1 if msgs and msgs[0]["role"] == "system" else 0
         if len(msgs) - head_len <= min_keep:
             return None
         cut = None
+        fallback = None
         if keep_tokens is not None:
             acc = 0
             for i in range(len(msgs) - 1, head_len - 1, -1):
                 acc += self._msg_tokens(msgs[i])
                 if acc > keep_tokens:
                     break
-                if self._is_user_boundary(msgs[i]) and (len(msgs) - i) >= min_keep:
+                if (len(msgs) - i) < min_keep:
+                    continue
+                if self._is_user_boundary(msgs[i]):
                     cut = i
+                elif self._is_cut_boundary(msgs, i):
+                    fallback = i
         else:
             rest = msgs[head_len:]
             for i in range(len(rest) - min_keep, 0, -1):
                 if self._is_user_boundary(rest[i]):
                     cut = head_len + i
                     break
+                if fallback is None and self._is_cut_boundary(msgs, head_len + i):
+                    fallback = head_len + i
+        cut = cut if cut is not None else fallback
         if cut is None or cut <= head_len:
             return None
         if self.compression and cut <= self.compression["cut"]:
@@ -428,9 +458,9 @@ class Session:
         changed = False
         while self.estimate_context_tokens() > budget_tokens and len(self.messages) > min_keep + 1:
             cur = self.compression["cut"] if self.compression else 1
-            # Find the next user-message boundary after the current cut.
+            # Find the next cut boundary after the current cut (see _is_cut_boundary).
             nxt = next((i for i in range(cur + 1, len(self.messages) - min_keep + 1)
-                        if self._is_user_boundary(self.messages[i])), None)
+                        if self._is_cut_boundary(self.messages, i)), None)
             if nxt is None:
                 break
             self.compression = {

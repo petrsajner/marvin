@@ -644,8 +644,15 @@ class Agent:
                 self.session.trim_to_budget(int(limit * 0.5))
                 new_est = self.estimate_context_tokens()
                 self.refresh_system_prompt()
-                self.emit("info", t("📦 Context trimmed: ~{est} to ~{new} tokens",
-                                    est=est, new=new_est))
+                if new_est >= int(limit * COMPRESS_AT):
+                    # A no-op trim must not read as success - "trimmed: 171262 to
+                    # 171262" once meant nothing happened at all. Say what to do.
+                    self.emit("info", t(
+                        "Context is nearly full and automatic shortening has no room left. "
+                        "Continue in a new chat (or use /handoff) to keep working comfortably."))
+                else:
+                    self.emit("info", t("📦 Context trimmed: ~{est} to ~{new} tokens",
+                                        est=est, new=new_est))
                 return
             start = self.session.compression["cut"] if self.session.compression else (
                 1 if self.session.messages and self.session.messages[0].get("role") == "system" else 0

@@ -10,7 +10,7 @@
 ; Override the version from the command line: ISCC /DMyAppVersion=x.y.z
 ; (installer\release.bat uses installer\version.txt)
 #ifndef MyAppVersion
-#define MyAppVersion "1.17.2"
+#define MyAppVersion "1.17.3"
 #endif
 
 #define MyAppName "Marvin"
@@ -241,7 +241,7 @@ begin
     if HasAnyModel then
       Checked := Fits and FileExists(ModelsDir + '\' + ModelFiles[I])
     else
-      Checked := Fits and (I <> 6);
+      Checked := Fits;
     if not ((I = 0) and (Vram >= 31.0)) then
     begin
       ModelRowKeys[ModelList.Items.Count] := ModelKeys[I];
