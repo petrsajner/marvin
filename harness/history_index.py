@@ -52,9 +52,7 @@ class HistoryIndex:
                 start = int(previous[0] or 0) if previous else 0
                 if start > len(messages):
                     start = 0
-        internal = ("[TASK PROTOCOL", "[WRITING PROTOCOL", "[PROGRESS UPDATE",
-                    "[FINAL SUMMARY", "[WRITING SUMMARY", "[RESEARCH PLAN",
-                    "[The following image", "[Interrupted by user]")
+        from harness.internal_messages import INTERNAL_USER_PREFIXES as internal
         for message in messages[start:]:
             role = message.get("role")
             content = message.get("content")

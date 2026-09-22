@@ -27,7 +27,7 @@ from harness.version import APP_VERSION
 from harness.work_modes import WORK_MODES
 
 
-_semantic_state = {"preparing": False}
+_semantic_state = {"preparing": False, "error": ""}
 _semantic_state_lock = threading.Lock()
 
 
@@ -45,8 +45,12 @@ def _prepare_semantic_search(cfg: Config) -> None:
             from harness.model_catalog import EMBEDDINGS_BGE_M3
             from harness.model_files import download_pinned_model
             download_pinned_model(cfg.path("paths.models_dir"), EMBEDDINGS_BGE_M3)
-        except Exception:
-            pass
+            with _semantic_state_lock:
+                _semantic_state["error"] = ""
+        except Exception as exc:
+            # Surfaced in Settings; a failed download used to vanish here.
+            with _semantic_state_lock:
+                _semantic_state["error"] = f"{type(exc).__name__}: {exc}"
         finally:
             with _semantic_state_lock:
                 _semantic_state["preparing"] = False
@@ -121,7 +125,8 @@ def create_app(cfg=None, *, service=None):
                 sessions.insert(0, {**session.meta, "id": selected, "messages": len(session.messages)})
             semantic = {"enabled": bool(cfg.data.get("_semantic_search")),
                         "model_ready": cfg.embeddings_model_ready(),
-                        "preparing": _semantic_state["preparing"], "server": False}
+                        "preparing": _semantic_state["preparing"],
+                        "error": _semantic_state["error"], "server": False}
             if semantic["enabled"] and semantic["model_ready"]:
                 from harness.embedding_server import status as embeddings_status
                 semantic["server"] = embeddings_status(cfg)
@@ -551,6 +556,8 @@ def create_app(cfg=None, *, service=None):
                 raise ValueError("Unknown model")
             if "thinking" in payload and payload["thinking"] not in ("off", "low", "medium", "xhigh"):
                 raise ValueError("Unknown thinking profile")
+            if "settings_mode" in payload and payload["settings_mode"] not in ("simple", "advanced"):
+                raise ValueError("Unknown settings view")
             for key, profile in payload.get("kv_cache_modes", {}).items():
                 if key not in cfg.data["models"] or profile not in cfg.kv_cache_profiles(key):
                     raise ValueError("Unknown KV profile")
@@ -571,7 +578,7 @@ def create_app(cfg=None, *, service=None):
                 payload["projects_root"] = service.apply_projects_root(payload["projects_root"])
             allowed = {"model", "thinking", "language", "theme", "density", "autonomy", "send_mode",
                        "kv_cache_modes", "vram_gb", "semantic_search", "projects_root",
-                       "voice_input", "voice_language", "voice_device"}
+                       "voice_input", "voice_language", "voice_device", "settings_mode"}
             if payload.get("voice_input"):
                 # Fetch the pinned program and models once, in the background.
                 service.prepare_voice_input()

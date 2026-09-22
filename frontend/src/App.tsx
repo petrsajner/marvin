@@ -358,13 +358,13 @@ export function App() {
         }, 180);
       }
       if (row.kind === "run_status" && p.status === "failed")
-        setToast(p.error || p.text || "Task failed");
+        setToast(p.error || p.text || tr("Task failed"));
     };
     return () => {
       source.close();
       clearTimeout(timer);
     };
-  }, [!!app, refresh, reloadChat, refreshDetail, error]);
+  }, [!!app, refresh, reloadChat, refreshDetail, error, tr]);
   useEffect(() => {
     if (!app) return;
     let pending = false;
@@ -675,7 +675,7 @@ export function App() {
       <div className="startup">
         <Bot size={32} />
         <h1>Marvin</h1>
-        <p>{toast || "Loading workspace…"}</p>
+        <p>{toast || tr("Loading workspace…")}</p>
         <small className="copyright">{COPYRIGHT}</small>
       </div>
     );
@@ -998,15 +998,36 @@ export function App() {
                     openSource={openSource}
                     retry={retryAnswer}
                     helpWith={helpWith}
+                    onDiff={(row) =>
+                      setDialog({
+                        type: "diff",
+                        data: { path: row.path, task_id: row.task_id },
+                      })
+                    }
+                    onRestore={(row) =>
+                      act("restore_file", {
+                        path: row.path,
+                        task_id: row.task_id,
+                      })
+                        .then((result) => {
+                          if (result?.errors?.length)
+                            setToast(result.errors.join("\n"));
+                        })
+                        .catch(error)
+                    }
                   />
                 ))}
                 {chat && !chat.messages.some(visibleMessage) && (
-                  <div className="empty-chat">
-                    <Bot size={34} />
-                    <h2>
-                      {tr("What shall we work on?")}
-                    </h2>
-                  </div>
+                  <Welcome
+                    cs={cs}
+                    mode={mode}
+                    tr={tr}
+                    onUse={(example) => {
+                      setText(example);
+                      textRef.current?.focus();
+                    }}
+                    onCatalog={() => setDialog({ type: "capabilities" })}
+                  />
                 )}
                 {active && !savedLive && (live?.text || live?.reasoning) && (
                   <article className="message assistant live">
@@ -1184,10 +1205,11 @@ export function App() {
                 <div
                   className="composer"
                   onPaste={(e) => {
+                    // Any pasted file, not only images: attach and drag-drop
+                    // already accept documents, and a pasted PDF that silently
+                    // does nothing reads as "it is broken".
                     const files = [...e.clipboardData.items]
-                      .filter(
-                        (i) => i.kind === "file" && i.type.startsWith("image/"),
-                      )
+                      .filter((i) => i.kind === "file")
                       .map((i) => i.getAsFile())
                       .filter((x): x is File => !!x);
                     if (files.length) {
@@ -1322,11 +1344,22 @@ export function App() {
                         settings({ thinking: e.target.value }).catch(error)
                       }
                     >
-                      {["xhigh", "medium", "low", "off"].map((e) => (
-                        <option key={e} value={e}>
-                          {tr("Thinking")}: {e}
-                        </option>
-                      ))}
+                      {(["xhigh", "medium", "low", "off"] as const).map(
+                        (value) => (
+                          <option key={value} value={value}>
+                            {tr("Thinking")}:{" "}
+                            {tr(
+                              value === "xhigh"
+                                ? "Deep"
+                                : value === "medium"
+                                  ? "Balanced"
+                                  : value === "low"
+                                    ? "Light"
+                                    : "None",
+                            )}
+                          </option>
+                        ),
+                      )}
                     </select>
                     <span className="spacer" />
                     {active && (
@@ -1394,6 +1427,7 @@ export function App() {
                 <nav className="detail-tabs">
                   {[
                     ["results", "Results"],
+                    ["preview", "Preview"],
                     ["progress", "Progress"],
                     ["context", "Context"],
                   ].map(([id, en]) => (
@@ -1407,7 +1441,9 @@ export function App() {
                   ))}
                 </nav>
                 <div className="detail-body">
-                  {tab === "results" ? (
+                  {tab === "preview" ? (
+                    <PreviewPane detail={detail} active={active} tr={tr} />
+                  ) : tab === "results" ? (
                     <>
                       <section>
                         <h3>{tr("This conversation")}</h3>
@@ -1624,7 +1660,7 @@ export function App() {
                         ))}
                       </section>
                       <section>
-                        <h3>Browser</h3>
+                        <h3>{tr("Browser")}</h3>
                         <p>
                           {detail?.browser?.running
                             ? detail.browser.url
@@ -1672,7 +1708,18 @@ export function App() {
                           ))}
                         <button
                           className="wide"
-                          onClick={() => act("revert").catch(error)}
+                          onClick={() =>
+                            setDialog({
+                              type: "confirm",
+                              data: {
+                                message: tr(
+                                  "Revert every file change from this task? Your files go back to how they were before it.",
+                                ),
+                                confirmLabel: tr("Revert task changes"),
+                                run: () => act("revert"),
+                              },
+                            })
+                          }
                         >
                           <History />
                           {tr("Revert task changes")}
@@ -1866,7 +1913,18 @@ export function App() {
                             {tr("Pin file")}
                           </button>
                           <button
-                            onClick={() => act("clear_pins").catch(error)}
+                            onClick={() =>
+                              setDialog({
+                                type: "confirm",
+                                data: {
+                                  message: tr(
+                                    "Unpin all files from this chat?",
+                                  ),
+                                  confirmLabel: tr("Unpin all"),
+                                  run: () => act("clear_pins"),
+                                },
+                              })
+                            }
                           >
                             {tr("Unpin all")}
                           </button>
@@ -1957,7 +2015,7 @@ export function App() {
               id: "changes",
               label: tr("Changes"),
               run: async () => {
-                setTab("changes");
+                setTab("progress");
                 setPanel(true);
               },
             },
@@ -2001,6 +2059,132 @@ export function App() {
       )}
       <ActivityFeedback cs={cs} />
     </div>
+  );
+}
+
+// First-run welcome: ready tasks instead of an empty box. The capability
+// catalogue already held these examples; before this they were one lightbulb
+// click away, which is where a new user never looks.
+function Welcome({
+  cs,
+  mode,
+  tr,
+  onUse,
+  onCatalog,
+}: {
+  cs: boolean;
+  mode: string;
+  tr: (text: string) => string;
+  onUse: (example: string) => void;
+  onCatalog: () => void;
+}) {
+  const [rows, setRows] = useState<any[]>([]);
+  useEffect(() => {
+    api("/api/capabilities?mode=" + mode)
+      .then((value: any) => {
+        const wanted = [
+          "read_documents",
+          "look_at_image",
+          "web_lookup",
+          "write_program",
+          "export_document",
+        ];
+        const byId = new Map(
+          (value.capabilities || []).map((c: any) => [c.id, c]),
+        );
+        setRows(
+          wanted
+            .map((id) => byId.get(id))
+            .filter((c: any) => c && c.available !== false),
+        );
+      })
+      .catch(() => setRows([]));
+  }, [mode]);
+  return (
+    <div className="welcome">
+      <Bot size={34} />
+      <h2>{tr("What shall we work on?")}</h2>
+      {rows.length > 0 && (
+        <>
+          <p className="muted">
+            {tr("Start with a ready task — or type anything below.")}
+          </p>
+          <div className="welcome-tasks">
+            {rows.map((c: any) => (
+              <button
+                key={c.id}
+                className="task-card"
+                onClick={() => onUse(tr(c.example))}
+              >
+                <strong>{tr(c.title)}</strong>
+                <small>{tr(c.summary)}</small>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      <p className="muted">
+        {tr(
+          "Tip: ask for one change at a time and look at what changed after each. Any task can be taken back.",
+        )}
+      </p>
+      <button className="outline" onClick={onCatalog}>
+        <Lightbulb />
+        {tr("What can I ask for?")}
+      </button>
+    </div>
+  );
+}
+
+// The live view of the newest web page or app this conversation produced.
+// Auto-refreshes while a task runs, so the result is visible as it grows.
+function PreviewPane({
+  detail,
+  active,
+  tr,
+}: {
+  detail: any;
+  active: boolean;
+  tr: (text: string) => string;
+}) {
+  const [tick, setTick] = useState(0);
+  const target = [...(detail?.results || [])]
+    .reverse()
+    .find((f: FileItem) => /\.html?$/i.test(f.name));
+  useEffect(() => {
+    if (!active || !target) return;
+    const timer = setInterval(() => setTick((n) => n + 1), 1500);
+    return () => clearInterval(timer);
+  }, [active, target?.id]);
+  if (!target)
+    return (
+      <section>
+        <h3>{tr("Preview")}</h3>
+        <p className="muted">
+          {tr("A web page or application preview will appear here once one is made.")}
+        </p>
+      </section>
+    );
+  const file = target.path.split(/[\\/]/).at(-1) || target.name;
+  const src =
+    "/api/preview/" + target.id + "/" + encodeURIComponent(file);
+  return (
+    <section>
+      <h3>{target.name}</h3>
+      <div className="row">
+        <button onClick={() => setTick((n) => n + 1)}>{tr("Refresh")}</button>
+        <button onClick={() => window.open(src, "_blank")}>
+          {tr("Open in browser")}
+        </button>
+      </div>
+      <iframe
+        key={tick}
+        className="preview-frame"
+        title={target.name}
+        sandbox="allow-scripts allow-forms allow-downloads"
+        src={src}
+      />
+    </section>
   );
 }
 

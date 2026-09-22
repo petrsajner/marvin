@@ -17,6 +17,7 @@ from typing import Any
 
 from harness.config import Config
 from harness.i18n import t
+from harness.internal_messages import INTERNAL_USER_PREFIXES as _INTERNAL_USER_PREFIXES
 from harness.jsonl import dump_record, history_lock, physical_lines, read_history
 
 IMG_MIMES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp"}
@@ -47,7 +48,8 @@ class Session:
     # Message insertion.
     def add(self, role: str, content: Any, *, images: list[Path] | None = None,
             tool_calls: list[dict] | None = None, tool_call_id: str | None = None,
-            name: str | None = None, reasoning: str | None = None) -> dict:
+            name: str | None = None, reasoning: str | None = None,
+            changes: list[dict] | None = None) -> dict:
         msg: dict[str, Any] = {"role": role, "content": content,
                                 "id": uuid.uuid4().hex, "created": time.time()}
         for key in ("run_id", "step_id", "request_id"):
@@ -68,6 +70,9 @@ class Session:
             msg["tool_call_id"] = tool_call_id
         if name:
             msg["name"] = name
+        if changes:
+            # Per-file plain-language summary of a finished task's file edits.
+            msg["changes"] = list(changes)
         if self.transient and role == "user":
             self.persist()  # Persist the conversation when its first real message arrives.
         if images:
@@ -100,12 +105,9 @@ class Session:
     # -- render for the API ----------------------------------------------------
     SUMMARY_PREFIX = ("[SESSION HISTORY SUMMARY - older conversation was auto-compressed. "
                       "Use it as context, do not re-ask the user about these facts:]\n\n")
-    INTERNAL_USER_PREFIXES = (
-        "[TASK PROTOCOL", "[PROGRESS UPDATE", "[FINAL SUMMARY",
-        "[The following image", "[Interrupted by user]", "[RESEARCH PLAN",
-        "[DYNAMIC TASK CONTEXT",
-        "[HISTORY RECOVERY",
-    )
+    # Kept as a class attribute for existing callers; the list itself lives in
+    # harness.internal_messages so every filter shares one definition.
+    INTERNAL_USER_PREFIXES = _INTERNAL_USER_PREFIXES
 
     def _view_messages(self) -> list[dict]:
         """Return the model-visible message view after applying compression."""
@@ -522,8 +524,8 @@ class Session:
         export_dir = self.dir / "exports"
         export_dir.mkdir(parents=True, exist_ok=True)
         target = export_dir / f"{self.id}.md"
-        lines = [f"# {self.meta.get('title') or 'Qwen chat'}", ""]
-        role_names = {"user": "User", "assistant": "Asistent", "tool": "Tool"}
+        lines = [f"# {self.meta.get('title') or 'Marvin chat'}", ""]
+        role_names = {"user": "User", "assistant": "Assistant", "tool": "Tool"}
         for message in self.messages:
             role = message.get("role")
             content = message.get("content")

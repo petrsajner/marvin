@@ -138,7 +138,7 @@ class MemoryStore:
             labels = {"global": "global", "mode": "work-mode", "project": "project"}
             return f"OK: saved to {labels[scope]} memory: {fact[:80]}"
         except OSError as exc:
-            return f"ERROR: nelze zapsat {path}: {exc}"
+            return f"ERROR: cannot write {path}: {exc}"
 
     def context_block(self) -> str:
         """All three active memory scopes, without artificial truncation."""

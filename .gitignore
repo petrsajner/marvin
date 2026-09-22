@@ -37,3 +37,7 @@ build/
 .zcode/
 .understand-anything/
 .playwright-cli/
+
+# App state, not source: the project registry carries personal paths.
+projects.json
+.claude/

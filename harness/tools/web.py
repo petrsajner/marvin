@@ -81,25 +81,16 @@ _ddgs_state = {"tried": False, "ok": False}
 
 
 def _ensure_ddgs() -> bool:
-    """Check for ddgs and attempt a silent installation once if it is missing."""
+    """Check the search library is importable. It ships with requirements now; a
+    missing package means a broken environment, not something to install while
+    a search runs (the old silent pip install broke the pinned dependency set)."""
     if _ddgs_state["tried"]:
         return _ddgs_state["ok"]
     _ddgs_state["tried"] = True
     try:
         from ddgs import DDGS  # noqa: F401
         _ddgs_state["ok"] = True
-        return True
     except ImportError:
-        pass
-    import subprocess
-    import sys
-    flags = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW
-    try:
-        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "ddgs"],
-                       check=True, timeout=180, capture_output=True, creationflags=flags)
-        from ddgs import DDGS  # noqa: F401
-        _ddgs_state["ok"] = True
-    except Exception:
         _ddgs_state["ok"] = False
     return _ddgs_state["ok"]
 

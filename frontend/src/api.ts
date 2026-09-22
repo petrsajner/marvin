@@ -9,6 +9,12 @@ export type FileItem = {
   exists?: boolean;
   mtime?: number;
 };
+export type ChangeRow = {
+  path: string;
+  change: string;
+  note?: string;
+  task_id?: string;
+};
 export type Message = {
   id: string;
   role: string;
@@ -21,6 +27,7 @@ export type Message = {
   tool_calls?: any[];
   name?: string;
   tool_status?: string;
+  changes?: ChangeRow[];
 };
 export type Job = {
   id: string;

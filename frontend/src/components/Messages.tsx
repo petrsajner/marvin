@@ -1,5 +1,5 @@
 import { translate } from "../i18n";
-import { memo } from "react";
+import { memo, useState, type ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -10,8 +10,46 @@ import {
   FileText,
   Check,
   AlertCircle,
+  GitCompare,
+  History,
 } from "lucide-react";
-import { FileItem, Message, imageFile } from "../api";
+import { ChangeRow, FileItem, Message, imageFile } from "../api";
+
+// A fenced block with its language named and one click to copy: the code a
+// task produces is a result, not decoration.
+const CodeBlock = ({
+  children,
+  cs,
+}: {
+  children?: ReactNode;
+  cs: boolean;
+}) => {
+  const [copied, setCopied] = useState(false);
+  const code = children as any;
+  const language =
+    /language-([\w+-]+)/.exec(code?.props?.className || "")?.[1] || "";
+  const text = String(code?.props?.children ?? "");
+  return (
+    <div className="code-block">
+      <div className="code-block-bar">
+        <span className="code-lang">
+          {language || translate("Code", cs ? "cs" : "en")}
+        </span>
+        <button
+          onClick={() => {
+            navigator.clipboard.writeText(text);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }}
+        >
+          {copied ? <Check size={12} /> : <Copy size={12} />}
+          {translate(copied ? "Copied" : "Copy code", cs ? "cs" : "en")}
+        </button>
+      </div>
+      <pre>{children}</pre>
+    </div>
+  );
+};
 
 export const Attachment = memo(
   ({
@@ -58,6 +96,8 @@ export const ChatMessage = memo(
     openSource,
     retry,
     helpWith,
+    onDiff,
+    onRestore,
   }: {
     message: Message;
     cs: boolean;
@@ -65,6 +105,8 @@ export const ChatMessage = memo(
     openSource: (id: string) => void;
     retry: () => void;
     helpWith?: (detail: string) => void;
+    onDiff: (row: ChangeRow) => void;
+    onRestore: (row: ChangeRow) => void;
   }) => {
     if (m.role === "tool")
       return (
@@ -136,10 +178,57 @@ export const ChatMessage = memo(
                       {children}
                     </a>
                   ),
+                pre: ({ children }) => <CodeBlock cs={cs}>{children}</CodeBlock>,
               }}
             >
               {String(m.content).replace(/\[(S\d+)\]/g, "[$1](#source-$1)")}
             </Markdown>
+          )}
+          {!!m.changes?.length && (
+            <div className="change-card">
+              <strong>{translate("What I changed", cs ? "cs" : "en")}</strong>
+              {m.changes.map((row) => (
+                <div className="change-row" key={row.path}>
+                  <span aria-hidden="true">
+                    {row.change === "created"
+                      ? "🆕"
+                      : row.change === "deleted"
+                        ? "🗑"
+                        : "✏️"}
+                  </span>
+                  <div>
+                    <strong>{row.path}</strong>
+                    <small>
+                      {row.note ||
+                        translate(
+                          row.change === "created"
+                            ? "Created this file."
+                            : row.change === "deleted"
+                              ? "Deleted this file."
+                              : "Updated this file.",
+                          cs ? "cs" : "en",
+                        )}
+                    </small>
+                  </div>
+                  <button
+                    className="icon"
+                    aria-label={translate("Show changes", cs ? "cs" : "en")}
+                    title={translate("Show changes", cs ? "cs" : "en")}
+                    onClick={() => onDiff(row)}
+                  >
+                    <GitCompare />
+                  </button>
+                  <button
+                    className="icon"
+                    aria-label={translate("Restore", cs ? "cs" : "en")}
+                    title={translate("Restore", cs ? "cs" : "en")}
+                    onClick={() => onRestore(row)}
+                  >
+                    <History />
+                  </button>
+                </div>
+              ))}
+            </div>
           )}
           {m.files && (
             <div className="attachment-list">

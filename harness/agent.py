@@ -74,7 +74,11 @@ TASK_PROTOCOL_NOTE = (
     "✅ Done/Changed - exact files (paths) and what changed; "
     "🔍 Found - relevant findings (read-only, nothing changed); "
     "📋 Next steps - concrete suggested follow-up; "
-    "⏸️ Postponed - what was deliberately left out and why."
+    "⏸️ Postponed - what was deliberately left out and why. "
+    "After the summary, list every file you changed under the exact heading "
+    "'CHANGES:' (keep this heading in English even when writing another "
+    "language), one per line as "
+    "'- <path> | <one plain sentence in the user's language about what you changed there>'."
 )
 WRITING_PROTOCOL_NOTE = (
     "[WRITING PROTOCOL - follow for this task] "
@@ -92,7 +96,9 @@ SUMMARY_NOTE = (
     "[FINAL SUMMARY REQUIRED] The task ended without the required structured summary. "
     "Write it now, in the user's language, short and concrete: "
     "✅ Done/Changed (exact files + what changed) · 🔍 Found (read-only findings) · "
-    "📋 Next steps (concrete) · ⏸️ Postponed (why)."
+    "📋 Next steps (concrete) · ⏸️ Postponed (why). "
+    "Then list changed files under the exact heading 'CHANGES:' as "
+    "'- <path> | <one plain sentence>'."
 )
 WRITING_SUMMARY_NOTE = (
     "[WRITING SUMMARY REQUIRED] Briefly summarize what was written or revised, the important "
@@ -870,9 +876,11 @@ class Agent:
             self.session.add("user", note)
             self._save_task_state("running")
             return StepResult(Status.CONTINUE, text=res.content, reasoning=res.reasoning)
-        self.session.add("assistant", res.content, reasoning=res.reasoning)
-        self._save_task_state("complete", result=res.content)
-        return StepResult(Status.FINAL, text=res.content, reasoning=res.reasoning)
+        content, changes = (self.ctx.changes.change_card(res.content)
+                            if self.ctx.changes else (res.content, []))
+        self.session.add("assistant", content, reasoning=res.reasoning, changes=changes)
+        self._save_task_state("complete", result=content)
+        return StepResult(Status.FINAL, text=content, reasoning=res.reasoning)
 
     @property
     def has_resumable_task(self) -> bool:

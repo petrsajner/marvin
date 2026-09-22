@@ -368,7 +368,12 @@ class Config:
         return self.data["web"]
 
 
-def load_config(path: Path | None = None) -> Config:
+def load_config(path: Path | None = None, *, root: Path | None = None) -> Config:
+    """Load a config file; relative paths.* entries resolve against `root`.
+
+    `root` defaults to the config file's own directory, so an installed copy
+    loading its data directory keeps its data there instead of scattering it
+    into the code root. Pass `root` explicitly only when the two differ."""
     path = path or (ROOT / "config.yaml")
     user: dict = {}
     if path.exists():
@@ -378,4 +383,4 @@ def load_config(path: Path | None = None) -> Config:
     _migrate_kv_labels(user)
     _migrate_memory_profiles(user)
     _remove_legacy_agent_limits(user)
-    return Config(_deep_merge(DEFAULTS, user))
+    return Config(_deep_merge(DEFAULTS, user), root or path.parent)

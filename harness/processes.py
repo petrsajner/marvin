@@ -10,11 +10,40 @@ import tempfile
 import threading
 import time
 import uuid
+import weakref
 from dataclasses import dataclass, field
 from pathlib import Path
 
 
 MAX_BUFFER_CHARS = 1_000_000
+
+# Every live manager, so shutdown and the timeout watchdog can reach processes
+# the interface is not currently polling. The timeout bound is enforced here as
+# well as on poll: an unpolled background command used to run forever.
+_managers: "weakref.WeakSet[ProcessManager]" = weakref.WeakSet()
+_watchdog_started = False
+_watchdog_lock = threading.Lock()
+
+
+def _ensure_watchdog() -> None:
+    global _watchdog_started
+    with _watchdog_lock:
+        if _watchdog_started:
+            return
+        _watchdog_started = True
+        threading.Thread(target=_watchdog_loop, name="process-timeout-watchdog",
+                         daemon=True).start()
+
+
+def _watchdog_loop() -> None:
+    while True:
+        time.sleep(2.0)
+        for manager in list(_managers):
+            try:
+                manager.enforce_timeouts()
+            except Exception:
+                # A watchdog must survive its own errors; the next tick retries.
+                continue
 
 
 def shell_argv(command: str, shell: str) -> list[str]:
@@ -92,6 +121,8 @@ class ProcessManager:
         self._items: dict[str, ManagedProcess] = {}
         self._lock = threading.RLock()
         self._storage_dir: Path | None = None
+        _managers.add(self)
+        _ensure_watchdog()
 
     def bind_session(self, session) -> None:
         self._storage_dir = session.dir / "processes"
@@ -141,14 +172,32 @@ class ProcessManager:
         self._persist(item)
         return item
 
+    def enforce_timeouts(self) -> None:
+        """Terminate anything past its bound, whatever is polling.
+
+        Called from poll and from the timeout watchdog, so the stated bound
+        holds even when nothing reads a background process."""
+        with self._lock:
+            items = list(self._items.values())
+        for item in items:
+            if item.timeout > 0 and self._returncode(item) is None \
+                    and time.time() - item.started > item.timeout:
+                self.terminate(item.id)
+                item.append(f"\n[process timed out after {item.timeout}s]\n")
+
+    @classmethod
+    def terminate_all_live(cls) -> list[dict]:
+        """Stop processes in every live manager; used at application shutdown."""
+        stopped: list[dict] = []
+        for manager in list(_managers):
+            stopped.extend(manager.terminate_all())
+        return stopped
+
     def poll(self, process_id: str, cursor: int = 0, max_chars: int = 20_000) -> dict:
         item = self.get(process_id)
         if item is None:
             return {"error": f"unknown process_id '{process_id}'"}
-        if self._returncode(item) is None and item.timeout > 0 \
-                and time.time() - item.started > item.timeout:
-            self.terminate(process_id)
-            item.append(f"\n[process timed out after {item.timeout}s]\n")
+        self.enforce_timeouts()
         output, next_cursor, truncated = item.output_since(
             max(0, int(cursor)), max(100, min(int(max_chars), 100_000)))
         code = self._returncode(item)

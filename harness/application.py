@@ -1026,3 +1026,13 @@ class ApplicationService:
             self.abort.set()
             self.wake.notify_all()
         self.worker.join(timeout=3)
+        # User-launched processes and browsers must not outlive the application
+        # window: closing Marvin has to leave nothing of the user's running.
+        # Best effort - shutdown must not raise.
+        from harness.processes import ProcessManager
+        ProcessManager.terminate_all_live()
+        for agent in list(self.agents.values()):
+            try:
+                agent.ctx.browser.close()
+            except Exception:
+                pass

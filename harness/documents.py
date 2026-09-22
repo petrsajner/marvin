@@ -7,8 +7,8 @@ from pathlib import Path
 
 
 def _safe_filename(name: str, suffix: str) -> str:
-    stem = re.sub(r'[<>:"/\\|?*]+', "-", Path(name or "dokument").stem).strip(" .-")
-    return (stem or "dokument") + suffix
+    stem = re.sub(r'[<>:"/\\|?*]+', "-", Path(name or "document").stem).strip(" .-")
+    return (stem or "document") + suffix
 
 
 def export_document(content: str, output_dir: Path, filename: str,
@@ -97,13 +97,24 @@ def _write_pdf(path: Path, content: str, title: str) -> None:
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
     font = "Helvetica"
-    family = {
-        "normal": Path(r"C:\Windows\Fonts\arial.ttf"),
-        "bold": Path(r"C:\Windows\Fonts\arialbd.ttf"),
-        "italic": Path(r"C:\Windows\Fonts\ariali.ttf"),
-        "boldItalic": Path(r"C:\Windows\Fonts\arialbi.ttf"),
-    }
-    if all(source.is_file() for source in family.values()):
+    # Helvetica silently drops Czech diacritics, so prefer any complete Unicode
+    # family the machine has; the first one found wins.
+    font_dir = Path(r"C:\Windows\Fonts")
+    families = [
+        {"normal": "arial.ttf", "bold": "arialbd.ttf",
+         "italic": "ariali.ttf", "boldItalic": "arialbi.ttf"},
+        {"normal": "segoeui.ttf", "bold": "segoeuib.ttf",
+         "italic": "segoeuii.ttf", "boldItalic": "segoeuiz.ttf"},
+        {"normal": "calibri.ttf", "bold": "calibrib.ttf",
+         "italic": "calibrii.ttf", "boldItalic": "calibriz.ttf"},
+    ]
+    family = {}
+    for members in families:
+        candidate = {name: font_dir / filename for name, filename in members.items()}
+        if all(source.is_file() for source in candidate.values()):
+            family = candidate
+            break
+    if family:
         names = {
             "normal": "QwenUnicode",
             "bold": "QwenUnicode-Bold",
@@ -251,7 +262,7 @@ def read_document_content(path: Path, max_chars: int = 40_000, sheet: str | None
     elif suffix in (".xlsx", ".xlsm"):
         import openpyxl
         wb = openpyxl.load_workbook(p, data_only=not formulas, read_only=True)
-        parts = [f"=== Excel workbook: {p.name} (listy: {', '.join(wb.sheetnames)}) ==="]
+        parts = [f"=== Excel workbook: {p.name} (sheets: {', '.join(wb.sheetnames)}) ==="]
         if sheet and sheet not in wb.sheetnames:
             wb.close()
             raise ValueError(f"Unknown sheet: {sheet}")
@@ -268,7 +279,7 @@ def read_document_content(path: Path, max_chars: int = 40_000, sheet: str | None
                 if any(c is not None for c in r):
                     rows.append([str(c) if c is not None else "" for c in r])
             if rows:
-                parts.append(f"### List: `{s_name}`; rows {min_row}-{min(max_row, ws.max_row)}\n" + _format_markdown_table(rows))
+                parts.append(f"### Sheet: `{s_name}`; rows {min_row}-{min(max_row, ws.max_row)}\n" + _format_markdown_table(rows))
                 if max_row < ws.max_row:
                     parts.append(f"[More rows: read_document sheet={s_name!r}, start={max_row + 1}, count={count}]")
             else:
@@ -323,7 +334,7 @@ def edit_spreadsheet_content(path: Path, action: str, sheet: str | None = None,
                 if isinstance(row, (list, tuple)):
                     ws.append(list(row))
         wb.save(p)
-        return f"OK: Created a new Excel workbook `{p.name}` s listem `{ws.title}`."
+        return f"OK: Created a new Excel workbook `{p.name}` with sheet `{ws.title}`."
 
     if not p.is_file():
         raise FileNotFoundError(f"Excel file not found: {p}. To create a new one, use action='create'.")
@@ -335,7 +346,7 @@ def edit_spreadsheet_content(path: Path, action: str, sheet: str | None = None,
         return f"Sheets in workbook `{p.name}`: " + ", ".join(f"`{s}`" for s in wb.sheetnames)
 
     if action == "create_sheet":
-        s_title = (title or sheet or "NovyList")[:31]
+        s_title = (title or sheet or "NewSheet")[:31]
         new_ws = wb.create_sheet(title=s_title)
         wb.save(p)
         return f"OK: Created a new sheet `{new_ws.title}` in workbook `{p.name}`."

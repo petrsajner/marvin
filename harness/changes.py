@@ -171,6 +171,45 @@ class ChangeJournal:
             ],
         }
 
+    def change_card(self, text: str) -> tuple[str, list[dict]]:
+        """Final answer text without its CHANGES block, plus per-file rows for the UI.
+
+        The journal is the truth about what changed; the model's one plain
+        sentence per file only describes it. A missing or malformed CHANGES
+        block still leaves the rows, built from the journal alone."""
+        import re
+        kept = text or ""
+        notes: dict[str, str] = {}
+        heading = re.search(r"(?im)^\s*CHANGES\s*:\s*$", kept)
+        if heading:
+            for line in kept[heading.end():].splitlines():
+                item = re.match(r"^\s*[-*]\s*(?P<path>[^|]+?)\s*\|\s*(?P<note>.+?)\s*$", line)
+                if item:
+                    key = item.group("path").strip().replace("\\", "/").lower()
+                    notes[key] = item.group("note").strip()
+        summary = self.summary()
+        task_id = summary.get("task_id")
+        rows: list[dict] = []
+        for entry in summary.get("files", []):
+            if entry.get("change") == "directory" or not entry.get("changed"):
+                continue
+            path = entry["path"]
+            key = path.replace("\\", "/").lower()
+            note_key = next((candidate for candidate in
+                             (key, key.rsplit("/", 1)[-1]) if candidate in notes), None)
+            note = notes.pop(note_key) if note_key else ""
+            rows.append({"path": path, "change": entry["change"], "note": note,
+                         "task_id": task_id})
+        # Files only the model knows about (written outside the file tools).
+        for key, note in notes.items():
+            rows.append({"path": key, "change": "modified", "note": note,
+                         "task_id": task_id})
+        if not rows:
+            return kept, []
+        if heading:
+            kept = kept[:heading.start()].rstrip()
+        return kept, rows
+
     def task_ids(self) -> list[str]:
         """Every task this conversation has recorded, oldest first.
 

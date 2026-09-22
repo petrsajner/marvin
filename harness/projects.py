@@ -45,7 +45,7 @@ def validate_root(value: str, cfg: Config) -> Path:
 
 def _safe_name(name: str) -> str:
     name = re.sub(r'[<>:"/\\|?*]', "-", name).strip(". ")
-    return name or "projekt"
+    return name or "project"
 
 
 class Projects:

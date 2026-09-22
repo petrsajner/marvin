@@ -74,6 +74,14 @@ const CAPABILITY_CATEGORIES: Record<string, string> = {
   skills: "Skills",
 };
 
+// Autonomy as consequences, not engine vocabulary: the values stay stable,
+// the words describe what the owner is allowing.
+const AUTONOMY_LABELS: Record<string, string> = {
+  supervised: "Ask me first",
+  semi: "Small changes alone",
+  auto: "Work on its own",
+};
+
 function modeLabel(app: any, id: string, tr: (value: string) => string): string {
   const found = (app?.modes || []).find((m: any) => m.id === id);
   return found ? tr(found.label) : id;
@@ -158,6 +166,9 @@ export function DialogView(props: any) {
       .catch(error);
   }, [dialog.type, chat?.meta.work_mode, error]);
   const section = dialog.section || "model";
+  // Simple holds the everyday settings; Advanced adds the technical ones.
+  const settingsMode =
+    app.preferences?.settings_mode === "advanced" ? "advanced" : "simple";
   const project = app.projects.find(
     (p: any) => p.path === chat?.meta.workspace,
   );
@@ -323,6 +334,7 @@ export function DialogView(props: any) {
               export: tr("Export"),
               decisions: tr("Project decisions"),
               "queue-edit": tr("Queued message"),
+              confirm: dialog.data?.title || tr("Are you sure?"),
               diff: (dialog.data?.path || "").split(/[\\/]/).pop() || tr("Changes"),
               capabilities: tr("What can I ask for?"),
               palette: tr("Go to"),
@@ -435,6 +447,28 @@ export function DialogView(props: any) {
             </nav>
           )}
           <div className="modal-content">
+            {dialog.type === "settings" && (
+              <div
+                className="segmented"
+                role="group"
+                aria-label={tr("Settings view")}
+              >
+                <button
+                  className={settingsMode === "simple" ? "selected" : ""}
+                  onClick={() => call(() => settings({ settings_mode: "simple" }))}
+                >
+                  {tr("Simple")}
+                </button>
+                <button
+                  className={settingsMode === "advanced" ? "selected" : ""}
+                  onClick={() =>
+                    call(() => settings({ settings_mode: "advanced" }))
+                  }
+                >
+                  {tr("Advanced")}
+                </button>
+              </div>
+            )}
             {dialog.type === "settings" && section === "model" && (
               <>
                 <label>
@@ -455,6 +489,8 @@ export function DialogView(props: any) {
                     ))}
                   </select>
                 </label>
+                {settingsMode === "advanced" && (
+                  <>
                 <label>
                   {tr("KV cache profile")}
                   <select
@@ -496,6 +532,8 @@ export function DialogView(props: any) {
                     )}
                   </p>
                 )}
+                  </>
+                )}
                 <p>
                   {tr("Vision")}:{" "}
                   {app.models.find((m: any) => m.id === app.preferences.model)
@@ -503,6 +541,8 @@ export function DialogView(props: any) {
                     ? tr("available")
                     : tr("text-only model")}
                 </p>
+                {settingsMode === "advanced" && (
+                  <>
                 <label>
                   {tr("GPU memory budget")}
                   <select
@@ -529,6 +569,8 @@ export function DialogView(props: any) {
                 </label>
                 <p>{tr("Changing the budget restarts the model automatically when no task is running. A compatible context or smaller model is selected when needed.")}</p>
                 {app.models.find((m: any) => m.id === app.preferences.model)?.uses_system_ram && <p>{tr("This profile also uses system RAM. A smaller GPU moves more weights into RAM. Windows can reclaim memory while the model starts.")}</p>}
+                  </>
+                )}
                 <div className="row">
                   <button
                     className={app.semantic_search?.enabled ? "positive" : "outline"}
@@ -556,50 +598,51 @@ export function DialogView(props: any) {
                         : tr("The embedding model will be downloaded in the background (~635 MB, CPU only).")}
                   </p>
                 )}
-                <p>
-                  VRAM: {runtime.vram || "—"} · Python {runtime.python || "—"}
-                  {app.memory && <> · {tr("Free RAM")}: {app.memory.ram_available_gb} / {app.memory.ram_total_gb} GiB</>}
-                </p>
+                {app.semantic_search?.error && (
+                  <p className="error">
+                    {tr("The embedding model download failed:")}{" "}
+                    {app.semantic_search.error}
+                  </p>
+                )}
+                {settingsMode === "advanced" && (
+                  <p>
+                    VRAM: {runtime.vram || "—"} · Python {runtime.python || "—"}
+                    {app.memory && <> · {tr("Free RAM")}: {app.memory.ram_available_gb} / {app.memory.ram_total_gb} GiB</>}
+                  </p>
+                )}
                 {app.active && (
                   <p className="amber">
                     {tr("New settings apply to the next request.")}
                   </p>
                 )}
-                <div className="row">
-                  {["start", "stop", "restart"].map((command) => (
-                    <button
-                      key={command}
-                      className={(command === "stop" ? "danger" : "outline") +
-                        (["starting", "stopping"].includes(runtime.switch?.status) && runtime.switch.command === command ? " model-busy" : "")}
-                      disabled={command === "stop" ? runtime.switch?.status === "stopping" : ["starting", "stopping"].includes(runtime.switch?.status)}
-                      aria-busy={["starting", "stopping"].includes(runtime.switch?.status) && runtime.switch.command === command}
-                      onClick={() =>
-                        call(() => runtimeCommand(command))
-                      }
-                    >
-                      {command === "start" ? (
-                        <Play />
-                      ) : command === "stop" ? (
-                        <Square />
-                      ) : (
-                        <RotateCw />
-                      )}
-                      {tr(command === "start" ? "Start" : command === "stop" ? "Stop" : "Restart")}
-                    </button>
-                  ))}
-                </div>
-                {app.semantic_search?.enabled && (
-                  <p>
-                    {app.semantic_search.preparing
-                      ? tr("Downloading the embedding model (~635 MB)…")
-                      : app.semantic_search.model_ready
-                        ? app.semantic_search.server
-                          ? tr("Semantic search is ready.")
-                          : tr("Ready; the CPU search service starts with the first search.")
-                        : tr("The embedding model will be downloaded in the background (~635 MB, CPU only).")}
-                  </p>
+                {settingsMode === "advanced" && (
+                  <>
+                    <div className="row">
+                      {["start", "stop", "restart"].map((command) => (
+                        <button
+                          key={command}
+                          className={(command === "stop" ? "danger" : "outline") +
+                            (["starting", "stopping"].includes(runtime.switch?.status) && runtime.switch.command === command ? " model-busy" : "")}
+                          disabled={command === "stop" ? runtime.switch?.status === "stopping" : ["starting", "stopping"].includes(runtime.switch?.status)}
+                          aria-busy={["starting", "stopping"].includes(runtime.switch?.status) && runtime.switch.command === command}
+                          onClick={() =>
+                            call(() => runtimeCommand(command))
+                          }
+                        >
+                          {command === "start" ? (
+                            <Play />
+                          ) : command === "stop" ? (
+                            <Square />
+                          ) : (
+                            <RotateCw />
+                          )}
+                          {tr(command === "start" ? "Start" : command === "stop" ? "Stop" : "Restart")}
+                        </button>
+                      ))}
+                    </div>
+                    <ModelStatus runtime={runtime} cs={cs} />
+                  </>
                 )}
-                <ModelStatus runtime={runtime} cs={cs} />
               </>
             )}
             {dialog.type === "settings" && section === "behavior" && (
@@ -613,7 +656,9 @@ export function DialogView(props: any) {
                     }
                   >
                     {["supervised", "semi", "auto"].map((value) => (
-                      <option key={value}>{value}</option>
+                      <option key={value} value={value}>
+                        {tr(AUTONOMY_LABELS[value])}
+                      </option>
                     ))}
                   </select>
                 </label>
@@ -1125,7 +1170,7 @@ export function DialogView(props: any) {
                 <div className="row">
                   <a className="button" href="/api/manual/en" target="_blank">
                     <BookOpen />
-                    English PDF
+                    {tr("English PDF")}
                   </a>
                   <a className="button" href="/api/manual/cs" target="_blank">
                     <BookOpen />
@@ -1344,6 +1389,27 @@ export function DialogView(props: any) {
                 >
                   {tr("Delete")}
                 </button>
+              </>
+            )}
+            {dialog.type === "confirm" && (
+              <>
+                <p>{dialog.data.message}</p>
+                <div className="row">
+                  <button
+                    className="danger"
+                    onClick={() =>
+                      call(async () => {
+                        await dialog.data.run();
+                        close();
+                      })
+                    }
+                  >
+                    {dialog.data.confirmLabel || tr("Confirm")}
+                  </button>
+                  <button className="outline" onClick={close}>
+                    {tr("Cancel")}
+                  </button>
+                </div>
               </>
             )}
             {dialog.type === "preview" && (

@@ -26,9 +26,7 @@ CHUNK_OVERLAP = 150
 MAX_FILE_BYTES = 2 * 1024 * 1024
 UPDATE_BATCH_FILES = 8          # files per embedding round inside the worker
 HISTORY_MESSAGE_CAP = 4000
-_INTERNAL_PREFIXES = ("[TASK PROTOCOL", "[WRITING PROTOCOL", "[PROGRESS UPDATE",
-                      "[FINAL SUMMARY", "[WRITING SUMMARY", "[RESEARCH PLAN",
-                      "[DYNAMIC TASK CONTEXT", "[HISTORY RECOVERY", "[LOOP WARNING")
+from harness.internal_messages import INTERNAL_USER_PREFIXES as _INTERNAL_PREFIXES
 
 _path_locks: dict[str, threading.Lock] = {}
 _path_locks_guard = threading.Lock()

@@ -38,7 +38,7 @@ if errorlevel 1 (
     pause & exit /b 1
 )
 echo        OK - all tests passed.
-".venv\Scripts\python.exe" -B -m unittest tests.test_workspace tests.test_runtime_support tests.test_prompt_performance tests.test_history_recovery tests.test_webview_runtime tests.test_memory_profiles tests.test_localization tests.test_autocommit tests.test_diff_viewer tests.test_project_checks tests.test_semantic_search tests.test_capabilities tests.test_computer_keys tests.test_speech tests.test_desktop tests.test_full_bootstrap tests.test_finder
+".venv\Scripts\python.exe" -B -m unittest discover -s tests -t . -p "test_*.py"
 if errorlevel 1 ( echo [ERROR] Workspace integration tests failed. & exit /b 1 )
 
 echo [2/3] Build Marvin.exe...
