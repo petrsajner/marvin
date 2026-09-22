@@ -377,7 +377,8 @@ export function App() {
         .then((value) => {
           if (generation !== runtimeGeneration.current) return;
           setRuntime(value);
-          if (panel && tab === "progress") refreshDetail().catch(error);
+          if (panel && (tab === "progress" || tab === "preview"))
+            refreshDetail().catch(error);
         })
         .catch(() => {})
         .finally(() => { pending = false; })
@@ -937,6 +938,21 @@ export function App() {
               ))}
             </select>
             <button
+              className={"icon " + (chat?.meta.plan_first ? "positive" : "")}
+              aria-pressed={!!chat?.meta.plan_first}
+              aria-label={tr("Plan first")}
+              title={tr(
+                "Proposes a plan and waits for your approval before the first change",
+              )}
+              onClick={() =>
+                act("plan_first", {
+                  enabled: !chat?.meta.plan_first,
+                }).catch(error)
+              }
+            >
+              <ListChecks />
+            </button>
+            <button
               className="icon"
               aria-label={tr("Toggle details")}
               onClick={() => setPanel(!panel)}
@@ -1448,6 +1464,9 @@ export function App() {
                       tr={tr}
                       onTestFix={(path) =>
                         act("test_fix", { path }).catch(error)
+                      }
+                      onStopProcess={(id) =>
+                        act("stop_process", { id }).catch(error)
                       }
                     />
                   ) : tab === "results" ? (
@@ -2150,57 +2169,88 @@ function PreviewPane({
   active,
   tr,
   onTestFix,
+  onStopProcess,
 }: {
   detail: any;
   active: boolean;
   tr: (text: string) => string;
   onTestFix: (path: string) => void;
+  onStopProcess: (id: string) => void;
 }) {
   const [tick, setTick] = useState(0);
   const target = [...(detail?.results || [])]
     .reverse()
     .find((f: FileItem) => /\.html?$/i.test(f.name));
+  // A background command that printed its own address is the running app.
+  const served = (detail?.processes || []).find(
+    (p: any) => p.status === "running" && p.url,
+  );
   useEffect(() => {
     if (!active || !target) return;
     const timer = setInterval(() => setTick((n) => n + 1), 1500);
     return () => clearInterval(timer);
   }, [active, target?.id]);
-  if (!target)
-    return (
-      <section>
-        <h3>{tr("Preview")}</h3>
-        <p className="muted">
-          {tr("A web page or application preview will appear here once one is made.")}
-        </p>
-      </section>
-    );
-  const file = target.path.split(/[\\/]/).at(-1) || target.name;
-  const src =
-    "/api/preview/" + target.id + "/" + encodeURIComponent(file);
+  const file = target
+    ? target.path.split(/[\\/]/).at(-1) || target.name
+    : "";
+  const src = target
+    ? "/api/preview/" + target.id + "/" + encodeURIComponent(file)
+    : "";
   return (
     <section>
-      <h3>{target.name}</h3>
-      <div className="row">
-        <button
-          className="positive"
-          title={tr("Test the app in a browser and fix what is broken")}
-          onClick={() => onTestFix(target.path)}
-        >
-          <Wrench />
-          {tr("Test and fix")}
-        </button>
-        <button onClick={() => setTick((n) => n + 1)}>{tr("Refresh")}</button>
-        <button onClick={() => window.open(src, "_blank")}>
-          {tr("Open in browser")}
-        </button>
-      </div>
-      <iframe
-        key={tick}
-        className="preview-frame"
-        title={target.name}
-        sandbox="allow-scripts allow-forms allow-downloads"
-        src={src}
-      />
+      <h3>{target ? target.name : tr("Preview")}</h3>
+      {served && (
+        <div className="app-card">
+          <strong>
+            {tr("The app is running at")} {served.url}
+          </strong>
+          <div className="row">
+            <button
+              className="positive"
+              onClick={() => window.open(served.url, "_blank")}
+            >
+              {tr("Open in browser")}
+            </button>
+            <button
+              className="danger"
+              onClick={() => onStopProcess(served.process_id)}
+            >
+              {tr("Stop this command")}
+            </button>
+          </div>
+        </div>
+      )}
+      {target ? (
+        <>
+          <div className="row">
+            <button
+              className="positive"
+              title={tr("Test the app in a browser and fix what is broken")}
+              onClick={() => onTestFix(target.path)}
+            >
+              <Wrench />
+              {tr("Test and fix")}
+            </button>
+            <button onClick={() => setTick((n) => n + 1)}>{tr("Refresh")}</button>
+            <button onClick={() => window.open(src, "_blank")}>
+              {tr("Open in browser")}
+            </button>
+          </div>
+          <iframe
+            key={tick}
+            className="preview-frame"
+            title={target.name}
+            sandbox="allow-scripts allow-forms allow-downloads"
+            src={src}
+          />
+        </>
+      ) : (
+        !served && (
+          <p className="muted">
+            {tr("A web page or application preview will appear here once one is made.")}
+          </p>
+        )
+      )}
     </section>
   );
 }

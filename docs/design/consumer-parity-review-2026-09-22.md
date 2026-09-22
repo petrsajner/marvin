@@ -290,6 +290,12 @@ and reduced reloads in Sep 2026.
    gives the fix loop in R7 its runtime.
 *Note:* do not rebuild WebContainers-style in-browser execution; running the
 user's real project on disk is the local product's advantage.
+*Status (22 September 2026):* point 1 is delivered (Preview tab). Point 2 is
+delivered in its output-detected form: `ManagedProcess` sniffs the first
+localhost URL a server prints and the Preview panel shows an "app is running"
+card with Open/Stop, bound to the session and to shutdown cleanup. What remains
+is convenience - automatically starting a project's dev server (today the
+agent, or the Test and fix loop, starts it).
 
 ### R3. Onboarding and the first ten minutes (P0, S-M)
 
@@ -417,6 +423,13 @@ through the task protocol; (c) ordinary requests keep today's behavior - soft
 planning nudges for multi-step work, no gates. All the machinery exists (task
 plan panel, `resume(approve=)`, readiness nudges); this is flow design, not new
 infrastructure.
+
+*Status (22 September 2026):* delivered in the optional shape - a "Plan first"
+toggle per conversation (`session.meta.plan_first`, switch beside the work mode
+selector) that injects `PLAN_FIRST_NOTE` at task start: propose a plan and ask
+for approval before any file change, and continue without re-planning when the
+owner approves or adjusts it. Asking for a plan in chat (`/plan`) works without
+the switch; ordinary requests stay ungated.
 
 ### R9. Artifacts and outputs for non-programmers (P1, S-M)
 

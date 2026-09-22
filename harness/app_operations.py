@@ -189,6 +189,13 @@ def perform_action(app, sid, action, payload):
         return app.submit(sid, build_test_fix_prompt(str(payload.get("path") or "")),
                           request_id=f"test-fix-{sid}-{int(time.time())}",
                           delivery="queue")
+    if action == "plan_first":
+        # Opt-in planning mode for this conversation; never a gate on every
+        # request - the owner decides when planning is wanted.
+        session.meta["plan_first"] = bool(payload.get("enabled"))
+        session._save_meta()
+        app.store.emit(sid, "session_changed", {"id": sid})
+        return {"ok": True, "plan_first": session.meta["plan_first"]}
     if action == "export":
         fmt = payload.get("format", "md")
         if payload.get("research"):

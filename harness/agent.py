@@ -87,6 +87,17 @@ WRITING_PROTOCOL_NOTE = (
     "Finish with a clear human summary: what was written or revised, important choices, and any "
     "open questions. Do not introduce coding, Git, build, or test terminology unless relevant."
 )
+# Opt-in per conversation (the "Plan first" switch). The owner asked for
+# planning as a mode someone chooses, never as a gate on every request.
+PLAN_FIRST_NOTE = (
+    "[PLAN FIRST MODE] The owner wants a plan before implementation in this chat. "
+    "If this message starts a new task: before any file change, lay out a short "
+    "plan (use set_task_plan where available so it shows in the interface), then "
+    "end your turn asking for approval - do not implement yet. "
+    "If the owner is approving or adjusting a plan you just proposed (for example "
+    "'yes', 'go ahead', or 'skip step 3'): do not re-plan - carry the approved "
+    "plan into set_task_plan, apply the adjustments, and implement it."
+)
 PROGRESS_NOTE = (
     "[PROGRESS UPDATE REQUIRED] Before or together with your next tool call, give the user "
     "a ONE-sentence status update in their language: what you found/did so far and what you "
@@ -423,6 +434,8 @@ class Agent:
         if self.tools_enabled:
             note = WRITING_PROTOCOL_NOTE if self.work_mode == "writing" else TASK_PROTOCOL_NOTE
             self.session.add("user", note)
+        if self.session.meta.get("plan_first"):
+            self.session.add("user", PLAN_FIRST_NOTE)
 
     def resume_task(self, label: str) -> None:
         """Reset agent state over the existing last user message for retry or fork."""
@@ -444,6 +457,8 @@ class Agent:
         if self.tools_enabled:
             note = WRITING_PROTOCOL_NOTE if self.work_mode == "writing" else TASK_PROTOCOL_NOTE
             self.session.add("user", note)
+        if self.session.meta.get("plan_first"):
+            self.session.add("user", PLAN_FIRST_NOTE)
 
     def steer(self, text: str, images: list[Path] | None = None) -> None:
         """Continue the current task with a user clarification after stopping its stream."""

@@ -14,6 +14,7 @@ from __future__ import annotations
 INTERNAL_USER_PREFIXES = (
     "[TASK PROTOCOL",
     "[WRITING PROTOCOL",
+    "[PLAN FIRST",
     "[PROGRESS UPDATE",
     "[FINAL SUMMARY",
     "[WRITING SUMMARY",

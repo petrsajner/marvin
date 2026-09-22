@@ -1539,6 +1539,20 @@ button.nav-button {
   line-height: 1.45;
 }
 
+/* A running app discovered from a process's own output. */
+.app-card {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--input);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.app-card strong {
+  display: block;
+  overflow-wrap: anywhere;
+  margin-bottom: 8px;
+}
+
 /* Live preview of a generated web page or application. */
 .preview-frame {
   width: 100%;

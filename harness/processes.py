@@ -4,6 +4,7 @@ from __future__ import annotations
 import collections
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -16,6 +17,19 @@ from pathlib import Path
 
 
 MAX_BUFFER_CHARS = 1_000_000
+
+# A server prints its own address sooner or later; one spotted in the output is
+# how the interface can offer "open the app" without a port registry to keep.
+_URL_RE = re.compile(
+    r"https?://(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d{2,5}/?[\w./-]*",
+    re.IGNORECASE)
+
+
+def served_url(text: str) -> str | None:
+    match = _URL_RE.search(text or "")
+    if not match:
+        return None
+    return match.group(0).replace("0.0.0.0", "127.0.0.1")
 
 # Every live manager, so shutdown and the timeout watchdog can reach processes
 # the interface is not currently polling. The timeout bound is enforced here as
@@ -75,6 +89,7 @@ class ManagedProcess:
     log_path: Path | None = None
     meta_path: Path | None = None
     exit_code: int | None = None
+    url: str | None = None
 
     def __post_init__(self) -> None:
         if self.proc is not None:
@@ -82,6 +97,8 @@ class ManagedProcess:
 
     def append(self, text: str) -> None:
         with self.lock:
+            if self.url is None:
+                self.url = served_url(text)
             if self.log_path:
                 with open(self.log_path, "a", encoding="utf-8", errors="replace") as handle:
                     handle.write(text)
@@ -140,7 +157,7 @@ class ProcessManager:
                     started=float(data.get("started", time.time())),
                     pid=int(data.get("pid", 0)),
                     log_path=Path(data["log_path"]), meta_path=meta_path,
-                    exit_code=data.get("exit_code"),
+                    exit_code=data.get("exit_code"), url=data.get("url"),
                 )
             except (OSError, ValueError, KeyError, TypeError):
                 continue
@@ -265,6 +282,7 @@ class ProcessManager:
                 "status": "running" if self._returncode(item) is None else "finished",
                 "exit_code": self._returncode(item),
                 "elapsed_seconds": round(time.time() - item.started, 1),
+                "url": item.url,
             }
             for item in items
         ]
@@ -316,6 +334,7 @@ class ProcessManager:
             "pid": item.pid,
             "log_path": str(item.log_path),
             "exit_code": item.exit_code,
+            "url": item.url,
         }
         temporary = item.meta_path.with_suffix(".tmp")
         temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
