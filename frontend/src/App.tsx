@@ -646,6 +646,9 @@ export function App() {
   );
   const active = app?.active?.session_id === sid,
     mode = chat?.meta.work_mode || "discussion";
+  // A summarization request is its own, smaller prompt; showing its size in
+  // the activity line would read as the chat's context being that size.
+  const summarizing = /^\/(compress|handoff)/.test(app.active?.text || "");
   const queued: Job[] = (app?.queue || []).filter(
     (j: Job) =>
       j.session_id === sid && ["queued", "steering"].includes(j.status),
@@ -1173,11 +1176,12 @@ export function App() {
                   <div className="activity" role="status">
                     <LoaderCircle className="spin" />
                     <span>
-                      {live?.phase === "preparing" && /^\/(compress|handoff)/.test(app.active?.text || "")
+                      {summarizing
                         ? tr("Summarizing conversation")
                         : tr(phases[live?.phase] || phases.preparing)}
-                      {live?.tool && " · " + live.tool}
-                      {live?.phase === "reading_context" &&
+                      {!summarizing && live?.tool && " · " + live.tool}
+                      {!summarizing &&
+                        live?.phase === "reading_context" &&
                         live.prompt_progress &&
                         prefillSummary(live.prompt_progress, tr)}
                       {live?.tool_chars > 0 &&

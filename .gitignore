@@ -43,4 +43,4 @@ projects.json
 .claude/
 
 # Transient test output captures.
-unittest_out.txt
+*_out.txt

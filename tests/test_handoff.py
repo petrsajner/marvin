@@ -17,7 +17,15 @@ from harness.session import Session
 # Assembled from fragments so this file never contains call markup literally.
 TOOL_MARKUP = "".join(("<", "tool_call><", "function=fake><", "/function><",
                        "/tool_call>"))
-GOOD_SUMMARY = "## Goal\nCentipede sprites.\n\n## Done\nRewrote centipede.py."
+GOOD_SUMMARY = (
+    "## Goal\nCentipede sprites to match the 1981 arcade reference page.\n\n"
+    "## Done\nRewrote centipede.py with sprite rendering [Message m1]; extracted "
+    "frames from eight reference GIFs into research/sprites/; rebuilt "
+    "dist/Centipede.exe with PyInstaller.\n\n"
+    "## Decisions & context\nUse the reference sprites verbatim; keep the game "
+    "rules unchanged.\n\n"
+    "## Pending\nLive verification of the rebuilt exe; spider timing.\n\n"
+    "## Key facts\npygame 2.6.1; project path projects/Centipede.")
 
 
 class _Cfg:
@@ -37,15 +45,17 @@ class _Cfg:
 
 
 class _LLM:
-    """Returns prepared replies in order; counts calls."""
+    """Returns prepared replies in order; counts calls and keeps the requests."""
 
     def __init__(self, root: Path, replies):
         self.cfg = _Cfg(root)
         self.replies = list(replies)
         self.calls = 0
+        self.seen: list = []
 
     def stream(self, _messages, sampling=None, thinking=False, should_stop=None):
         self.calls += 1
+        self.seen.append(_messages)
         return SimpleNamespace(stopped=False, content=self.replies.pop(0))
 
 
@@ -91,6 +101,39 @@ class SummarizeTests(unittest.TestCase):
     def test_markup_detector(self):
         self.assertTrue(looks_like_tool_call(TOOL_MARKUP))
         self.assertFalse(looks_like_tool_call(GOOD_SUMMARY))
+
+    def test_echoed_transcript_line_is_retried(self):
+        # The observed degeneration: the model continued the transcript by
+        # re-answering with the previous handoff's one-line goodbye.
+        echo = "Continuation chat: abc123"
+        llm = _LLM(self.root, [echo, GOOD_SUMMARY])
+        result = summarize_messages(llm, [
+            {"role": "assistant", "content": echo, "id": "a1"},
+            {"role": "user", "content": "continue with the sprite work " * 40,
+             "id": "m1"},
+        ])
+        self.assertEqual(result, GOOD_SUMMARY)
+        self.assertEqual(llm.calls, 2)
+
+    def test_too_short_summary_is_retried(self):
+        llm = _LLM(self.root, ["Done.", GOOD_SUMMARY])
+        summarize_messages(llm, [
+            {"role": "user", "content": "long task description " * 300,
+             "id": "m1"}])
+        self.assertEqual(llm.calls, 2)
+
+    def test_protocol_notes_are_excluded_from_the_transcript(self):
+        llm = _LLM(self.root, [GOOD_SUMMARY])
+        summarize_messages(llm, [
+            {"role": "user", "content": "[TASK PROTOCOL - follow for this task] x",
+             "id": "p1"},
+            {"role": "user", "content": "make the sprites match the reference",
+             "id": "m1"},
+        ])
+        request = llm.seen[0][1]["content"]
+        self.assertNotIn("[TASK PROTOCOL", request)
+        self.assertIn("make the sprites match the reference", request)
+        self.assertIn("END OF TRANSCRIPT", request)
 
 
 class ChatOrderingTests(unittest.TestCase):
