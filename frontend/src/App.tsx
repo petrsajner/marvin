@@ -344,6 +344,9 @@ export function App() {
           "queue_changed",
           "settings_changed",
           "tool_completed",
+          // Compression and pruning report through notices; without a refetch
+          // the context figures stayed stale until the next chat activity.
+          "notice",
         ].includes(row.kind)
       ) {
         clearTimeout(timer);
@@ -377,7 +380,7 @@ export function App() {
         .then((value) => {
           if (generation !== runtimeGeneration.current) return;
           setRuntime(value);
-          if (panel && (tab === "progress" || tab === "preview"))
+          if (panel && (tab === "progress" || tab === "preview" || tab === "context"))
             refreshDetail().catch(error);
         })
         .catch(() => {})

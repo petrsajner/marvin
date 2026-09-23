@@ -120,6 +120,10 @@ _PROTOCOL_MARKS = ("[TASK PROTOCOL", "[WRITING PROTOCOL", "[PROGRESS UPDATE",
 TOOL_STEPS_BEFORE_UPDATE = 4   # Request an update after this many tool steps without user-facing text.
 MIN_TOOLS_FOR_SUMMARY = 3      # Tasks using at least this many tools require a structured summary.
 COMPRESS_AT = 0.85             # Compress automatically at 85 percent of the context limit.
+KEEP_FRACTION = 0.20           # Share of the limit kept as live recent work after a
+                               # compression. Owner choice 2026-09-23: freeing roughly
+                               # 70% of a full chat matters more than the larger tail -
+                               # older work lives in the summary and stays searchable.
 IMAGES_KEPT = 4                # Screenshots still sent once context pressure forces pruning.
 PRUNE_WORTH = 0.05             # Pruning must free this share of the context to earn its rewrite.
 OVERFLOW_RE = re.compile(
@@ -638,7 +642,7 @@ class Agent:
                             est=est, limit=limit))
         try:
             from harness.context import summarize_messages
-            keep_tokens = int(limit * 0.35)
+            keep_tokens = int(limit * KEEP_FRACTION)
             cut = self.session.compression_cut(keep_tokens=keep_tokens)
             if cut is None:
                 self.session.trim_to_budget(int(limit * 0.5))
@@ -672,8 +676,11 @@ class Agent:
             new_est = self.estimate_context_tokens()
             # Refresh current persistent memory after compression.
             self.refresh_system_prompt()
-            self.emit("info", t("📦 Context compressed: ~{est} to ~{new} tokens; the full history is kept",
-                                est=est, new=new_est))
+            kept = sum(self.session._msg_tokens(m) for m in
+                       self.session.messages[self.session.compression["cut"]:]
+                       ) if self.session.compression else 0
+            self.emit("info", t("📦 Context compressed: ~{est} to ~{new} tokens - kept ~{kept} of recent work; the full history is kept",
+                                est=est, new=new_est, kept=kept))
         except Exception as e:
             if self.abort_flag.is_set():
                 return

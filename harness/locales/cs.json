@@ -923,7 +923,8 @@
     "Plan first": "Plán napřed",
     "Proposes a plan and waits for your approval before the first change": "Navrhne plán a před první změnou počká na vaše schválení",
     "The app is running at": "Aplikace běží na",
-    "Context is nearly full and automatic shortening has no room left. Continue in a new chat (or use /handoff) to keep working comfortably.": "Kontext je skoro plný a automatické zkrácení už nemá kam ustoupit. Pokračujte v novém chatu (nebo použijte /handoff), ať se vám pracuje pohodlně."
+    "Context is nearly full and automatic shortening has no room left. Continue in a new chat (or use /handoff) to keep working comfortably.": "Kontext je skoro plný a automatické zkrácení už nemá kam ustoupit. Pokračujte v novém chatu (nebo použijte /handoff), ať se vám pracuje pohodlně.",
+    "📦 Context compressed: ~{est} to ~{new} tokens - kept ~{kept} of recent work; the full history is kept": "📦 Kontext zkomprimován: ~{est} → ~{new} tokenů – ponecháno ~{kept} nejnovější práce; celá historie zůstává"
   },
   "legacy_profile_labels": {
     "16 bit - přesnější, kontext 128k": "16-bit - more precise, context 128k",
