@@ -34,15 +34,15 @@
     },
     {
       "name": "Marvin-Workspace.jpg",
-      "bytes": 231692,
-      "sha256": "5a70655a744148e3481078f705f8da1ecd917008e49fddc12b43fa60885d92b1",
+      "bytes": 130491,
+      "sha256": "14b25bee41f59a17d68aed46aff8fa57b6b0dda1a0a4d7712b73a96c84a6a7b1",
       "url": "https://github.com/petrsajner/marvin/releases/download/v1.17.4/Marvin-Workspace.jpg",
       "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Workspace.jpg"
     },
     {
       "name": "SHA256SUMS.txt",
       "bytes": 445,
-      "sha256": "632de1f789b7910c9eddc98eb21fd027eb924790853505e4fc31cd929b1cf6f0",
+      "sha256": "1e158b6a582b1103f40ef16a73568eeaf825482af53fad4ca693878e2feddedf",
       "url": "https://github.com/petrsajner/marvin/releases/download/v1.17.4/SHA256SUMS.txt",
       "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/SHA256SUMS.txt"
     }
