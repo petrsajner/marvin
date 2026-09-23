@@ -1,0 +1,50 @@
+{
+  "version": "1.17.4",
+  "tag": "v1.17.4",
+  "application_commit": "b8cf075",
+  "release_url": "https://github.com/petrsajner/marvin/releases/tag/v1.17.4",
+  "assets": [
+    {
+      "name": "Marvin-Manual-CS.pdf",
+      "bytes": 191555,
+      "sha256": "27655c4c90faf11273ee87db4a37c02c445c6b02c74d5f927b348f82c39ebdb1",
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.17.4/Marvin-Manual-CS.pdf",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Manual-CS.pdf"
+    },
+    {
+      "name": "Marvin-Manual-EN.pdf",
+      "bytes": 197260,
+      "sha256": "1a14e4398c2b3873b5d44132ca9eda3a4ed53c822f96aada19bc1e60434b7a00",
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.17.4/Marvin-Manual-EN.pdf",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Manual-EN.pdf"
+    },
+    {
+      "name": "Marvin-Setup-Full.exe",
+      "bytes": 914452731,
+      "sha256": "0168c9a90db8e09291b632e84906cbfeadaf1ec8f9a85e8cb3035c0ce0933a57",
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.17.4/Marvin-Setup-Full.exe",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Full.exe"
+    },
+    {
+      "name": "Marvin-Setup-Minimal.exe",
+      "bytes": 54012696,
+      "sha256": "bd070db7a0a5cbbbdcb801aa7a9f18281079fe128cd02d63ea3369ac16e9840a",
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.17.4/Marvin-Setup-Minimal.exe",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Minimal.exe"
+    },
+    {
+      "name": "Marvin-Workspace.jpg",
+      "bytes": 231692,
+      "sha256": "5a70655a744148e3481078f705f8da1ecd917008e49fddc12b43fa60885d92b1",
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.17.4/Marvin-Workspace.jpg",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Workspace.jpg"
+    },
+    {
+      "name": "SHA256SUMS.txt",
+      "bytes": 445,
+      "sha256": "632de1f789b7910c9eddc98eb21fd027eb924790853505e4fc31cd929b1cf6f0",
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.17.4/SHA256SUMS.txt",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/SHA256SUMS.txt"
+    }
+  ]
+}
