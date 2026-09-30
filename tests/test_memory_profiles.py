@@ -379,6 +379,113 @@ class MemoryProfileTests(unittest.TestCase):
         servermgmt.record_allocation_failure(self.cfg, "CUDA error: out of memory")
         self.assertEqual(servermgmt.last_failure(self.cfg)["code"], "vram_pressure")
 
+    def test_recovery_keeps_the_selection_and_reports_the_dropped_draft(self):
+        self.app.preferences.update(model="q5", kv_cache_modes={"q5": "q8_0_mtp"})
+        session = self.app.new_session(work_mode="discussion")
+        session.add("assistant", "", tool_calls=[{"id": "done", "type": "function",
+                    "function": {"name": "write_file", "arguments": "{}"}}])
+        session.add("tool", "File already saved", tool_call_id="done", name="write_file")
+        started = []
+        def ensure(cfg, key, **kwargs):
+            started.append(cfg.kv_cache_mode(key))
+            return True
+        self.app.models = ModelSwitchController(self.cfg, ensure_fn=ensure,
+            stop_fn=lambda *a, **k: True, running_fn=lambda *_: False)
+        self.app.models.cfg.set_kv_cache_mode("q5", "q8_0_mtp")
+        self.app.manage_model = True
+        steps = []
+        def step(agent, **kwargs):
+            steps.append(1)
+            if len(steps) == 1:
+                path = self.cfg.path("paths.runtime_dir") / "model-failure.json"
+                path.write_text(json.dumps({"code": "ram_pressure", "model": "q5", "time": time.time()}))
+                return StepResult(Status.ERROR, text="Connection reset")
+            return StepResult(Status.FINAL, text="Recovered")
+        try:
+            with patch.object(Agent, "step", autospec=True, side_effect=step), \
+                 patch.object(servermgmt, "health", return_value=True), \
+                 patch.object(servermgmt, "running_model", return_value="q5"):
+                self.app.submit(session.id, "Continue the work", request_id="demote")
+                helpers.wait_for(lambda: self.app.store.job("demote")["status"] == "complete" and self.app.active is None)
+            # The demotion dropped the draft and runs plain; the selection stays.
+            self.assertEqual(started, ["q8_0"])
+            self.assertEqual(self.app.preferences["kv_cache_modes"]["q5"], "q8_0_mtp")
+            self.assertEqual(self.app.preferences["last_running_kv"], "q8_0")
+            preset = self.app.preferences["memory_presets"]["32"]
+            self.assertEqual(preset["profile"], "q8_0")
+            self.assertEqual(preset["requested_profile"], "q8_0_mtp")
+            self.assertEqual(self.app.models.cfg.data["_served_request"]["q5"], "q8_0_mtp")
+            demoted = [n for n in self.app.store.notices(session.id) if n.get("kind") == "mtp_demoted"]
+            self.assertEqual(len(demoted), 1)
+            self.assertEqual(demoted[0]["model"], "q5")
+            self.assertEqual(demoted[0]["profile"], "q8_0_mtp")
+        finally:
+            self.app.manage_model = False
+
+    def test_tasks_do_not_retry_a_demotion_but_the_next_model_start_does(self):
+        self.app.preferences.update(model="q5", kv_cache_modes={"q5": "q8_0_mtp"})
+        self.app.models.cfg.set_kv_cache_mode("q5", "q8_0")
+        self.app.models.cfg.data.setdefault("_served_request", {})["q5"] = "q8_0_mtp"
+        session = self.app.new_session(work_mode="discussion")
+        self.app.manage_model = True
+        try:
+            with patch.object(Agent, "step", autospec=True,
+                              side_effect=lambda *a, **k: StepResult(Status.FINAL, text="Done")), \
+                 patch.object(servermgmt, "health", return_value=True), \
+                 patch.object(servermgmt, "running_model", return_value="q5"), \
+                 patch.object(self.app.models, "request",
+                              side_effect=AssertionError("A demotion must not restart the model")):
+                self.app.submit(session.id, "Keep working", request_id="no-retry")
+                helpers.wait_for(lambda: self.app.store.job("no-retry")["status"] == "complete"
+                                 and self.app.active is None)
+            with patch.object(self.app.models, "request", return_value=True) as request:
+                self.app.start_model()
+            self.assertEqual(request.call_args.kwargs["kv_profile"], "q8_0_mtp")
+        finally:
+            self.app.manage_model = False
+
+    def test_budget_recall_restores_the_requested_profile(self):
+        self.app.preferences.update(model="q5", vram_gb=16, memory_presets={
+            "32": {"model": "q5", "profile": "q8_0", "requested_profile": "q8_0_mtp"}})
+        self.app.manage_model = True
+        try:
+            with patch.object(gpu, "vram_total_gb", return_value=32), \
+                 patch.object(self.app.models, "request", return_value=True) as request:
+                client = TestClient(create_app(self.cfg, service=self.app))
+                client.patch("/api/settings", json={"vram_gb": 32}).raise_for_status()
+            self.assertEqual(self.app.preferences["kv_cache_modes"]["q5"], "q8_0_mtp")
+            self.assertEqual(request.call_args.kwargs["kv_profile"], "q8_0_mtp")
+        finally:
+            self.app.manage_model = False
+
+    def test_budget_recall_does_not_override_an_explicit_profile_choice(self):
+        self.app.preferences.update(model="q5", vram_gb=16, memory_presets={
+            "32": {"model": "q5", "profile": "q8_0", "requested_profile": "q8_0_mtp"}})
+        self.app.manage_model = True
+        try:
+            with patch.object(gpu, "vram_total_gb", return_value=32), \
+                 patch.object(self.app.models, "request", return_value=True) as request:
+                client = TestClient(create_app(self.cfg, service=self.app))
+                client.patch("/api/settings",
+                             json={"vram_gb": 32, "kv_cache_modes": {"q5": "f16"}}).raise_for_status()
+            self.assertEqual(self.app.preferences["kv_cache_modes"]["q5"], "f16")
+            self.assertEqual(request.call_args.kwargs["kv_profile"], "f16")
+        finally:
+            self.app.manage_model = False
+
+    def test_autostart_keeps_the_selected_profile(self):
+        self.app.preferences.update(model="q5", kv_cache_modes={"q5": "q8_0_mtp"},
+                                    last_running_model="q5", last_running_kv="q8_0")
+        self.app.manage_model = True
+        try:
+            with patch.object(self.app, "fit_hardware"), \
+                 patch.object(self.app.models, "request", return_value=True) as request:
+                self.app.autostart_model()
+            self.assertEqual(self.app.preferences["kv_cache_modes"]["q5"], "q8_0_mtp")
+            self.assertEqual(request.call_args.kwargs["kv_profile"], "q8_0_mtp")
+        finally:
+            self.app.manage_model = False
+
 
 if __name__ == "__main__":
     unittest.main()

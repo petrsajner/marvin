@@ -1651,6 +1651,25 @@ export function App() {
                                 {tr("Work out what to do")}
                               </button>
                             </div>
+                          ) : n.kind === "mtp_demoted" ? (
+                            <div className="file-row" key={n.seq}>
+                              <AlertCircle className="amber" />
+                              <div>
+                                <strong>{tr(n.text)}</strong>
+                              </div>
+                              <button
+                                onClick={() =>
+                                  settings({
+                                    kv_cache_modes: {
+                                      ...app.preferences.kv_cache_modes,
+                                      [n.model]: n.profile,
+                                    },
+                                  })
+                                }
+                              >
+                                {tr("Turn MTP back on")}
+                              </button>
+                            </div>
                           ) : (
                             <p key={n.seq}>{n.text}</p>
                           ),

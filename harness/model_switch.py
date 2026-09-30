@@ -157,7 +157,8 @@ class ModelSwitchController:
                     if self._cancelled(gen):
                         continue
                     run_cfg.data["default_model"] = target
-                    for field in ("_active_placement", "_recovery_placement", "_recovered_contexts", "_recovery_origin_mtp"):
+                    for field in ("_active_placement", "_recovery_placement", "_recovered_contexts",
+                                  "_recovery_origin_mtp", "_served_request"):
                         if field in self.cfg.data:
                             run_cfg.data[field] = copy.deepcopy(self.cfg.data[field])
                     self.cfg = run_cfg
@@ -172,6 +173,10 @@ class ModelSwitchController:
                     raise RuntimeError("The previous model could not release its memory")
                 if kv_profile:
                     run_cfg.set_kv_cache_mode(target, kv_profile)
+                # The request this run serves. A recovery may apply a smaller
+                # profile for it; the request itself is what future jobs match.
+                run_cfg.data.setdefault("_served_request", {}).setdefault(
+                    target, kv_profile or run_cfg.kv_cache_mode(target))
                 run_cfg.data["default_model"] = target
                 if self._cancelled(gen):
                     continue

@@ -563,16 +563,20 @@ def create_app(cfg=None, *, service=None):
                     raise ValueError("Unknown KV profile")
                 # An explicit selection redefines the recovery intent for the model.
                 service.models.cfg.data.get("_recovery_origin_mtp", {}).pop(key, None)
+                service.models.cfg.data.get("_served_request", {}).pop(key, None)
+            explicit = set(payload.get("kv_cache_modes", {}))
             preset = None
-            if "vram_gb" in payload and payload["vram_gb"] != service.preferences.get("vram_gb", "auto") and "model" not in payload:
+            if ("vram_gb" in payload and payload["vram_gb"] != service.preferences.get("vram_gb", "auto")
+                    and "model" not in payload and not explicit):
                 value = payload["vram_gb"]
                 preset_key = "auto" if value == "auto" else f"{float(value):g}"
                 candidate = service.preferences.get("memory_presets", {}).get(preset_key, {})
+                recalled = candidate.get("requested_profile") or candidate.get("profile")
                 if (candidate.get("model") in cfg.data["models"]
-                        and candidate.get("profile") in cfg.kv_cache_profiles(candidate["model"])):
+                        and recalled in cfg.kv_cache_profiles(candidate["model"])):
                     preset = candidate
                     payload["model"] = preset["model"]
-                    payload["kv_cache_modes"] = {**payload.get("kv_cache_modes", {}), preset["model"]: preset["profile"]}
+                    payload["kv_cache_modes"] = {**payload.get("kv_cache_modes", {}), preset["model"]: recalled}
             if "projects_root" in payload:
                 # Validated before it is stored, so a bad folder never persists.
                 payload["projects_root"] = service.apply_projects_root(payload["projects_root"])

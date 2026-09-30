@@ -469,7 +469,25 @@ export function DialogView(props: any) {
                 </button>
               </div>
             )}
-            {dialog.type === "settings" && section === "model" && (
+            {dialog.type === "settings" && section === "model" && (() => {
+              const model = app.models.find(
+                (m: any) => m.id === app.preferences.model,
+              );
+              const profiles = model?.profiles || [];
+              const current = profiles.find((p: any) => p.id === model?.profile);
+              const twin = (source: any, speculative: boolean) =>
+                profiles.find(
+                  (p: any) =>
+                    !!p.speculative === speculative &&
+                    p.ctx_size === source.ctx_size &&
+                    p.cache_type === source.cache_type &&
+                    (p.value_cache_type || "") === (source.value_cache_type || "") &&
+                    p.gpu_class === source.gpu_class,
+                );
+              const mtpOn = current?.speculative === "mtp";
+              const base = mtpOn ? twin(current, false) : current;
+              const mtpTwin = base ? twin(base, true) : null;
+              return (
               <>
                 <label>
                   {tr("Model")}
@@ -489,55 +507,79 @@ export function DialogView(props: any) {
                     ))}
                   </select>
                 </label>
+                {profiles.some((p: any) => p.speculative === "mtp") && (
+                  <>
+                    <div className="row">
+                      <button
+                        className={mtpOn ? "positive" : "outline"}
+                        disabled={!mtpTwin}
+                        onClick={() => {
+                          const target = mtpOn ? base : mtpTwin;
+                          if (target)
+                            call(() =>
+                              settings({
+                                kv_cache_modes: {
+                                  ...app.preferences.kv_cache_modes,
+                                  [app.preferences.model]: target.id,
+                                },
+                              }),
+                            );
+                        }}
+                      >
+                        <Sparkles />
+                        {tr("Speculative decoding (MTP)")}
+                      </button>
+                    </div>
+                    <p>
+                      {tr("2–3× faster answers")}.
+                      {!mtpTwin && " " + tr("Not available for this cache profile.")}
+                    </p>
+                    {mtpOn && (
+                      <p>
+                        {tr(
+                          "The MTP profile generates faster using the draft model. It needs about 2.6 GB of extra VRAM; the 1.4 GB draft model is downloaded automatically on the first start.",
+                        )}
+                      </p>
+                    )}
+                  </>
+                )}
                 {settingsMode === "advanced" && (
                   <>
                 <label>
                   {tr("KV cache profile")}
                   <select
-                    value={
-                      app.models.find(
-                        (m: any) => m.id === app.preferences.model,
-                      )?.profile
-                    }
-                    onChange={(e) =>
-                      call(() =>
-                        settings({
-                          kv_cache_modes: {
-                            ...app.preferences.kv_cache_modes,
-                            [app.preferences.model]: e.target.value,
-                          },
-                        }),
-                      )
-                    }
+                    value={base?.id ?? ""}
+                    onChange={(e) => {
+                      const chosen = profiles.find(
+                        (p: any) => p.id === e.target.value,
+                      );
+                      const target =
+                        chosen && mtpOn ? twin(chosen, true) || chosen : chosen;
+                      if (target)
+                        call(() =>
+                          settings({
+                            kv_cache_modes: {
+                              ...app.preferences.kv_cache_modes,
+                              [app.preferences.model]: target.id,
+                            },
+                          }),
+                        );
+                    }}
                   >
-                    {app.models
-                      .find((m: any) => m.id === app.preferences.model)
-                      ?.profiles.map((p: any) => (
+                    {profiles
+                      .filter((p: any) => !p.speculative)
+                      .map((p: any) => (
                         <option key={p.id} value={p.id} disabled={p.fits_gpu_budget === false}>
                           {cs ? p.label_cs || p.label : p.label}
                         </option>
                       ))}
                   </select>
                 </label>
-                {app.models
-                  .find((m: any) => m.id === app.preferences.model)
-                  ?.profiles.find(
-                    (p: any) =>
-                      p.id ===
-                      app.models.find((m: any) => m.id === app.preferences.model)?.profile,
-                  )?.speculative === "mtp" && (
-                  <p>
-                    {tr(
-                      "The MTP profile generates faster using the draft model. It needs about 2.6 GB of extra VRAM; the 1.4 GB draft model is downloaded automatically on the first start.",
-                    )}
-                  </p>
-                )}
                   </>
                 )}
                 <p>
                   {tr("Vision")}:{" "}
-                  {app.models.find((m: any) => m.id === app.preferences.model)
-                    ?.vision
+                  {model?.vision
                     ? tr("available")
                     : tr("text-only model")}
                 </p>
@@ -644,7 +686,8 @@ export function DialogView(props: any) {
                   </>
                 )}
               </>
-            )}
+              );
+            })()}
             {dialog.type === "settings" && section === "behavior" && (
               <>
                 <label>
