@@ -180,38 +180,39 @@ def _run_setup_console() -> bool:
     return rc == 0
 
 
-def _focus_window() -> None:
-    """Bring the window to the foreground using a brief topmost toggle.
+def _focus_window(window) -> None:
+    """Bring only the created WebView window forward using its native handle.
 
-    Retry because WebView2 initialization can delay creation of the native window."""
+    Retry because WebView2 initialization can delay creation of the native window.
+    Title matching also finds hidden GDI+ helper windows and must never be used."""
     import ctypes
     import time as _t
     _t.sleep(2.0)
     try:
         from ctypes import wintypes
         u = ctypes.windll.user32
+        u.IsWindow.argtypes = [wintypes.HWND]
+        u.IsWindow.restype = wintypes.BOOL
+        u.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+        u.ShowWindow.restype = wintypes.BOOL
+        u.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int,
+                                  ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT]
+        u.SetWindowPos.restype = wintypes.BOOL
+        for function in (u.SetForegroundWindow, u.BringWindowToTop):
+            function.argtypes = [wintypes.HWND]
+            function.restype = wintypes.BOOL
         SWP_NOSIZE, SWP_NOMOVE = 0x0001, 0x0002
         HWND_TOPMOST, HWND_NOTOPMOST = -1, -2
         for _attempt in range(3):
-            found: list[int] = []
-
-            @ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
-            def cb(h, l):
-                buf = ctypes.create_unicode_buffer(128)
-                u.GetWindowTextW(h, buf, 128)
-                if "Marvin" in buf.value:
-                    found.append(h)
-                return True
-
-            u.EnumWindows(cb, 0)
-            if found:
-                for h in found:
-                    u.ShowWindow(h, 9)  # SW_RESTORE
-                    # Toggle topmost to raise the window even when Windows restricts focus changes.
-                    u.SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE)
-                    u.SetWindowPos(h, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE)
-                    u.SetForegroundWindow(h)
-                    u.BringWindowToTop(h)
+            native = getattr(window, "native", None)
+            h = native.Handle.ToInt64() if native is not None else 0
+            if h and u.IsWindow(h):
+                u.ShowWindow(h, 9)  # SW_RESTORE
+                # Toggle topmost to raise the window even when Windows restricts focus changes.
+                u.SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE)
+                u.SetWindowPos(h, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE)
+                u.SetForegroundWindow(h)
+                u.BringWindowToTop(h)
                 return
             _t.sleep(1.0)
     except Exception:
@@ -466,14 +467,14 @@ def main() -> int:
     _close_splash()
     try:
         import webview
-        webview.create_window(f"Marvin v{APP_VERSION}", url,
+        window = webview.create_window(f"Marvin v{APP_VERSION}", url,
                                width=1440, height=920, min_size=(960, 640),
                                background_color="#0b0e14",
                                # pywebview disables selection unless asked: without
                                # this nothing in the conversation can be copied.
                                text_select=True)
         _log(f"Window opened: {url} (model may still be loading in the background)")
-        webview.start(_focus_window)
+        webview.start(_focus_window, window)
     except ImportError:
         import webbrowser
         _log(f"pywebview missing - opening browser: {url}")

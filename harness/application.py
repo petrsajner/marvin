@@ -720,8 +720,10 @@ class ApplicationService:
         live.update(phase="loading_model", phase_started=time.time(), text="", reasoning="", prompt_progress=None)
         # The lower rung serves the user's request; record it as such so the next
         # task does not read the demotion as a changed selection.
-        cfg.data.setdefault("_served_request", {}).setdefault(key, self.requested_profile(key, cfg.kv_cache_mode(key)))
-        self.models.request(key, restart=True, kv_profile=profile, config=cfg,
+        request_field = "adaptive_kv_requests" if cfg.model(key).get("adaptive_runtime") else "kv_cache_modes"
+        requested = job["settings"].get(request_field, {}).get(key, cfg.kv_cache_mode(key))
+        cfg.data.setdefault("_served_request", {})[key] = requested
+        self.models.request(key, restart=True, kv_profile=profile, requested_profile=requested, config=cfg,
                             on_success=self.model_became_ready,
                             on_failure=lambda restored: self.model_switch_failed(key, restored))
         while self.models.snapshot().busy and not self.abort.wait(.1):

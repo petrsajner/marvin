@@ -651,7 +651,7 @@ export function App() {
     mode = chat?.meta.work_mode || "discussion";
   // A summarization request is its own, smaller prompt; showing its size in
   // the activity line would read as the chat's context being that size.
-  const summarizing = /^\/(compress|handoff)/.test(app.active?.text || "");
+  const summarizing = /^\/(compress|handoff)/.test(app?.active?.text || "");
   const queued: Job[] = (app?.queue || []).filter(
     (j: Job) =>
       j.session_id === sid && ["queued", "steering"].includes(j.status),

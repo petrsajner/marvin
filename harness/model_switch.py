@@ -52,7 +52,7 @@ class ModelSwitchController:
         self._lock = threading.Lock()
         self._state = ModelSwitchSnapshot()
         self._thread: threading.Thread | None = None
-        # (model_key, kv_profile, restart, on_success, incoming_config, on_failure)
+        # (model_key, kv_profile, restart, on_success, incoming_config, on_failure, requested_profile)
         self._desired: tuple | None = None
         self._gen = 0  # Incremented on every request/cancellation to invalidate stale publications.
         self._last_ready: tuple[Config, str] | None = None
@@ -71,13 +71,14 @@ class ModelSwitchController:
 
     def request(self, model_key: str, *, restart: bool = False,
                 kv_profile: str | None = None,
+                requested_profile: str | None = None,
                 on_success: Callable[[str], None] | None = None,
                 config: Config | None = None,
                 on_failure: Callable[[str | None], None] | None = None) -> bool:
-        """Accept the request and interrupt an obsolete load to release GPU memory."""
+        """Accept a selection, or a recovery profile serving an earlier selection."""
         with self._lock:
             interrupted = self._state.busy
-            self._desired = (model_key, kv_profile, restart, on_success, config, on_failure)
+            self._desired = (model_key, kv_profile, restart, on_success, config, on_failure, requested_profile)
             self._gen += 1
             self._state = ModelSwitchSnapshot("starting", model_key, started_at=time.time(),
                                               phase="preparing", command="restart" if restart else "start")
@@ -143,11 +144,13 @@ class ModelSwitchController:
                 if self._desired is None:
                     self._thread = None
                     return
-                target, kv_profile, restart, on_success, incoming, on_failure = self._desired
+                target, kv_profile, restart, on_success, incoming, on_failure, requested_profile = self._desired
                 self._desired = None
                 gen = self._gen
             run_cfg = Config(copy.deepcopy(incoming.data), incoming.root) if incoming else self.cfg
             try:
+                served_request = requested_profile or kv_profile or self.cfg.data.get(
+                    "_served_request", {}).get(target, run_cfg.kv_cache_mode(target))
                 profile_changed = kv_profile and kv_profile != self.cfg.kv_cache_mode(target)
                 from harness.gpu import effective_vram_gb
                 before = {k: v for k, v in self.cfg.data.get("hardware", {}).items() if k != "vram_gb"}
@@ -161,6 +164,7 @@ class ModelSwitchController:
                                   "_recovery_origin_mtp", "_served_request"):
                         if field in self.cfg.data:
                             run_cfg.data[field] = copy.deepcopy(self.cfg.data[field])
+                    run_cfg.data.setdefault("_served_request", {})[target] = served_request
                     self.cfg = run_cfg
                     self._last_ready = (Config(copy.deepcopy(self.cfg.data), self.cfg.root), target)
                     if on_success is not None:
@@ -175,8 +179,7 @@ class ModelSwitchController:
                     run_cfg.set_kv_cache_mode(target, kv_profile)
                 # The request this run serves. A recovery may apply a smaller
                 # profile for it; the request itself is what future jobs match.
-                run_cfg.data.setdefault("_served_request", {}).setdefault(
-                    target, kv_profile or run_cfg.kv_cache_mode(target))
+                run_cfg.data.setdefault("_served_request", {})[target] = served_request
                 run_cfg.data["default_model"] = target
                 if self._cancelled(gen):
                     continue

@@ -444,6 +444,77 @@ class MemoryProfileTests(unittest.TestCase):
         finally:
             self.app.manage_model = False
 
+    def test_recovery_does_not_claim_to_serve_a_selection_changed_during_the_task(self):
+        self.app.preferences.update(model="q5", kv_cache_modes={"q5": "q8_0_mtp"})
+        running_cfg = Config(copy.deepcopy(self.cfg.data), self.root)
+        running_cfg.set_kv_cache_mode("q5", "q8_0_mtp")
+        running_cfg.data["_served_request"] = {"q5": "q8_0_mtp"}
+        started = []
+        self.app.models = ModelSwitchController(running_cfg,
+            ensure_fn=lambda cfg, key: started.append(cfg.kv_cache_mode(key)) or True,
+            stop_fn=lambda *a, **k: True, running_fn=lambda *_: False)
+        session = self.app.new_session(work_mode="discussion")
+        client = TestClient(create_app(self.cfg, service=self.app))
+        self.app.manage_model = True
+        steps = []
+        def step(agent, **kwargs):
+            steps.append(1)
+            if len(steps) == 1:
+                # Settings made during a task belong to the next task.
+                client.patch("/api/settings", json={"kv_cache_modes": {"q5": "f16"}}).raise_for_status()
+                return StepResult(Status.ERROR, text="Connection reset")
+            return StepResult(Status.FINAL, text="Done")
+        try:
+            with patch.object(Agent, "step", autospec=True, side_effect=step), \
+                 patch.object(servermgmt, "health", return_value=True), \
+                 patch.object(servermgmt, "running_model", return_value="q5"), \
+                 patch.object(servermgmt, "last_failure", side_effect=lambda *_: {
+                     "code": "vram_pressure", "model": "q5", "time": time.time()}):
+                self.app.submit(session.id, "Recover this task", request_id="pending-selection")
+                helpers.wait_for(lambda: self.app.store.job("pending-selection")["status"] == "complete"
+                                 and self.app.active is None)
+                self.app.submit(session.id, "Apply my new selection", request_id="apply-selection")
+                helpers.wait_for(lambda: self.app.store.job("apply-selection")["status"] == "complete"
+                                 and self.app.active is None)
+            self.assertEqual(started, ["q8_0", "f16"])
+            self.assertEqual(self.app.models.cfg.kv_cache_mode("q5"), "f16")
+            self.assertEqual(self.app.preferences["kv_cache_modes"]["q5"], "f16")
+        finally:
+            self.app.manage_model = False
+
+    def test_new_model_request_replaces_previous_served_profile(self):
+        self.cfg.set_kv_cache_mode("q5", "q8_0")
+        self.cfg.data["_served_request"] = {"q5": "q8_0_mtp"}
+        controller = ModelSwitchController(self.cfg, ensure_fn=lambda *_: True,
+            stop_fn=lambda *a, **k: True, running_fn=lambda *_: False)
+        controller.request("q5", kv_profile="f16", restart=True,
+                           config=Config(copy.deepcopy(self.cfg.data), self.root))
+        self.assertTrue(controller.wait(2))
+        self.assertEqual(controller.cfg.kv_cache_mode("q5"), "f16")
+        self.assertEqual(controller.cfg.data["_served_request"]["q5"], "f16")
+
+    def test_matching_running_profile_replaces_recovery_intent_without_restart(self):
+        self.cfg.set_kv_cache_mode("q5", "q8_0")
+        self.cfg.data["_served_request"] = {"q5": "q8_0_mtp"}
+        calls = []
+        controller = ModelSwitchController(self.cfg,
+            ensure_fn=lambda *_: calls.append("start") or True,
+            stop_fn=lambda *a, **k: calls.append("stop") or True,
+            running_fn=lambda *_: True)
+        controller.request("q5", kv_profile="q8_0",
+                           config=Config(copy.deepcopy(self.cfg.data), self.root))
+        self.assertTrue(controller.wait(2))
+        self.assertEqual(calls, [])
+        self.assertEqual(controller.cfg.data["_served_request"]["q5"], "q8_0")
+
+    def test_invalid_model_request_finishes_with_a_failure_status(self):
+        controller = ModelSwitchController(self.cfg, ensure_fn=lambda *_: True,
+            stop_fn=lambda *a, **k: True, running_fn=lambda *_: False)
+        controller.request("unknown-model")
+        self.assertTrue(controller.wait(2))
+        self.assertEqual(controller.snapshot().status, "failed")
+        self.assertIn("unknown-model", controller.snapshot().error)
+
     def test_budget_recall_restores_the_requested_profile(self):
         self.app.preferences.update(model="q5", vram_gb=16, memory_presets={
             "32": {"model": "q5", "profile": "q8_0", "requested_profile": "q8_0_mtp"}})
