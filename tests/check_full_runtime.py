@@ -11,6 +11,14 @@ import tempfile
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def link_or_copy(source, destination):
+    """Hard links keep the check cheap; exFAT has none and must fall back."""
+    try:
+        os.link(source, destination)
+    except OSError:
+        shutil.copy2(source, destination)
+
+
 def main():
     version = (ROOT / "installer/version.txt").read_text().strip()
     payload = ROOT / "build" / ("full-payload-" + version)
@@ -18,7 +26,7 @@ def main():
         root = Path(temporary) / "New machine with spaces"
         root.mkdir()
         for source, target in (("python", "runtime/python"), ("packages", "runtime/python-packages"), ("llama", "runtime/llama")):
-            shutil.copytree(payload / source, root / target, copy_function=os.link)
+            shutil.copytree(payload / source, root / target, copy_function=link_or_copy)
         shutil.copy2(payload / "manifest.json", root / "runtime/full-manifest.json")
         (root / "scripts").mkdir()
         shutil.copy2(ROOT / "scripts/bootstrap_full.py", root / "scripts/bootstrap_full.py")

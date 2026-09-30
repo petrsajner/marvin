@@ -12,6 +12,8 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 class VersionSyncTests(unittest.TestCase):
+    @unittest.skipUnless((ROOT / "installer" / "version.txt").is_file(),
+                         "Build manifests are not shipped in installed copies")
     def test_published_version_references_agree(self):
         canonical = (ROOT / "installer" / "version.txt").read_text(
             encoding="utf-8-sig").strip()

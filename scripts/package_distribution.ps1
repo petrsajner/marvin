@@ -28,7 +28,12 @@ foreach ($name in $assets.Keys) {
     if ((Get-Item -LiteralPath $source).Length -gt 100MB) {
         # Hard link: the Full installer is about a gigabyte and copying it buys
         # nothing. It is never rewritten in place for a version already staged.
-        New-Item -ItemType HardLink -Path $staged -Target $source | Out-Null
+        try {
+            New-Item -ItemType HardLink -Path $staged -Target $source | Out-Null
+        } catch {
+            # exFAT and friends have no hard links; copying is the only option.
+            Copy-Item -LiteralPath $source -Destination $staged
+        }
     } else {
         # Copy: the manuals are rebuilt on every release and are a few hundred
         # kilobytes. Linked, rebuilding them silently rewrote the manuals inside

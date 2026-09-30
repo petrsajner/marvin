@@ -151,10 +151,13 @@ def test_config() -> None:
     # The sidebar check that stood here read the Gradio source for element ids.
     # That interface is gone; the workspace is the React one, whose structure is
     # checked by its own type build rather than by grepping a Python file.
-    workspace_source = (ROOT / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
-    check(all(marker in workspace_source for marker in (
-        '["results", "Results"]', '["progress", "Progress"]', '["context", "Context"]',
-    )), "The detail panel offers Results, Progress and Context")
+    if (ROOT / "frontend" / "src").is_dir():
+        # Frontend sources are not shipped in installed copies; there the type
+        # build stands in for this the way it does for the localization scan.
+        workspace_source = (ROOT / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
+        check(all(marker in workspace_source for marker in (
+            '["results", "Results"]', '["progress", "Progress"]', '["context", "Context"]',
+        )), "The detail panel offers Results, Progress and Context")
     check(not (ROOT / "webapp.py").exists() and not (ROOT / "qwen_app.py").exists(),
           "The Gradio interface is gone, not merely unreachable")
 
