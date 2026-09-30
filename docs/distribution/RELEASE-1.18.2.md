@@ -1,4 +1,4 @@
-# Local corrective build: Marvin 1.18.2
+# Release record: Marvin 1.18.2
 
 30 September 2026. Contains the startup and MTP corrections first installed as
 1.18.1, plus the desktop focus correction identified during the owner's review.
@@ -31,8 +31,10 @@ The detailed baseline comparison and evidence are in
   The installed API reported 1.18.2 and returned the original chat list.
 - English/Czech manual versions match 1.18.2 and their covers were rendered and inspected.
 
-The local assets are staged in `dist/release-1.18.2/` with the established public
-filenames. Source/installers have not been published to GitHub in this task.
+The assets are staged in `dist/release-1.18.2/` with the established public
+filenames. The exact hashes and download URLs are recorded in
+`release-1.18.2.json`. The application build commit is `592dcde`; the release
+description and refreshed screenshots are documentation changes.
 
 | File | Bytes | SHA-256 |
 |---|---:|---|
@@ -40,7 +42,7 @@ filenames. Source/installers have not been published to GitHub in this task.
 | Marvin-Setup-Full.exe | 915,201,770 | `d73befd686b94f3c542f3028f714ec8532b0f176c55612b0138d2c0b7b042a6d` |
 | Marvin-Manual-EN.pdf | 197,260 | `fe176291333afc62150cdd2d78bbafc5a354eb300ff2e11e7c5fb5369cd2c1be` |
 | Marvin-Manual-CS.pdf | 191,555 | `0f76ea2a863ce62646e8f466cb7d85c38a016e8df8634a57cc5969200fe27580` |
-| Marvin-Workspace.jpg | 130,491 | `14b25bee41f59a17d68aed46aff8fa57b6b0dda1a0a4d7712b73a96c84a6a7b1` |
+| Marvin-Workspace.jpg | 136,523 | `41bdec06fd93e28ab17c53167777f566c9fda995860d93a0781c58ac3055652b` |
 
 ## Offline package refresh
 
@@ -61,5 +63,11 @@ restoration into a fresh venv, all locked versions, application API, compiled UI
 delivery and an empty personal-data store. This is a fresh-environment check,
 not a clean Windows VM or an additional Full installer execution.
 
-Public release notes are prepared in `RELEASE-NOTES-1.18.2.md`. GitHub publication
-and withdrawal of 1.18.0 are reserved for the owner's subsequent request.
+The public description in `RELEASE-NOTES-1.18.2.md` carries forward the workstation
+overview from 1.17.4 and adds all changes through 1.18.2. Seven screenshots were
+captured from the production frontend with disposable English demonstration
+data, including the visible MTP switch. Screenshot rendering produced no
+JavaScript errors. Image links are pinned to the 1.18.2 Git tag.
+
+The broken GitHub release 1.18.0 was removed on 30 September 2026, with its
+historical source tag retained. This release is its corrected replacement.

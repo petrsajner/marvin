@@ -1,5 +1,10 @@
 # Release record: Marvin 1.18.0
 
+**Withdrawn on 30 September 2026.** The GitHub release and its downloadable assets
+were removed at the owner's request after the startup regression was confirmed.
+The corrected build is [1.18.2](RELEASE-1.18.2.md). The historical Git tag remains
+available for source comparison.
+
 30 September 2026. Public release of the speculative-decoding selection fix and
 the visible Speculative decoding toggle — the fix for the 2026-09-26 incident
 where a graphics-memory event turned MTP off and it stayed off.
