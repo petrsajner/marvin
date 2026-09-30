@@ -41,3 +41,25 @@ filenames. Source/installers have not been published to GitHub in this task.
 | Marvin-Manual-EN.pdf | 197,260 | `fe176291333afc62150cdd2d78bbafc5a354eb300ff2e11e7c5fb5369cd2c1be` |
 | Marvin-Manual-CS.pdf | 191,555 | `0f76ea2a863ce62646e8f466cb7d85c38a016e8df8634a57cc5969200fe27580` |
 | Marvin-Workspace.jpg | 130,491 | `14b25bee41f59a17d68aed46aff8fa57b6b0dda1a0a4d7712b73a96c84a6a7b1` |
+
+## Offline package refresh
+
+The existing offline package was refreshed and renamed to
+`Marvin-Offline-Backup-1.18.2/`. It contains 105 recorded files and
+236,351,758,023 bytes. The refresh replaced the Full installer and both manuals,
+removed `Marvin-Setup-1.18.0-Full.exe`, and retained the dependency archive because
+the requirements and lock are unchanged. The 97 retained payload files match
+their previous manifest records, sizes and modification times. Updated-file
+SHA-256 values match the manifest and staged release assets.
+
+The source and installed application's `runtime/offline-backup-path.txt` markers
+now point to the renamed folder. The installed marker previously pointed to the
+old pre-move 1.16.1 location.
+
+`tests/check_distribution.py` passed against the refreshed package: dependency
+restoration into a fresh venv, all locked versions, application API, compiled UI
+delivery and an empty personal-data store. This is a fresh-environment check,
+not a clean Windows VM or an additional Full installer execution.
+
+Public release notes are prepared in `RELEASE-NOTES-1.18.2.md`. GitHub publication
+and withdrawal of 1.18.0 are reserved for the owner's subsequent request.
