@@ -71,3 +71,22 @@ JavaScript errors. Image links are pinned to the 1.18.2 Git tag.
 
 The broken GitHub release 1.18.0 was removed on 30 September 2026, with its
 historical source tag retained. This release is its corrected replacement.
+
+## GitHub publication verification
+
+Published on 30 September 2026 as the latest release:
+[Marvin 1.18.2](https://github.com/petrsajner/marvin/releases/tag/v1.18.2).
+The release tag points at `6336629014984468ad39a7b5baa50218418a0383`; the
+application build remains `592dcde`.
+
+All six uploaded asset sizes and GitHub SHA-256 digests matched the release
+manifest before publication. After publication, all six complete downloads,
+including Full and Minimal, were streamed without authentication and matched
+their expected sizes and hashes. The public latest-release API returns
+`v1.18.2`; the 1.18.0 release endpoint returns HTTP 404.
+
+All seven gallery URLs returned HTTP 200 and matched the local image bytes.
+An anonymous browser opened the public release, rendered all seven images
+including the expanded settings gallery, and showed the Latest badge. The
+workspace preview checksum in the manifest reflects the refreshed 1.18.2
+screenshot; installer and manual hashes are unchanged.

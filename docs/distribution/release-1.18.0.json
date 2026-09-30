@@ -46,5 +46,9 @@
       "url": "https://github.com/petrsajner/marvin/releases/download/v1.18.0/SHA256SUMS.txt",
       "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/SHA256SUMS.txt"
     }
-  ]
+  ],
+  "status": "withdrawn",
+  "withdrawn_on": "2026-09-30",
+  "replacement_version": "1.18.2",
+  "replacement_release_url": "https://github.com/petrsajner/marvin/releases/tag/v1.18.2"
 }
