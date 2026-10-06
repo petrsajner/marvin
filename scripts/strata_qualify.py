@@ -20,11 +20,13 @@ Plan: docs/design/2026-10-06-strata-qualification-plan.md.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import copy
 import csv
 import ctypes
 from ctypes import wintypes
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -77,20 +79,42 @@ CHECKS = ("decode", "tool_roundtrip", "vision", "stop_stream", "application", "l
 # -- the matrix --------------------------------------------------------------------------------------------------
 
 def matrix() -> list[dict]:
-    """The approved table: weights x RAM class x GPU class x expert mode x context."""
-    rows = [("IQ3_S", 64, (32, 24, 16), "normal", (256, 128)),
-            ("IQ3_S", 64, (32,), "resident", (256,)),
-            ("IQ3_S", 48, (32, 24), "resident", (256, 128)),
-            ("IQ2_XS", 64, (32, 24, 16), "normal", (256, 128)),
-            ("IQ2_XS", 48, (32, 24, 16), "normal", (256, 128)),
-            ("IQ2_XS", 32, (32, 24, 16), "resident", (256, 128))]
+    """The approved table: weights x RAM class x GPU class x expert mode x context.
+
+    Modes: normal (every expert locked in RAM), resident (only those the GPU does
+    not hold), mmap (none locked; the rest read from the GGUF through the OS file
+    cache) and budget (the hottest N GiB locked, the rest from the files). "kvres"
+    keeps the whole KV cache in RAM and only the attention window in VRAM. For the
+    disk modes 128k runs only when 256k did not pass (owner, 6 October)."""
+    rows = [("IQ3_S", 64, (32, 24, 16), "normal", False, (256, 128)),
+            ("IQ3_S", 64, (16,), "normal", True, (256, 128)),
+            ("IQ3_S", 64, (32,), "resident", False, (256,)),
+            ("IQ3_S", 48, (32, 24), "resident", False, (256, 128)),
+            ("IQ2_XS", 64, (32, 24, 16), "normal", False, (256, 128)),
+            ("IQ2_XS", 64, (16,), "normal", True, (256, 128)),
+            ("IQ2_XS", 48, (32, 24, 16), "normal", False, (256, 128)),
+            ("IQ2_XS", 32, (32, 24, 16), "resident", False, (256, 128))]
+    rows += [(weights, ram, (32, 24, 16), mode, False, (256, 128))
+             for weights in ("IQ3_S", "IQ2_XS") for ram in (48, 32) for mode in ("mmap", "budget")]
     cases = []
-    for weights, ram, gpus, mode, contexts in rows:
+    for weights, ram, gpus, mode, kv_resident, contexts in rows:
         for gpu in gpus:
             for context in contexts:
-                cases.append({"id": f"{weights.lower()}-ram{ram}-gpu{gpu}-{mode}-{context}k", "weights": weights,
-                              "ram_class": ram, "gpu_class": gpu, "mode": mode, "context": context * 1024})
+                name = f"{weights.lower()}-ram{ram}-gpu{gpu}-{mode}{'-kvres' if kv_resident else ''}"
+                spec = {"id": f"{name}-{context}k", "weights": weights, "ram_class": ram, "gpu_class": gpu,
+                        "mode": mode, "kv_resident": kv_resident, "context": context * 1024}
+                if mode in ("mmap", "budget") and context != contexts[0]:
+                    spec["only_if_failed"] = f"{name}-{contexts[0]}k"
+                cases.append(spec)
     return cases
+
+
+def budget_gib(spec: dict) -> int:
+    """Strata setup's RAM budget: the machine's RAM less 24 GB for the OS, the engine and the file cache the
+    other experts are read through, less a KV cache kept in RAM; at least 8, at most all the experts."""
+    experts = {"IQ3_S": 50.3, "IQ2_XS": 35.5}[spec["weights"]] / 1.073741824
+    kv_ram = spec["context"] * 13 * 1056 / 1e9 if spec.get("kv_resident") else 0.0
+    return max(8, min(int(spec["ram_class"] - 24 - (kv_ram // 1 + (kv_ram % 1 > 0))), int(experts)))
 
 
 # -- measurement helpers -----------------------------------------------------------------------------------------
@@ -314,11 +338,18 @@ def case_config(spec: dict, directory: Path) -> Config:
     model["strata"]["resident_experts"] = spec["mode"] == "resident"
     if spec.get("vram_reserve_mib"):
         model["strata"]["vram_reserve_mib"] = spec["vram_reserve_mib"]
-    # No GPU class and no minimum, as in September: the ballast makes the card small,
+    engine_args = list(spec.get("engine_args", []))
+    if spec["mode"] == "mmap":
+        engine_args.append("--mmap-experts")
+    elif spec["mode"] == "budget":
+        engine_args += ["--resident-budget-gib", str(budget_gib(spec))]
+    if spec.get("kv_resident"):
+        engine_args += ["--kv-resident", "32768"]
+    # No GPU class and no minimum, as in September: the reserve makes the card small,
     # and Marvin's picker must not refuse a candidate that is being measured.
     model["kv_cache_profiles"] = {"audit": {"cache_type": "int8", "ctx_size": spec["context"],
                                             "min_vram_gb": 0, "label": "Measured candidate",
-                                            "engine_args": list(spec.get("engine_args", []))}}
+                                            "engine_args": engine_args}}
     model["kv_cache"] = "audit"
     model["ctx_size"] = spec["context"]
     cfg.data["default_model"] = KEY
@@ -444,6 +475,54 @@ def engine_facts(cfg: Config) -> dict:
     return facts
 
 
+def calibrate_reserve(spec: dict, directory: Path, target_gib: float, attempts: int = 4) -> list[dict]:
+    """Start, read what the server tree really holds in dedicated VRAM, stop; raise the reserve by the excess.
+
+    The engine sizes its cache from the free VRAM CUDA reports, which under Windows
+    is not what the per-process counters (the September rule) count, and some
+    buffers come after the sizing. It stops early when a larger reserve no longer
+    lowers the use: the engine has reached its smallest expert cache."""
+    history = []
+    counters = GpuProcessMemory()
+    try:
+        for attempt in range(attempts):
+            cfg = case_config(spec, directory / f"calibrate-{attempt}")
+            entry = {"vram_reserve_mib": spec["vram_reserve_mib"]}
+            try:
+                with patch.object(Config, "model_ready", return_value=True), \
+                        contextlib.redirect_stdout(io.StringIO()):
+                    code = servermgmt.start(cfg, KEY)
+                if code != 0:
+                    raise RuntimeError(f"start returned {code}")
+                time.sleep(4)
+                pid = int(servermgmt.pid_file(cfg).read_text(encoding="utf-8").split(":")[1])
+                pids = {p.pid for p in tree(pid)}
+                counters.sample()
+                time.sleep(1)
+                used = sum(v for p, v in counters.sample().get("dedicated", {}).items() if p in pids) / GIB
+                entry["tree_gpu_dedicated_gib"] = round(used, 3)
+            except Exception as exc:
+                entry["error"] = f"{type(exc).__name__}: {exc}"
+            finally:
+                try:
+                    servermgmt.stop(cfg, quiet=True)
+                except Exception:
+                    pass
+            history.append(entry)
+            print("CALIBRATE", spec["id"], json.dumps(entry), flush=True)
+            if "error" in entry:
+                break
+            excess = entry["tree_gpu_dedicated_gib"] - target_gib
+            if excess <= 0.1:
+                break
+            if len(history) > 1 and history[-2].get("tree_gpu_dedicated_gib", 0) - used < 0.1:
+                break
+            spec["vram_reserve_mib"] += int((excess + 0.15) * 1024)
+    finally:
+        counters.close()
+    return history
+
+
 def run_case(spec: dict, output: Path, report: dict, result_file: Path, installed_gib: float):
     directory = output / spec["id"]
     directory.mkdir(parents=True, exist_ok=True)
@@ -468,7 +547,17 @@ def run_case(spec: dict, output: Path, report: dict, result_file: Path, installe
             proc, info = start_ballast(["ram", "--lock-gib", f"{installed_gib - spec['ram_class'] + 0.3:.2f}"])
             ballasts.append(proc)
             case["ram_ballast"] = info
-        samples =[{**gpu_memory(), "ram_available": psutil.virtual_memory().available} for _ in range(3)]
+        if spec["gpu_class"] in USABLE_VRAM_GIB:
+            target = USABLE_VRAM_GIB[spec["gpu_class"]]
+            case["calibration"] = calibrate_reserve(spec, directory, target)
+            if case["calibration"] and "error" in case["calibration"][-1]:
+                raise RuntimeError("calibration launch failed: " + case["calibration"][-1]["error"])
+            cfg = case_config(spec, directory)
+            last = case["calibration"][-1] if case["calibration"] else {}
+            case["fits_gpu_class"] = last.get("tree_gpu_dedicated_gib", 1e9) <= target + 0.1
+        if spec["mode"] == "budget":
+            case["ram_budget_gib"] = budget_gib(spec)
+        samples = [{**gpu_memory(), "ram_available": psutil.virtual_memory().available} for _ in range(3)]
         case["baseline"] = baseline = {k: sum(s[k] for s in samples) / len(samples) for k in samples[0]}
         monitor = Monitor(case, directory, baseline, [b.pid for b in ballasts])
         monitor.start()
@@ -555,9 +644,10 @@ def run_case(spec: dict, output: Path, report: dict, result_file: Path, installe
 
 def summarize(report: dict) -> str:
     lines = ["# Strata qualification " + report.get("started", ""), "",
-             "| Case | OK | Load s | Decode tok/s | Prefill tok/s (long) | Long input | First answer s | "
-             "Cached follow-up s | STOP s | GPU total | Tree GPU | Tree shared | Tree RSS | Min RAM free |",
-             "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
+             "| Case | OK | Fits GPU class | Reserve MiB | Load s | Decode tok/s | Prefill tok/s (long) | Long input | "
+             "First answer s | Cached follow-up s | STOP s | GPU total | Tree GPU | Tree shared | Tree RSS | "
+             "Min RAM free |",
+             "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
     for cid, case in report["cases"].items():
         checks = case.get("checks", {})
         decode = (checks.get("decode", {}).get("evidence") or {}).get("decode_tokens_per_second")
@@ -566,7 +656,9 @@ def summarize(report: dict) -> str:
         timings = (first.get("usage") or {}).get("timings") or {}
         failed = [n for n, c in checks.items() if not c.get("ok")]
         ok = "yes" if case.get("functional_ok") else ("no: " + (case.get("error") or ", ".join(failed)))[:80]
-        lines.append(f"| {cid} | {ok} | {case.get('load_seconds', '-')} | {decode or '-'} | "
+        fits = {True: "yes", False: "no"}.get(case.get("fits_gpu_class"), "-")
+        lines.append(f"| {cid} | {ok} | {fits} | {case['spec'].get('vram_reserve_mib', '-')} | "
+                     f"{case.get('load_seconds', '-')} | {decode or '-'} | "
                      f"{round(timings['prompt_per_second']) if timings.get('prompt_per_second') else '-'} | "
                      f"{long.get('input_tokens', '-')} | {first.get('seconds', '-')} | "
                      f"{(long.get('followup') or {}).get('seconds', '-')} | "
@@ -607,6 +699,10 @@ def run(args) -> int:
         if wanted and spec["id"] not in wanted:
             continue
         if spec["id"] in report["cases"] and report["cases"][spec["id"]].get("finished"):
+            continue
+        sibling = report["cases"].get(spec.get("only_if_failed", ""), {})
+        if sibling.get("functional_ok"):
+            print("SKIP", spec["id"], "its 256k case passed", flush=True)
             continue
         shard = DATA_DIR / "models" / spec["weights"] / \
             f"Qwen3.8-Flash-Next-GSQ-RCO-{spec['weights']}-00001-of-00002.gguf"

@@ -62,7 +62,26 @@ Weights: **IQ3_S** (best quality, experts 50.3 GB) and **IQ2_XS** (experts
 | IQ2_XS | 48 | 32, 24, 16 | normal | 256k, 128k |
 | IQ2_XS | 32 | 32, 24, 16 | resident | 256k, 128k |
 
-29 launches (`python scripts/strata_qualify.py list`). A case that cannot load
+Added after the first IQ3_S results (owner, 6 October):
+
+| Weights | RAM | GPU classes | Expert mode | Contexts |
+|---|---|---|---|---|
+| IQ3_S, IQ2_XS | 64 | 16 | normal, KV in RAM (`--kv-resident 32768`) | 256k, 128k |
+| IQ3_S, IQ2_XS | 48, 32 | 32, 24, 16 | mapped from disk (`--mmap-experts`) | 256k (128k if 256k fails) |
+| IQ3_S, IQ2_XS | 48, 32 | 32, 24, 16 | RAM budget (`--resident-budget-gib`) | 256k (128k if 256k fails) |
+
+- The RAM budget follows Strata's setup: the machine's RAM less 24 GB, less a
+  KV cache kept in RAM, at least 8 GiB.
+- Smaller cards are calibrated: a short launch reads what the server tree
+  really holds in dedicated VRAM (the September rule) and raises the reserve by
+  the excess, up to four times. When a larger reserve no longer lowers the use,
+  the engine is at its smallest expert cache and the case is recorded as not
+  fitting the class.
+- The first IQ3_S 64 GB runs (uncalibrated, and the 32 GB ones right after
+  Phase 0) are kept as `superseded` in the results and run again.
+
+81 entries in all (`python scripts/strata_qualify.py list`); the 128k disk
+cases only run when their 256k case fails. A case that cannot load
 ends at once and is recorded as rejected, like the September Flash 16 GB / 256k
 case. Before the matrix, Phase 0 (`scripts/strata_eval.py run`) gives the first
 IQ3_S numbers.
