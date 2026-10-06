@@ -8,10 +8,10 @@ not changed. See docs/design/2026-10-05-strata-backend.md.
     python scripts/strata_eval.py install                    # IQ3_S, all experts in RAM
     python scripts/strata_eval.py install --low-ram resident # adds the resident variant
 
-With the model files where Marvin's entry looks for them (paths.strata_data_dir),
-so they are downloaded only once; every command then takes the same --root:
+With the model files where the installed Marvin's entry looks for them
+(paths.strata_data_dir under %LOCALAPPDATA%\\QwenHarness), so they are downloaded once:
 
-    python scripts/strata_eval.py install --root runtime/strata-eval --data-dir runtime/models/strata
+    python scripts/strata_eval.py install --data-dir %LOCALAPPDATA%\\QwenHarness\\runtime\\models\\strata
     python scripts/strata_eval.py run --context 262144
     python scripts/strata_eval.py run --context 131072
     python scripts/strata_eval.py report

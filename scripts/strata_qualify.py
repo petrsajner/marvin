@@ -45,8 +45,12 @@ GIB = 1024**3
 NO_WINDOW = 0x08000000
 PORT = 8087
 KEY = "flash_next_strata"
-STRATA_DIR = ROOT / "runtime" / "strata-eval" / "Strata"
-DATA_DIR = ROOT / "runtime" / "models" / "strata"
+# Measured on the NVMe system drive, where the installed Marvin runs; the repository
+# (code, docs and the measurement record) stays where it is.
+LOCAL = Path(os.environ.get("LOCALAPPDATA") or Path.home())
+EVAL_ROOT = LOCAL / "StrataEval"
+STRATA_DIR = EVAL_ROOT / "Strata"
+DATA_DIR = LOCAL / "QwenHarness" / "runtime" / "models" / "strata"   # the installed Marvin's strata_data_dir
 # What a card of each class leaves the model beside a desktop (the earlier profiles' limits).
 USABLE_VRAM_GIB = {24: 21.9, 16: 14.3}
 WEIGHTS = {"IQ3_S": 54817524224, "IQ2_XS": 39225954592}
@@ -250,7 +254,7 @@ class Monitor:
 # -- ballasts ----------------------------------------------------------------------------------------------------
 
 def cudart_path() -> str:
-    hits = [hit for folder in {STRATA_DIR, ROOT / "runtime" / "strata-eval" / "Strata"}
+    hits = [hit for folder in dict.fromkeys((STRATA_DIR, EVAL_ROOT / "Strata"))
             for hit in sorted((folder / ".venv" / "Lib" / "site-packages" / "nvidia").rglob("cudart64_13.dll"))]
     if not hits:
         raise RuntimeError("cudart64_13.dll is missing from Strata's environment; run strata_eval.py install first")
@@ -323,7 +327,7 @@ def sha256(path: Path) -> str:
 
 def verify_weights() -> dict:
     """Hash every downloaded model file once; a record keyed by size and mtime avoids hashing it again."""
-    record_path = ROOT / "runtime" / "strata-eval" / "weights-verified.json"
+    record_path = EVAL_ROOT / "weights-verified.json"
     try:
         record = json.loads(record_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -556,7 +560,7 @@ def run(args) -> int:
     global STRATA_DIR, DATA_DIR
     STRATA_DIR = (args.strata_dir or STRATA_DIR).resolve()
     DATA_DIR = (args.data_dir or DATA_DIR).resolve()
-    output = (args.output or ROOT / "runtime" / "strata-eval" / "qualify" / time.strftime("%Y-%m-%d")).resolve()
+    output = (args.output or EVAL_ROOT / "qualify" / time.strftime("%Y-%m-%d")).resolve()
     output.mkdir(parents=True, exist_ok=True)
     result_file = output / "results.json"
     hw = detect_hardware(fresh=True)

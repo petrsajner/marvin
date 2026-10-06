@@ -68,6 +68,18 @@ files (engine 0.1.31 and later), so it needs no extra `experts.bin` copy
 Tools: `scripts/strata_ballast.py` (VRAM and RAM ballasts) and
 `scripts/strata_qualify.py` (the matrix, launched through Marvin's own
 `servermgmt`, so the Phase 2 integration runs on the real engine too).
+`scripts/strata_measure_all.ps1` runs the hash check, Phase 0 and the matrix in
+one go.
+
+Where things live (owner, 6 October): measurements run on the NVMe system drive
+C:, where the installed Marvin runs; the repository on E: (a USB-attached SATA
+SSD, the backup drive) keeps the code, the docs and the final record.
+
+- Strata's data (weights, pack, MTP): `%LOCALAPPDATA%\QwenHarness\runtime\models\strata`,
+  the installed Marvin's own `paths.strata_data_dir`.
+- Strata's program and the raw results: `%LOCALAPPDATA%\StrataEval`.
+- The September llama numbers were measured on the fast drive too, so they stay
+  the comparison.
 
 Phase 3 note: the second IQ3_S shard and the IQ2_XS one are the same file
 (same SHA-256), and so is the projector. Strata's setup hard-links them; Marvin's
