@@ -2,15 +2,18 @@
 
 This note lets a new session continue the Strata work without the earlier conversation.
 
-- **Branch:** `claude/gracious-archimedes-k0spl5`. Base: `main` at `de6bc00` (Marvin 1.18.2).
-- **Commits:**
+- **Where the work happens:** on `main`, in the owner's home PC checkout
+  (`E:\QWEN local`, RTX 5090 32 GB, 64 GB RAM). Tests, Phase 0 runs and the
+  real engine all run there. The study branch `claude/gracious-archimedes-k0spl5`
+  was fast-forwarded into `main` on 6 October and is no longer used.
+- **Commits** (on `main`, after 1.18.2 `de6bc00`):
   - `a088fb8` adds the design note;
   - `b0fd45d` adds the Phase 0 script and records the owner's decisions;
   - `23c2362` adds this note;
   - `2d612de` Phase 1 (golden llama tests);
-  - the next commit is Phase 2 (backend seam).
-- **No pull request yet.** Create one only when the owner asks. Phases 1 and 2
-  are committed locally only; ask before pushing.
+  - `4fc0bd5` Phase 2 (backend seam).
+- **Git:** commit locally; push once a piece of work is finished and verified
+  locally (GitHub is billed). No pull requests.
 
 ## The owner's requirement for the whole work (6 October 2026)
 
@@ -86,10 +89,10 @@ Every existing llama.cpp model must keep working unchanged.
 
 ## Status
 
-### Phase 0: ready, waiting on the owner's PC
+### Phase 0: ready, not run yet
 
-The owner runs these with Marvin's `.venv` Python on the home PC, from a
-checkout of this branch:
+Run with Marvin's `.venv` Python in `E:\QWEN local` (the home PC), with
+Marvin's model stopped:
 
 ```
 python scripts/strata_eval.py install
