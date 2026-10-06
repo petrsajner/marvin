@@ -322,9 +322,9 @@ class Probes:
         require("MARVIN_AUDIT_9264" in r.content, repr(r.content))
         return {"source": str(candidates[0]), "response": self.last}
 
-    def application(self):
+    def application(self, thinking="off"):
         service = ApplicationService(self.cfg, manage_model=False)
-        service.preferences.update(model=self.cfg.model_key(), thinking="off", autonomy="auto")
+        service.preferences.update(model=self.cfg.model_key(), thinking=thinking, autonomy="auto")
         project = self.cfg.root / "project"
         project.mkdir(exist_ok=True)
         checks = []
@@ -337,7 +337,7 @@ class Probes:
                 service.submit(session.id, "Use write_file to write exactly " + value +
                     " into proof.txt in the current project. Then call read_file to check it and report the value. "
                     "Do only this small task. Do not ask questions.", request_id=key)
-                deadline = started + (600 if self.cfg.model().get("adaptive_runtime") else 150)
+                deadline = started + (600 if self.cfg.model().get("adaptive_runtime") or thinking != "off" else 150)
                 while time.monotonic() < deadline:
                     job = service.store.job(key)
                     if job["status"] in ("complete", "failed", "stopped"):

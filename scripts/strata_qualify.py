@@ -643,6 +643,9 @@ def run_case(spec: dict, output: Path, report: dict, result_file: Path, installe
                 spec["expert_cache"] = case["calibration"][0]["expert_cache"]
                 case["fits_gpu_class"] = False
             cfg = case_config(spec, directory)
+        elif spec["gpu_class"] in USABLE_VRAM_GIB and spec.get("gpu_sim") == "fixed":
+            # The cache budget an earlier run calibrated for this case (run --cache-from).
+            case["fits_gpu_class"] = spec.get("fits_gpu_class")
         elif spec["gpu_class"] in USABLE_VRAM_GIB:
             # The smaller card made real; this needs commit headroom for the ballast,
             # which a smaller card does not take (owner: a larger page file, 6 October).
@@ -688,6 +691,9 @@ def run_case(spec: dict, output: Path, report: dict, result_file: Path, installe
                     target = min(spec.get("input_tokens", spec["context"] - 8192), spec["context"] - 4096)
                     evidence = long_check(probes, cfg, target, spec.get("timeout", 3600))
                     passed = bool(evidence.get("recall_ok") and evidence.get("followup_ok"))
+                elif name == "application_thinking":
+                    # The same agent task with thinking at the workspace's default effort (owner, 7 October).
+                    evidence, passed = probes.application(thinking="xhigh"), True
                 else:
                     evidence, passed = getattr(probes, name)(), True
                 case["checks"][name] = {"ok": passed, "evidence": copy.deepcopy(evidence)}
@@ -766,6 +772,55 @@ def summarize(report: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+CSV_FIELDS = ("case", "weights", "ram_class", "gpu_class", "mode", "kv_resident", "context_k", "gpu_sim",
+              "expert_cache", "ram_budget_gib", "finished", "functional", "failed_checks", "fits_gpu_class",
+              "load_seconds", "decode_tps", "input_tokens", "prefill_tps", "first_answer_seconds", "recall",
+              "cached_followup_seconds", "cached_followup", "stop_seconds", "gpu_total_peak",
+              "tree_gpu_dedicated_peak", "tree_gpu_shared_peak", "tree_rss_peak", "min_ram_available", "error")
+
+
+def csv_row(cid: str, case: dict) -> dict:
+    spec, checks = case["spec"], case.get("checks", {})
+    long = checks.get("long", {}).get("evidence") or {}
+    first = long.get("first") or {}
+    timings = (first.get("usage") or {}).get("timings") or {}
+    return {"case": cid, "weights": spec["weights"], "ram_class": spec["ram_class"], "gpu_class": spec["gpu_class"],
+            "mode": spec["mode"], "kv_resident": spec.get("kv_resident", False), "context_k": spec["context"] // 1024,
+            "gpu_sim": spec.get("gpu_sim", ""), "expert_cache": spec.get("expert_cache") or "",
+            "ram_budget_gib": case.get("ram_budget_gib", ""), "finished": case.get("finished", False),
+            "functional": case.get("functional_ok", False),
+            "failed_checks": " ".join(n for n, c in checks.items() if not c.get("ok")),
+            "fits_gpu_class": case.get("fits_gpu_class", ""), "load_seconds": case.get("load_seconds", ""),
+            "decode_tps": (checks.get("decode", {}).get("evidence") or {}).get("decode_tokens_per_second", ""),
+            "input_tokens": long.get("input_tokens", ""), "prefill_tps": timings.get("prompt_per_second", ""),
+            "first_answer_seconds": first.get("seconds", ""), "recall": long.get("recall_ok", ""),
+            "cached_followup_seconds": (long.get("followup") or {}).get("seconds", ""),
+            "cached_followup": long.get("followup_ok", ""),
+            "stop_seconds": (checks.get("stop_stream", {}).get("evidence") or {}).get("stop_seconds", ""),
+            "gpu_total_peak": case.get("peak_gpu_total_gib", ""),
+            "tree_gpu_dedicated_peak": case.get("peak_tree_gpu_dedicated_gib", ""),
+            "tree_gpu_shared_peak": case.get("peak_tree_gpu_shared_gib", ""),
+            "tree_rss_peak": case.get("peak_tree_rss_gib", ""),
+            "min_ram_available": case.get("min_ram_available_gib", ""), "error": case.get("error", "")}
+
+
+def export(args) -> int:
+    """Write the measurement record into the repository: the full JSON and a CSV of the current cases."""
+    source = (args.results or EVAL_ROOT / "qualify" / "2026-10-06" / "results.json").resolve()
+    report = json.loads(source.read_text(encoding="utf-8"))
+    target = (args.target or ROOT / "docs" / "design" / "measurements").resolve()
+    target.mkdir(parents=True, exist_ok=True)
+    stem = args.name or f"{source.parent.name}-strata"
+    (target / f"{stem}.json").write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    with (target / f"{stem}.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=CSV_FIELDS)
+        writer.writeheader()
+        for cid, case in report["cases"].items():
+            writer.writerow(csv_row(cid, case))
+    print("wrote", target / f"{stem}.json", "and", target / f"{stem}.csv", f"({len(report['cases'])} cases)")
+    return 0
+
+
 def run(args) -> int:
     global STRATA_DIR, DATA_DIR
     STRATA_DIR = (args.strata_dir or STRATA_DIR).resolve()
@@ -790,6 +845,7 @@ def run(args) -> int:
     installed_gib = hw.ram_total / GIB
     wanted = set(args.only.split(",")) if args.only else None
     gpu_classes = {int(x) for x in args.gpu_classes.split(",")} if args.gpu_classes else None
+    earlier = json.loads(args.cache_from.read_text(encoding="utf-8"))["cases"] if args.cache_from else {}
     if args.verify:
         report["provenance"]["weights"] = verify_weights()
         save(result_file, report)
@@ -799,6 +855,12 @@ def run(args) -> int:
         if gpu_classes and spec["gpu_class"] not in gpu_classes:
             continue
         spec = {**spec, "gpu_sim": args.gpu_sim}
+        if args.checks:
+            spec["checks"] = args.checks.split(",")
+        calibrated = earlier.get(spec["id"], {})
+        if spec["gpu_class"] in USABLE_VRAM_GIB and calibrated.get("spec", {}).get("expert_cache"):
+            spec.update(gpu_sim="fixed", expert_cache=calibrated["spec"]["expert_cache"],
+                        fits_gpu_class=calibrated.get("fits_gpu_class"))
         if spec["id"] in report["cases"] and report["cases"][spec["id"]].get("finished"):
             continue
         sibling = report["cases"].get(spec.get("only_if_failed", ""), {})
@@ -840,9 +902,19 @@ def main() -> int:
                    help="smaller cards: a calibrated fixed --expert-cache (the default; owner, 6 October), a VRAM "
                         "ballast (Windows moves it off the card when the engine wants more) or a calibrated "
                         "--vram-reserve-mib (the prompt buffers grow into it)")
+    p.add_argument("--checks", help=f"comma-separated checks instead of {','.join(CHECKS)}; "
+                                    "application_thinking runs the agent task with thinking on")
+    p.add_argument("--cache-from", type=Path,
+                   help="results.json of an earlier run: smaller cards reuse its calibrated cache budget")
     p.add_argument("--any-weights", action="store_true",
                    help="accept weight files of any size (a dry run against a stand-in server)")
+    p = sub.add_parser("export", help="write the record (JSON and CSV) into docs/design/measurements")
+    p.add_argument("--results", type=Path, help="results.json to export (default: the 6 October run)")
+    p.add_argument("--target", type=Path, help="folder for the record (default docs/design/measurements)")
+    p.add_argument("--name", help="file stem (default <run folder>-strata)")
     args = parser.parse_args()
+    if args.command == "export":
+        return export(args)
     if args.command == "list":
         for spec in matrix():
             print(spec["id"])
