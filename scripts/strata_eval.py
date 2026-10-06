@@ -127,6 +127,8 @@ def install(args) -> int:
         say(f"setup finished without {produced.name}")
         return 1
     base = "resident" if args.low_ram in ("on", "resident") else "normal"
+    if args.model.upper() != "IQ3_S":
+        base = f"{args.model.lower()}-{base}"          # another size keeps IQ3_S's base configs
     configs = root / "configs"
     configs.mkdir(parents=True, exist_ok=True)
     data = json.loads(produced.read_text(encoding="utf-8"))
@@ -772,7 +774,8 @@ def main() -> int:
     p.set_defaults(func=install)
     p = sub.add_parser("run", help="start one configuration, run the scenarios and stop it")
     p.add_argument("--root", type=Path, default=default_root())
-    p.add_argument("--base", choices=["normal", "resident"], default="normal")
+    p.add_argument("--base", default="normal",
+                   help="normal, resident, or <size>-normal / <size>-resident for another installed size")
     p.add_argument("--context", type=int, default=262144)
     p.add_argument("--port", type=int, default=DEFAULT_PORT)
     p.add_argument("--scenarios", help="comma-separated subset of: " + ",".join(SCENARIOS))

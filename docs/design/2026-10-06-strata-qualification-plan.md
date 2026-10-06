@@ -56,9 +56,23 @@ Weights: **IQ3_S** (best quality, experts 50.3 GB) and **IQ2_XS** (experts
 | IQ2_XS | 48 | 32, 24, 16 | normal | 256k, 128k |
 | IQ2_XS | 32 | 32, 24, 16 | resident | 256k, 128k |
 
-About 35 launches. A case that cannot load ends at once and is recorded as
-rejected, like the September Flash 16 GB / 256k case. Before the matrix,
-Phase 0 (`scripts/strata_eval.py run`) gives the first IQ3_S numbers.
+29 launches (`python scripts/strata_qualify.py list`). A case that cannot load
+ends at once and is recorded as rejected, like the September Flash 16 GB / 256k
+case. Before the matrix, Phase 0 (`scripts/strata_eval.py run`) gives the first
+IQ3_S numbers.
+
+The resident mode reads the experts it does not keep straight from the GGUF
+files (engine 0.1.31 and later), so it needs no extra `experts.bin` copy
+(+35–50 GB); it is measured that way, as Marvin would ship it.
+
+Tools: `scripts/strata_ballast.py` (VRAM and RAM ballasts) and
+`scripts/strata_qualify.py` (the matrix, launched through Marvin's own
+`servermgmt`, so the Phase 2 integration runs on the real engine too).
+
+Phase 3 note: the second IQ3_S shard and the IQ2_XS one are the same file
+(same SHA-256), and so is the projector. Strata's setup hard-links them; Marvin's
+download receipts are per folder, so the catalog needs shared-asset support
+before a second weights entry is added.
 
 ## After the matrix
 
