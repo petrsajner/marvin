@@ -5,6 +5,10 @@
 
 Strata sizes its expert cache from the free VRAM and its resident mode from the
 free RAM, so a smaller card or less RAM has to be real for the engine to see it.
+Under Windows' display driver model every GPU allocation is also charged to the
+system commit, so the qualification sizes smaller cards with the engine's own
+--vram-reserve-mib (from `vram-free`) and keeps the VRAM ballast for experiments;
+locked RAM costs commit exactly as a smaller machine does, so `ram` stays.
 The process prints one JSON line starting with READY once the memory is held,
 keeps it resident (VRAM is touched every few seconds, RAM is locked) and frees it
 when its input closes or it is ended. See docs/design/2026-10-06-strata-qualification-plan.md.
@@ -60,6 +64,20 @@ def hold_vram(leave_gib: float, cudart_path: str, device: int = 0) -> int:
     return 0
 
 
+def report_vram_free(cudart_path: str, device: int = 0) -> int:
+    """Print the free VRAM as a CUDA program sees it (what Strata sizes its expert cache from)."""
+    cudart = ctypes.CDLL(cudart_path)
+    cudart.cudaMemGetInfo.argtypes = [ctypes.POINTER(ctypes.c_size_t), ctypes.POINTER(ctypes.c_size_t)]
+    if cudart.cudaSetDevice(device):
+        print(json.dumps({"error": f"cudaSetDevice({device}) failed"}), flush=True)
+        return 1
+    free, total = ctypes.c_size_t(), ctypes.c_size_t()
+    cudart.cudaMemGetInfo(ctypes.byref(free), ctypes.byref(total))
+    print("READY " + json.dumps({"kind": "vram-free", "free_gib": round(free.value / GIB, 3),
+                                 "total_gib": round(total.value / GIB, 3)}), flush=True)
+    return 0
+
+
 def hold_ram(lock_gib: float) -> int:
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel32.VirtualAlloc.restype = ctypes.c_void_p
@@ -95,11 +113,16 @@ def main() -> int:
     vram.add_argument("--leave-gib", type=float, required=True, help="free VRAM to leave for the model")
     vram.add_argument("--cudart", required=True, help="path to cudart64_13.dll")
     vram.add_argument("--device", type=int, default=0)
+    free = sub.add_parser("vram-free", help="print the free VRAM CUDA reports, then exit")
+    free.add_argument("--cudart", required=True)
+    free.add_argument("--device", type=int, default=0)
     ram = sub.add_parser("ram")
     ram.add_argument("--lock-gib", type=float, required=True, help="system RAM to lock away")
     args = parser.parse_args()
     if args.kind == "vram":
         return hold_vram(args.leave_gib, args.cudart, args.device)
+    if args.kind == "vram-free":
+        return report_vram_free(args.cudart, args.device)
     return hold_ram(args.lock_gib)
 
 

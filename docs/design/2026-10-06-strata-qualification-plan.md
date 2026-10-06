@@ -31,12 +31,18 @@ answer and decoded at 27 tok/s; at 256k it took about 44 minutes and decoded at
 
 ### Two changes the engine forces (owner's choices)
 
-- **Smaller GPUs are simulated with a VRAM ballast.** Strata fills all free VRAM
-  with its expert cache, so measuring on the 32 GB card and comparing with a
-  budget afterwards would always "fit". A helper process allocates VRAM until
-  what is left matches the usable memory of the real card beside a desktop:
-  about 21.9 GiB for the 24 GB class and 14.3 GiB for the 16 GB class (the limits
-  the earlier profiles used). The engine then sizes itself as on that card.
+- **Smaller GPUs are simulated with the engine's VRAM reserve.** Strata fills all
+  free VRAM with its expert cache, so measuring on the 32 GB card and comparing
+  with a budget afterwards would always "fit". Each case reads the free VRAM as
+  CUDA reports it and sets `--vram-reserve-mib` so that the model uses what the
+  real card leaves beside a desktop: about 21.9 GiB for the 24 GB class and
+  14.3 GiB for the 16 GB class (the limits the earlier profiles used). Dense
+  weights, KV, MTP and vision are the same on any card; only the expert cache
+  shrinks.
+  - The first plan used a VRAM ballast. Under Windows' display driver model every
+    GPU allocation also costs system commit, so the ballast took 8–10 GB of commit
+    a smaller card does not, and the 24 GB cases hit the commit limit (104 of
+    106 GB). Those two runs are discarded (owner, 6 October).
 - **RAM classes are simulated with a RAM ballast.** RAM decides which weights
   fit on Strata (the experts live in RAM; the GPU only caches the hot ones). A
   helper process locks RAM so that the server, its resident mode and Marvin's

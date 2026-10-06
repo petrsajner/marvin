@@ -4,9 +4,13 @@
     python scripts/strata_qualify.py run [--only id,id] [--output DIR] [--resume]
 
 Every case is one launch through Marvin's own servermgmt with explicit settings:
-weights, RAM class, GPU class, expert mode and context. A smaller GPU or less RAM
-is made real with scripts/strata_ballast.py, because Strata sizes itself from
-the free VRAM and RAM. Each phase records GPU memory (total, the server tree's
+weights, RAM class, GPU class, expert mode and context. Strata sizes itself from
+the free VRAM and RAM, so both have to be what the smaller machine has. A
+smaller GPU is the engine's own --vram-reserve-mib, set from the free VRAM CUDA
+reports so the model uses what that card leaves beside a desktop (a VRAM ballast
+would also cost system commit under Windows' display driver model, which a
+smaller card does not). Less RAM is locked away by scripts/strata_ballast.py,
+which costs available RAM and commit just as a smaller machine has less. Each phase records GPU memory (total, the server tree's
 dedicated and shared), RAM (available, the tree's working set and commit) and
 the five checks of the 15 September remeasurement: decode, tool round trip,
 two-receipt OCR, STOP, and a long input filling the context with three markers
@@ -283,6 +287,17 @@ def stop_ballast(proc: subprocess.Popen | None):
 
 # -- configuration -----------------------------------------------------------------------------------------------
 
+def cuda_free_gib() -> float:
+    """Free VRAM as CUDA reports it now, the figure Strata sizes its expert cache from."""
+    proc = subprocess.run([sys.executable, str(ROOT / "scripts" / "strata_ballast.py"), "vram-free",
+                           "--cudart", cudart_path()], capture_output=True, text=True, timeout=60,
+                          creationflags=NO_WINDOW)
+    line = next((x for x in proc.stdout.splitlines() if x.startswith("READY ")), "")
+    if not line:
+        raise RuntimeError(f"could not read the free VRAM: {proc.stdout.strip()} {proc.stderr.strip()}")
+    return float(json.loads(line[6:])["free_gib"])
+
+
 def case_config(spec: dict, directory: Path) -> Config:
     """Marvin's config with the Strata entry for these weights and one explicit 'audit' profile."""
     path = directory / "config.yaml"
@@ -297,6 +312,8 @@ def case_config(spec: dict, directory: Path) -> Config:
         model["strata"]["pack"] = f"packs/{tag.lower()}"
         model["strata"]["model_name"] = f"qwen3.8-flash-next-{tag.lower()}"
     model["strata"]["resident_experts"] = spec["mode"] == "resident"
+    if spec.get("vram_reserve_mib"):
+        model["strata"]["vram_reserve_mib"] = spec["vram_reserve_mib"]
     # No GPU class and no minimum, as in September: the ballast makes the card small,
     # and Marvin's picker must not refuse a candidate that is being measured.
     model["kv_cache_profiles"] = {"audit": {"cache_type": "int8", "ctx_size": spec["context"],
@@ -430,8 +447,17 @@ def engine_facts(cfg: Config) -> dict:
 def run_case(spec: dict, output: Path, report: dict, result_file: Path, installed_gib: float):
     directory = output / spec["id"]
     directory.mkdir(parents=True, exist_ok=True)
+    spec = dict(spec)
+    measured_free = None
+    if spec["gpu_class"] in USABLE_VRAM_GIB:
+        # A smaller card: the engine leaves everything above that card's usable memory
+        # free. Its fixed parts are the same on any card; only the expert cache shrinks.
+        measured_free = cuda_free_gib()
+        spec["vram_reserve_mib"] = int((measured_free - USABLE_VRAM_GIB[spec["gpu_class"]]) * 1024)
     cfg = case_config(spec, directory)
     case = {"spec": spec, "checks": {}, "started_at": time.time()}
+    if measured_free is not None:
+        case["cuda_free_gib_at_start"] = measured_free
     report["cases"][spec["id"]] = case
     ballasts: list[subprocess.Popen] = []
     monitor = None
@@ -442,12 +468,7 @@ def run_case(spec: dict, output: Path, report: dict, result_file: Path, installe
             proc, info = start_ballast(["ram", "--lock-gib", f"{installed_gib - spec['ram_class'] + 0.3:.2f}"])
             ballasts.append(proc)
             case["ram_ballast"] = info
-        if spec["gpu_class"] in USABLE_VRAM_GIB:
-            proc, info = start_ballast(["vram", "--leave-gib", str(USABLE_VRAM_GIB[spec["gpu_class"]]),
-                                        "--cudart", cudart_path()])
-            ballasts.append(proc)
-            case["vram_ballast"] = info
-        samples = [{**gpu_memory(), "ram_available": psutil.virtual_memory().available} for _ in range(3)]
+        samples =[{**gpu_memory(), "ram_available": psutil.virtual_memory().available} for _ in range(3)]
         case["baseline"] = baseline = {k: sum(s[k] for s in samples) / len(samples) for k in samples[0]}
         monitor = Monitor(case, directory, baseline, [b.pid for b in ballasts])
         monitor.start()
