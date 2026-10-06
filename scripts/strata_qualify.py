@@ -529,7 +529,7 @@ def run_case(spec: dict, output: Path, report: dict, result_file: Path, installe
     directory.mkdir(parents=True, exist_ok=True)
     spec = dict(spec)
     measured_free = None
-    if spec["gpu_class"] in USABLE_VRAM_GIB:
+    if spec["gpu_class"] in USABLE_VRAM_GIB and spec.get("gpu_sim") == "reserve":
         # A smaller card: the engine leaves everything above that card's usable memory
         # free. Its fixed parts are the same on any card; only the expert cache shrinks.
         measured_free = cuda_free_gib()
@@ -548,7 +548,7 @@ def run_case(spec: dict, output: Path, report: dict, result_file: Path, installe
             proc, info = start_ballast(["ram", "--lock-gib", f"{installed_gib - spec['ram_class'] + 0.3:.2f}"])
             ballasts.append(proc)
             case["ram_ballast"] = info
-        if spec["gpu_class"] in USABLE_VRAM_GIB:
+        if spec["gpu_class"] in USABLE_VRAM_GIB and spec.get("gpu_sim") == "reserve":
             target = USABLE_VRAM_GIB[spec["gpu_class"]]
             case["calibration"] = calibrate_reserve(spec, directory, target)
             if case["calibration"] and "error" in case["calibration"][-1]:
@@ -556,6 +556,13 @@ def run_case(spec: dict, output: Path, report: dict, result_file: Path, installe
             cfg = case_config(spec, directory)
             last = case["calibration"][-1] if case["calibration"] else {}
             case["fits_gpu_class"] = last.get("tree_gpu_dedicated_gib", 1e9) <= target + 0.1
+        elif spec["gpu_class"] in USABLE_VRAM_GIB:
+            # The smaller card made real; this needs commit headroom for the ballast,
+            # which a smaller card does not take (owner: a larger page file, 6 October).
+            proc, info = start_ballast(["vram", "--leave-gib", str(USABLE_VRAM_GIB[spec["gpu_class"]]),
+                                        "--cudart", cudart_path()])
+            ballasts.append(proc)
+            case["vram_ballast"] = info
         if spec["mode"] == "budget":
             case["ram_budget_gib"] = budget_gib(spec)
         samples = [{**gpu_memory(), "ram_available": psutil.virtual_memory().available} for _ in range(3)]
@@ -632,6 +639,8 @@ def run_case(spec: dict, output: Path, report: dict, result_file: Path, installe
         case["peak_tree_rss_gib"] = max((p.get("tree_rss_peak_gib", 0) for p in resources.values()), default=0)
         case["min_ram_available_gib"] = min((p.get("ram_available_min_gib", 1e9) for p in resources.values()),
                                             default=None)
+        if "vram_ballast" in case:
+            case["fits_gpu_class"] = case["peak_tree_gpu_dedicated_gib"] <= USABLE_VRAM_GIB[spec["gpu_class"]] + 0.2
         case["seconds"] = round(time.monotonic() - started, 1)
         case["finished"] = True
         for name in ("server", "engine"):
@@ -693,12 +702,16 @@ def run(args) -> int:
                                  "weights": {}}}
     installed_gib = hw.ram_total / GIB
     wanted = set(args.only.split(",")) if args.only else None
+    gpu_classes = {int(x) for x in args.gpu_classes.split(",")} if args.gpu_classes else None
     if args.verify:
         report["provenance"]["weights"] = verify_weights()
         save(result_file, report)
     for spec in matrix():
         if wanted and spec["id"] not in wanted:
             continue
+        if gpu_classes and spec["gpu_class"] not in gpu_classes:
+            continue
+        spec = {**spec, "gpu_sim": args.gpu_sim}
         if spec["id"] in report["cases"] and report["cases"][spec["id"]].get("finished"):
             continue
         sibling = report["cases"].get(spec.get("only_if_failed", ""), {})
@@ -735,6 +748,10 @@ def main() -> int:
     p.add_argument("--verify", action="store_true", help="hash the weights first and record it")
     p.add_argument("--strata-dir", type=Path, help=f"Strata program folder (default {STRATA_DIR})")
     p.add_argument("--data-dir", type=Path, help=f"Strata data folder (default {DATA_DIR})")
+    p.add_argument("--gpu-classes", help="only these GPU classes, e.g. 32 or 24,16")
+    p.add_argument("--gpu-sim", choices=["ballast", "reserve"], default="ballast",
+                   help="make a smaller card real with a VRAM ballast (needs commit headroom: a larger page "
+                        "file) or approximate it with a calibrated --vram-reserve-mib")
     p.add_argument("--any-weights", action="store_true",
                    help="accept weight files of any size (a dry run against a stand-in server)")
     args = parser.parse_args()
