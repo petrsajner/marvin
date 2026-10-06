@@ -2,8 +2,8 @@
 
 Research date: 5 October 2026. Baseline: Marvin 1.18.2 (`de6bc00`) and Strata
 v0.1.39 ([Niko1221/Strata](https://github.com/Niko1221/Strata) `6f32ec0`).
-Status: **design proposal**. Nothing is implemented. The owner must confirm the
-decisions in section 5 before work starts.
+Status: **design approved for Phase 0** (owner decisions of 6 October 2026 in
+section 5). Phase 0 tooling: `scripts/strata_eval.py`.
 
 Strata is a C++/CUDA engine that runs only Qwen3.8-Flash-Next, plus a Python
 server with an OpenAI-compatible API. Marvin already runs Flash-Next through
@@ -44,21 +44,6 @@ This note covers two things:
   Marvin changes. Then safety-net tests. Then the backend branch, runtime
   staging and qualification.
 
-## 0. Earlier binding decisions this would change
-
-The [Flash-Next integration record](2026-09-13-qwen38-flash-next-integration.md)
-set three binding requirements for this model. Strata changes all three for its
-entry, so the owner must confirm them:
-
-| Earlier requirement | With Strata |
-|---|---|
-| "Use standard upstream llama.cpp" (no forks) | Strata is its own engine. It reuses ggml/llama.cpp parts only for the projector and the GGUF reader. |
-| Target weights UD-Q3_K_XL | Not runnable. The nearest choices are ISTA GSQ-RCO IQ3_S or IQ3_XXS. |
-| Q8_0 KV, at least 131,072 tokens | Strata's own `int8` KV (not llama Q8_0). It is available from 128k up to its trained 262,144 positions. |
-
-The existing llama.cpp Flash-Next entry (`flash_next_q3`) and every other model
-keep these requirements unchanged.
-
 ## 1. What Strata is and what it needs
 
 ### 1.1 Processes
@@ -91,10 +76,10 @@ keep these requirements unchanged.
 - **Driver:** NVIDIA 580 or newer, for CUDA 13.0 (`setup.py:106`).
 - **GPU support:** sm_120 (RTX 50) is the default and best-measured architecture
   (`CMakeLists.txt:139-146`).
-- **Source build:** only a fallback. It needs VS 2019/2022 Build Tools and the
+- **Source build:** a fallback that needs VS 2019/2022 Build Tools and the
   CUDA 13.0 toolkit, which setup installs through winget with a UAC prompt
-  (`setup.py:988-997`, `2132-2205`). **Marvin must never take this path.** It
-  uses only the pinned prebuilt engine.
+  (`setup.py:988-997`, `2132-2205`). Marvin ships the pinned prebuilt engine.
+  A source build stays available for development and experiments.
 - **Release pace:** the project is young and moves fast; v0.1.19 through v0.1.39
   are all listed in `setup.py:118`. Marvin pins one version and upgrades only
   after qualification, the same policy as llama.cpp. Strata's `UPDATE.bat`
@@ -225,17 +210,19 @@ in the Strata checkout.
 
 Strata server line references are to `serve/server.py` unless another file is named.
 
-### 1.7 Strata features Marvin must not inherit
+### 1.7 Strata parts Marvin does not use in production
 
 - **`setup.py`.** It is interactive and can install Python with `PrependPath=1`.
   It can also install VS Build Tools and CUDA through winget, opens a browser,
   writes `%APPDATA%\Strata` and a data folder beside its install, and moves
   model files from earlier Strata folders. Marvin performs only the minimal
-  steps itself (section 2.7).
+  steps itself (section 2.7). Phase 0 uses setup non-interactively in its own
+  folder, which is simpler for an evaluation.
 - **The `parallel` batching mode, the MCP client (`--mcp-config`, `strata_mcp`),
   the MCP server (`tools/strata_mcp.py`) and the experimental speed projection.**
-  They conflict with the single-agent and no-MCP invariants in `AGENTS.md`, or
-  are unqualified. Marvin never enables or sends them.
+  The first two fall under the single-agent and no-MCP non-goals in
+  `AGENTS.md`; the speed projection is experimental. Marvin does not enable or
+  send them.
 - **Strata's web page and `/settings`.** The server always serves them on its
   port. Marvin binds 127.0.0.1, uses a per-launch API key, and never links the
   page.
@@ -251,10 +238,10 @@ Strata server line references are to `serve/server.py` unless another file is na
 2. **The llama path stays byte-identical.** Before any refactor, tests pin the
    full llama argv, identity check, readiness, stop and recovery for every
    built-in model (section 2.10). Afterwards those tests must pass unchanged.
-3. **Users choose a model, not a runtime.** The Strata entry is a separate
-   Flash-Next model (for example "Qwen3.8 Flash-Next IQ3_S"). Runtime and
-   placement stay internal, as in the [integration record](2026-09-13-qwen38-flash-next-integration.md)
-   section 5.
+3. **Users choose a model and a profile, as for every other model.** The
+   Strata entry is a separate Flash-Next model (for example "Qwen3.8 Flash-Next
+   IQ3_S"). Its 256k and 128k profiles appear in the same picker as the other
+   models' profiles. Runtime and placement stay internal.
 4. **One model and one sequential agent.** Starting Strata stops llama-server
    first and the reverse; both use the same `server.port`. The embeddings
    sidecar is CPU-only and unchanged.
@@ -284,8 +271,9 @@ Strata server line references are to `serve/server.py` unless another file is na
 - **Profiles go in `harness/measured_profiles.py`**, the profile authority, with
   new measurement IDs. Each profile holds `ctx_size`, `gpu_class`,
   `min_vram_gb`, `min_ram_gb`, `label` and `measurement_id`, plus a `strata`
-  override (for example `kv_resident`). Only measured classes are offered; at
-  first that is the 32 GB class.
+  override (for example `kv_resident`). The first profiles come from the
+  owner's PC: 256k and 128k on the 32 GB class. Profiles for smaller GPU and RAM
+  classes follow from their own measurements (section 3).
 
 ### 2.3 Process management (`harness/servermgmt.py`, new `harness/strata_backend.py`)
 
@@ -466,11 +454,11 @@ dispatches once on `cfg.model(key).get("backend", "llama")`:
 
 | Phase | Work | Gate |
 |---|---|---|
-| 0 Feasibility (no Marvin code) | Install Strata v0.1.39 standalone in a separate folder on the owner's PC. Run IQ3_S (normal and resident) and IQ2_XS or IQ3_XXS at 128k and 256k, with vision. Replay recorded Marvin requests (system prompt, real tool schemas, tool rounds, images, a 120k input, STOP in prefill and decode). | Measured decode and prefill on Windows. Peak RAM/VRAM with Marvin and a browser open. Tool-call success on Marvin's schemas. Owner chooses weights and context. |
+| 0 Feasibility (no Marvin runtime changes) | `scripts/strata_eval.py` (section 6): Strata v0.1.39 in its own folder, IQ3_S at 256k and 128k, normal and resident, with vision, driven by Marvin's client, prompts and tools. | Measured load, prefill and decode on Windows. Peak RAM/VRAM with Marvin and a browser open. Tool-call success on Marvin's schemas. Choice between the normal and resident variants. |
 | 1 Safety net | Golden llama tests (section 2.10). No behavior change. | Full unit suite green. |
 | 2 Backend seam | `backend` field, `servermgmt` dispatch, `strata_backend.py`, client changes, job object. The Strata entry is hidden behind a config flag. | Golden tests unchanged; Strata unit tests green. |
 | 3 Runtime and models | `strata_runtime.py` staging, pack/MTP preparation, picker entry, status, localization, optional progress polling. | Clean install and switch on the owner's PC; failed preparation restores the prior model. |
-| 4 Qualification | New measurement record under `docs/design/measurements/`; profiles in `measured_profiles.py`. Existing 55 cases are reused unchanged. Chat, thinking levels, tool rounds, images, long input at each offered context, STOP and steering, compression, model switches both ways, low-memory recovery. | All pass on the owner's PC; release notes; manuals. |
+| 4 Qualification | New measurement record under `docs/design/measurements/`; profiles in `measured_profiles.py`. Existing 55 cases are reused unchanged. Chat, thinking levels, tool rounds, images, long input at each offered context, STOP and steering, compression, model switches both ways, low-memory recovery. Then the configurations for smaller GPU and RAM classes. | All pass on the owner's PC; release notes; manuals; the Strata entry replaces the llama.cpp Flash-Next entry. |
 
 The complete measurement matrix is not repeated for existing models. Only the
 new Strata profiles are measured, because they are new weights and a new runtime.
@@ -492,20 +480,62 @@ new Strata profiles are measured, because they are new weights and a new runtime
   optionally 50 GB `experts.bin`. That is in addition to the 90 GB llama
   Flash-Next files, unless the owner retires them.
 
-## 5. Owner decisions needed
+## 5. Owner decisions (6 October 2026)
 
-1. **Earlier decisions.** Confirm that the requirements in section 0 are lifted
-   for the Strata entry only.
-2. **Weights.**
-   - IQ3_S: best quality per its authors; 50 GB pinned or the resident variant.
-   - IQ3_XXS: 43 GB.
-   - IQ2_XS: fastest measured on a 5090.
+1. **No inherited restrictions.** The "binding requirements" in the
+   [September 13 integration record](2026-09-13-qwen38-flash-next-integration.md)
+   were never the owner's requirements: no upstream-only rule, no fixed
+   UD-Q3_K_XL target, no fixed Q8_0 KV. That record is historical.
+2. **Weights:** start with ISTA GSQ-RCO IQ3_S.
+3. **Context:** both 256k and 128k, switchable in the picker like the other
+   models' profiles.
+4. **llama.cpp Flash-Next:** it stays until the Strata entry is working and
+   tested, then the Strata entry replaces it.
+5. **Scope:** first get the most out of the owner's PC (RTX 5090 32 GB, 64 GB
+   RAM). Then measure which configurations to offer on smaller machines; the
+   community runs Strata on 12 GB cards.
 
-   Recommendation: decide after Phase 0, starting with IQ3_S.
-3. **Context target.** 256k, as the current Flash entry defaults to, or 128k with
-   a larger GPU expert cache and faster decode. Recommendation: offer the two
-   highest measured contexts, as now.
-4. **The llama Flash-Next entry and its 90 GB.** Keep it as the fallback until
-   Strata qualifies (recommended), or retire it.
-5. **Scope.** Owner's PC (RTX 5090, 64 GB) only at first, or other GPU classes.
-   Recommendation: only measured classes are offered.
+## 6. Phase 0 procedure
+
+Phase 0 does not touch Marvin's runtime, models or settings. It uses
+`scripts/strata_eval.py` from a Marvin checkout, run with Marvin's Python.
+
+1. **Stop Marvin's model** in the UI, or close Marvin. The script refuses to run
+   beside a main llama-server; the CPU embeddings sidecar is ignored.
+2. **Install.** `python scripts/strata_eval.py install` installs Strata
+   v0.1.39 into `%LOCALAPPDATA%\StrataEval`. It runs Strata's own setup
+   non-interactively:
+   - IQ3_S, int8 KV, 256k, GPU vision, all experts in RAM, port 18080, no
+     browser;
+   - it downloads ~84 GB of weights, the MTP tensors and the projector;
+   - a rerun resumes.
+
+   `install --low-ram resident` then adds the resident variant, which writes an
+   extra ~50 GB `experts.bin`.
+3. **Run.** `python scripts/strata_eval.py run --context 262144` and
+   `run --context 131072`, each optionally with `--base resident`. Each run:
+   - derives a config from the installed one and starts the server;
+   - measures load time and samples RAM, server RSS and VRAM every second;
+   - runs these scenarios through Marvin's own `LLMClient`, tools and prompts:
+     - chat at thinking off/low/high;
+     - image reading;
+     - eight tool-call requests with the full Development toolset;
+     - the e2e coding workflow agent task;
+     - a needle test filling the context, plus a cached follow-up;
+     - STOP during prefill and during decode.
+   - `--effort-end` repeats a run with the effort sentence at the prompt's end.
+4. **Report.** `python scripts/strata_eval.py report` writes `summary.md` from
+   every run. Each run folder keeps `results.json`, `samples.json`, the engine
+   log and the exact config.
+
+**Checked before handing over (Linux, no GPU), against Strata's own server with
+its scripted mock engine:**
+
+- Marvin's `LLMClient` received separated reasoning, streamed XML tool calls as
+  OpenAI `tool_calls`, and `usage`.
+- A Hermes-style JSON tool call came back as `APIError: malformed tool call`,
+  confirming the retry need in section 2.4.
+- Marvin's real `Agent` completed a two-turn `read_file` task.
+
+The mock has no clock or vision, so speed, timings and images need the real
+engine.

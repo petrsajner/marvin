@@ -4,7 +4,10 @@ Historical update: 13 September 2026, Marvin 1.8.0. Flash-Next was integrated an
 
 Translated and consolidated on September 15. Later changes supersede historical tuning values where noted: [prefix performance](../distribution/PERFORMANCE-1.8.1.md), [Continue model selection](../distribution/CONTINUE-MODEL-1.8.2.md), [current memory profiles and recovery](memory-profiles.md).
 
-## Binding requirements
+## Original design targets (historical, not binding)
+
+These were the working targets of the September integration, not owner requirements. They do not restrict later
+work; see the [owner decisions of 6 October 2026](2026-10-05-strata-backend.md#5-owner-decisions-6-october-2026).
 
 - Use standard upstream llama.cpp. **Do not use GenerelSchwerz.** The owner clarified that the video author explicitly discouraged it after no performance benefit and a system freeze. A link in a video description was not a recommendation.
 - Target Q3 weights, specifically **UD-Q3_K_XL**. The video's IQ3_XXS is a reference, not an automatic substitute.
