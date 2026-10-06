@@ -223,6 +223,17 @@ class ServerConfigTests(unittest.TestCase):
         self.cfg.data["_recovery_placement"]["model"] = "q5"
         self.assertEqual(strata_backend.placement(self.cfg, KEY)["expert_cache"], "auto")
 
+    def test_a_smaller_card_profile_fixes_the_expert_cache(self):
+        self.cfg.set_kv_cache_mode(KEY, "int8_128k")
+        self.cfg.data["models"][KEY]["kv_cache_profiles"]["int8_128k"]["expert_cache"] = 4700
+        where = strata_backend.placement(self.cfg, KEY)
+        self.assertEqual(where["expert_cache"], 4700)
+        args = strata_backend.engine_args(self.cfg, KEY, 131072, where)
+        self.assertEqual(args[args.index("--expert-cache") + 1], "4700")
+        # A recovery still keeps what the failed run logged.
+        self.cfg.data["_recovery_placement"] = {"model": KEY, "expert_cache_slots": 5100}
+        self.assertEqual(strata_backend.placement(self.cfg, KEY)["expert_cache"], 5100)
+
     def test_build_manifest_libraries_take_precedence(self):
         engine = strata_backend.engine_exe(self.cfg).parent
         (engine / "BUILD.json").write_text(json.dumps({"version": "0.1.39", "lib_dirs": ["rocm/bin", "C:/abs"]}))
@@ -359,7 +370,8 @@ class LaunchTests(unittest.TestCase):
         return json.loads((self.runtime / "model-run.json").read_text(encoding="utf-8"))
 
     def test_launch_starts_the_server_with_its_own_config_and_waits_for_the_model(self):
-        result = self.launch(engine_output="strata generate: expert cache 9840 slots, 23.41 GiB of VRAM; policy is\n")
+        result = self.launch(engine_output="strata generate: expert cache auto: 29.10 GiB free, 700 MiB reserved (+218 MiB for the draft head) -> 8641 slots\n"
+                                           "strata generate: expert cache 9840 slots, 23.41 GiB of VRAM; policy is\n")
         self.assertEqual(result.code, 0)
         process = result.processes[0]
         self.assertEqual(process.argv, strata_backend.server_argv(self.cfg, KEY))
@@ -375,7 +387,7 @@ class LaunchTests(unittest.TestCase):
         run = self.run_record()
         self.assertEqual((run["backend"], run["model"], run["context"]), ("strata", KEY, 262144))
         self.assertEqual(run["placement"], {"model": KEY, "expert_cache": "auto", "vram_reserve_mib": 700,
-                                            "expert_cache_slots": 9840})
+                                            "expert_cache_slots": 8641})
         self.assertEqual(self.cfg.data["_active_placement"], run["placement"])
         self.assertIn("ready_engine_log_offset", run)
         self.assertIn("ready_log_offset", run)
@@ -400,7 +412,8 @@ class LaunchTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "The model stopped before it was ready: RuntimeError: "
                                                   "the engine exited before it was ready") as raised:
             self.launch(ready=False,
-                        engine_output="strata generate: expert cache: 9600 slots (22.8 GiB) after 2 smaller tries\n"
+                        engine_output="strata generate: expert cache auto: 28.40 GiB free, 700 MiB reserved (+218 MiB for the draft head) -> 8400 slots\n"
+                                      "strata generate: expert cache: 9600 slots (22.8 GiB) after 2 smaller tries\n"
                                       "strata: CUDA driver version is insufficient\n",
                         server_output="Traceback (most recent call last):\n  File \"serve/server.py\", line 4001\n"
                                       "RuntimeError: the engine exited before it was ready (see strata.log)\n")
@@ -409,21 +422,22 @@ class LaunchTests(unittest.TestCase):
         self.assertTrue(process.killed)
         self.assertIn(process, self.trees)
         self.assertFalse(servermgmt.pid_file(self.cfg).exists())
-        self.assertEqual(self.cfg.data["_active_placement"]["expert_cache_slots"], 9600)
+        self.assertEqual(self.cfg.data["_active_placement"]["expert_cache_slots"], 8400)
         self.assertNotIn("ready_engine_log_offset", self.run_record())
         self.assertEqual(servermgmt.last_failure(self.cfg), {}, "a driver problem is not memory pressure")
 
     def test_memory_failure_at_256k_retries_128k_with_the_same_expert_cache(self):
         self.cfg.set_kv_cache_mode(KEY, "int8_256k")
         result = self.launch(entry="ensure", ready=[False, True],
-                             engine_output=["strata generate: expert cache 9840 slots, 23.41 GiB of VRAM\n"
+                             engine_output=["strata generate: expert cache auto: 29.10 GiB free, 700 MiB reserved (+218 MiB) -> 8641 slots\n"
+                                            "strata generate: expert cache 9840 slots, 23.41 GiB of VRAM\n"
                                             "strata generate: the weight arena does not fit\n", ""])
         self.assertTrue(result.code)
         first, second = (p.config["args"] for p in result.processes)
         self.assertEqual(first[first.index("--max-context") + 1], "262144")
         self.assertEqual(first[first.index("--expert-cache") + 1], "auto")
         self.assertEqual(second[second.index("--max-context") + 1], "131072")
-        self.assertEqual(second[second.index("--expert-cache") + 1], "9840")
+        self.assertEqual(second[second.index("--expert-cache") + 1], "8641")
         self.assertEqual(second[second.index("--vram-reserve-mib") + 1], "700")
         self.assertEqual(self.cfg.kv_cache_mode(KEY), "int8_128k")
         self.assertEqual(self.cfg.data["_recovered_contexts"], {KEY: 131072})

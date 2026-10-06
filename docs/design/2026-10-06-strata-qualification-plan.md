@@ -31,7 +31,30 @@ answer and decoded at 27 tok/s; at 256k it took about 44 minutes and decoded at
 
 ### Two changes the engine forces (owner's choices)
 
-- **Smaller GPUs are simulated with the engine's VRAM reserve.** Strata fills all
+- **Smaller GPUs get a calibrated fixed expert cache** (owner, 6 October, after
+  three attempts):
+  - `--expert-cache N` is a byte budget (N times the largest expert);
+  - a probe launch with a small budget gives the fixed part (weights, KV, MTP,
+    vision, buffers) and the bytes per unit;
+  - N is set so that the server tree holds at most the class's usable VRAM by
+    the per-process counters (the September rule), then checked and trimmed.
+
+  With every VRAM-consuming part fixed, the same placement fits a real card of
+  that class; Marvin's profile for that card carries `expert_cache: N`
+  (`harness/strata_backend.py: placement`). Speed on a real smaller card can
+  differ (PCIe, compute), as with the September small-card profiles.
+
+  Why not the alternatives:
+  - **VRAM ballast:** Windows' display driver moves the ballast off the card
+    when the engine wants more. With a larger page file the 24 GB case still
+    ended with 2 GiB of the ballast on the card, 28.7 GiB in the engine, and
+    the moved ballast drove free RAM to 0.02 GiB.
+  - **Calibrated `--vram-reserve-mib`:** it held 16 GB cards to 14.15 GiB, but
+    not 24 GB cards, where a larger reserve raised the use because the prompt
+    buffers grow into the free memory.
+
+  Both runs are kept under `superseded` in the results.
+- **Earlier wording, kept for the record: smaller GPUs simulated with the engine's VRAM reserve.** Strata fills all
   free VRAM with its expert cache, so measuring on the 32 GB card and comparing
   with a budget afterwards would always "fit". Each case reads the free VRAM as
   CUDA reports it and sets `--vram-reserve-mib` so that the model uses what the

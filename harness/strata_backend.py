@@ -28,8 +28,10 @@ WINDOWS = os.name == "nt"
 # Fatal memory failures in Strata's logs, in addition to the allocator markers
 # servermgmt already looks for ("out of memory", "failed to allocate", ...).
 MEMORY_MARKERS = ("does not fit", "cannot pin")
-# "expert cache 9840 slots, 23.41 GiB of VRAM" or, after a retry, "expert cache: 9600 slots (...)".
-EXPERT_CACHE_RE = re.compile(r"expert cache:? (\d+) slots")
+# "expert cache auto: 21.28 GiB free, 700 MiB reserved (...) -> 9856 slots": the budget the engine sized,
+# in largest-expert units, which is what --expert-cache takes. The slot count it reports afterwards is
+# higher (smaller experts share the budget), so it must not be fed back as a size.
+EXPERT_CACHE_RE = re.compile(r"expert cache auto: [^\n]*?-> (\d+) slots")
 UNLOAD_TIMEOUT = 120   # Seconds; the engine frees tens of gigabytes of pinned RAM.
 LOG_TAIL_BYTES = 65536
 
@@ -155,13 +157,19 @@ def explain(cfg: Config, key: str, problems: list[str]) -> str:
 
 
 def placement(cfg: Config, key: str) -> dict:
-    """The expert-cache size and VRAM reserve for this launch; a recovery keeps the failed run's."""
+    """The expert-cache size and VRAM reserve for this launch; a recovery keeps the failed run's.
+
+    A profile for a smaller card names its cache size (`expert_cache`, the engine's
+    budget in largest-expert units): Windows' display driver lets one process take
+    memory from another, so "fill the free VRAM" is not a size a measurement can
+    pin; a fixed cache is."""
     frozen = cfg.data.get("_recovery_placement", {})
     reserve = int(settings(cfg, key).get("vram_reserve_mib", 700))
     if frozen.get("model") == key:
         cache = frozen.get("expert_cache_slots") or frozen.get("expert_cache") or "auto"
         return {"model": key, "expert_cache": cache, "vram_reserve_mib": int(frozen.get("vram_reserve_mib", reserve))}
-    return {"model": key, "expert_cache": "auto", "vram_reserve_mib": reserve}
+    profile = cfg.kv_cache_profiles(key).get(cfg.kv_cache_mode(key), {})
+    return {"model": key, "expert_cache": profile.get("expert_cache") or "auto", "vram_reserve_mib": reserve}
 
 
 def engine_args(cfg: Config, key: str, context: int, where: dict, hardware=None) -> list[str]:
@@ -368,6 +376,6 @@ def start_failure(cfg: Config, run: dict) -> str:
 
 
 def observed_expert_cache(run: dict) -> int | None:
-    """The expert-cache slot count the engine settled on in this launch."""
+    """The expert-cache budget the engine sized in this launch; None when the size was given explicitly."""
     hits = EXPERT_CACHE_RE.findall(_read_from(Path(run.get("engine_log", "")), run.get("engine_log_offset", 0)))
     return int(hits[-1]) if hits else None

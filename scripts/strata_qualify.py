@@ -351,6 +351,8 @@ def case_config(spec: dict, directory: Path) -> Config:
     model["kv_cache_profiles"] = {"audit": {"cache_type": "int8", "ctx_size": spec["context"],
                                             "min_vram_gb": 0, "label": "Measured candidate",
                                             "engine_args": engine_args}}
+    if spec.get("expert_cache"):
+        model["kv_cache_profiles"]["audit"]["expert_cache"] = int(spec["expert_cache"])
     model["kv_cache"] = "audit"
     model["ctx_size"] = spec["context"]
     cfg.data["default_model"] = KEY
@@ -524,6 +526,76 @@ def calibrate_reserve(spec: dict, directory: Path, target_gib: float, attempts: 
     return history
 
 
+CACHE_LINE_RE = re.compile(r"expert cache (\d+) slots, ([\d.]+) GiB")
+
+
+def measure_launch(spec: dict, directory: Path, counters: GpuProcessMemory) -> dict:
+    """One short launch: what the server tree holds in dedicated VRAM and the cache the engine built."""
+    cfg = case_config(spec, directory)
+    entry = {"expert_cache": spec.get("expert_cache")}
+    try:
+        with patch.object(Config, "model_ready", return_value=True), contextlib.redirect_stdout(io.StringIO()):
+            code = servermgmt.start(cfg, KEY)
+        if code != 0:
+            raise RuntimeError(f"start returned {code}")
+        time.sleep(4)
+        pid = int(servermgmt.pid_file(cfg).read_text(encoding="utf-8").split(":")[1])
+        pids = {p.pid for p in tree(pid)}
+        counters.sample()
+        time.sleep(1)
+        entry["tree_gpu_dedicated_gib"] = round(
+            sum(v for p, v in counters.sample().get("dedicated", {}).items() if p in pids) / GIB, 3)
+        log = strata_backend.engine_log(cfg, KEY)
+        hits = CACHE_LINE_RE.findall(log.read_text(encoding="utf-8", errors="replace")) if log.exists() else []
+        if hits:
+            entry["cache_slots"], entry["cache_gib"] = int(hits[-1][0]), float(hits[-1][1])
+    except Exception as exc:
+        entry["error"] = f"{type(exc).__name__}: {exc}"
+    finally:
+        try:
+            servermgmt.stop(cfg, quiet=True)
+        except Exception:
+            pass
+    print("CALIBRATE", spec["id"], json.dumps(entry), flush=True)
+    return entry
+
+
+def calibrate_cache(spec: dict, directory: Path, target_gib: float, attempts: int = 4) -> list[dict]:
+    """Fix the expert-cache budget so the server tree holds at most `target_gib` of dedicated VRAM.
+
+    --expert-cache N is a byte budget (N times the largest expert), so the use is
+    the fixed part (weights, KV, MTP, vision, buffers) plus the cache. A probe with
+    a small cache gives the fixed part and the bytes per budget unit; the next
+    launch aims at the target, and later ones trim what is still over."""
+    history: list[dict] = []
+    counters = GpuProcessMemory()
+    try:
+        spec["expert_cache"] = 1024
+        probe = measure_launch(spec, directory / "calibrate-0", counters)
+        history.append(probe)
+        if "error" in probe or "cache_gib" not in probe:
+            return history
+        per_unit = probe["cache_gib"] / spec["expert_cache"]
+        fixed = probe["tree_gpu_dedicated_gib"] - probe["cache_gib"]
+        spec["expert_cache"] = int((target_gib - 0.1 - fixed) / per_unit)
+        for attempt in range(1, attempts):
+            if spec["expert_cache"] < 1:
+                history.append({"expert_cache": spec["expert_cache"],
+                                "error": f"the fixed part alone holds {fixed:.2f} GiB of the {target_gib} GiB class"})
+                break
+            entry = measure_launch(spec, directory / f"calibrate-{attempt}", counters)
+            history.append(entry)
+            if "error" in entry:
+                break
+            excess = entry["tree_gpu_dedicated_gib"] - target_gib
+            if excess <= 0.05:
+                break
+            spec["expert_cache"] -= int((excess + 0.05) / per_unit) + 1
+    finally:
+        counters.close()
+    return history
+
+
 def run_case(spec: dict, output: Path, report: dict, result_file: Path, installed_gib: float):
     directory = output / spec["id"]
     directory.mkdir(parents=True, exist_ok=True)
@@ -556,6 +628,21 @@ def run_case(spec: dict, output: Path, report: dict, result_file: Path, installe
             cfg = case_config(spec, directory)
             last = case["calibration"][-1] if case["calibration"] else {}
             case["fits_gpu_class"] = last.get("tree_gpu_dedicated_gib", 1e9) <= target + 0.1
+        elif spec["gpu_class"] in USABLE_VRAM_GIB and spec.get("gpu_sim") == "cache":
+            target = USABLE_VRAM_GIB[spec["gpu_class"]]
+            case["calibration"] = calibrate_cache(spec, directory, target)
+            last = case["calibration"][-1] if case["calibration"] else {}
+            if "error" in last and len(case["calibration"]) == 1:
+                raise RuntimeError("calibration launch failed: " + last["error"])
+            usable = [e for e in case["calibration"][1:] if "tree_gpu_dedicated_gib" in e]
+            if usable:
+                spec["expert_cache"] = usable[-1]["expert_cache"]
+                case["fits_gpu_class"] = usable[-1]["tree_gpu_dedicated_gib"] <= target + 0.1
+            else:
+                # Nothing fits the class: measure the smallest probe to have its numbers, recorded as not fitting.
+                spec["expert_cache"] = case["calibration"][0]["expert_cache"]
+                case["fits_gpu_class"] = False
+            cfg = case_config(spec, directory)
         elif spec["gpu_class"] in USABLE_VRAM_GIB:
             # The smaller card made real; this needs commit headroom for the ballast,
             # which a smaller card does not take (owner: a larger page file, 6 October).
@@ -654,7 +741,7 @@ def run_case(spec: dict, output: Path, report: dict, result_file: Path, installe
 
 def summarize(report: dict) -> str:
     lines = ["# Strata qualification " + report.get("started", ""), "",
-             "| Case | OK | Fits GPU class | Reserve MiB | Load s | Decode tok/s | Prefill tok/s (long) | Long input | "
+             "| Case | OK | Fits GPU class | Cache budget / reserve MiB | Load s | Decode tok/s | Prefill tok/s (long) | Long input | "
              "First answer s | Cached follow-up s | STOP s | GPU total | Tree GPU | Tree shared | Tree RSS | "
              "Min RAM free |",
              "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
@@ -667,7 +754,7 @@ def summarize(report: dict) -> str:
         failed = [n for n, c in checks.items() if not c.get("ok")]
         ok = "yes" if case.get("functional_ok") else ("no: " + (case.get("error") or ", ".join(failed)))[:80]
         fits = {True: "yes", False: "no"}.get(case.get("fits_gpu_class"), "-")
-        lines.append(f"| {cid} | {ok} | {fits} | {case['spec'].get('vram_reserve_mib', '-')} | "
+        lines.append(f"| {cid} | {ok} | {fits} | {case['spec'].get('expert_cache') or case['spec'].get('vram_reserve_mib', '-')} | "
                      f"{case.get('load_seconds', '-')} | {decode or '-'} | "
                      f"{round(timings['prompt_per_second']) if timings.get('prompt_per_second') else '-'} | "
                      f"{long.get('input_tokens', '-')} | {first.get('seconds', '-')} | "
@@ -749,9 +836,10 @@ def main() -> int:
     p.add_argument("--strata-dir", type=Path, help=f"Strata program folder (default {STRATA_DIR})")
     p.add_argument("--data-dir", type=Path, help=f"Strata data folder (default {DATA_DIR})")
     p.add_argument("--gpu-classes", help="only these GPU classes, e.g. 32 or 24,16")
-    p.add_argument("--gpu-sim", choices=["ballast", "reserve"], default="ballast",
-                   help="make a smaller card real with a VRAM ballast (needs commit headroom: a larger page "
-                        "file) or approximate it with a calibrated --vram-reserve-mib")
+    p.add_argument("--gpu-sim", choices=["cache", "ballast", "reserve"], default="cache",
+                   help="smaller cards: a calibrated fixed --expert-cache (the default; owner, 6 October), a VRAM "
+                        "ballast (Windows moves it off the card when the engine wants more) or a calibrated "
+                        "--vram-reserve-mib (the prompt buffers grow into it)")
     p.add_argument("--any-weights", action="store_true",
                    help="accept weight files of any size (a dry run against a stand-in server)")
     args = parser.parse_args()
