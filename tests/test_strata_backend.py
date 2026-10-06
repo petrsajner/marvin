@@ -10,6 +10,7 @@ import copy
 from dataclasses import replace
 import io
 import json
+import mmap
 import os
 from pathlib import Path
 import subprocess
@@ -21,7 +22,7 @@ from unittest.mock import patch
 
 from harness import servermgmt, strata_backend
 from harness.config import Config, load_config
-from harness.hardware import Hardware
+from harness.hardware import Hardware, shared_working_set
 from harness.runtime_plan import GIB
 
 KEY = "flash_next_strata"
@@ -621,6 +622,55 @@ class AllocationFailureTests(unittest.TestCase):
         self.record("strata: KV streaming: cannot pin 3.50 GiB of RAM\n", "", ready=False)
         servermgmt.record_allocation_failure(self.cfg)
         self.assertEqual(servermgmt.last_failure(self.cfg)["code"], "ram_pressure")
+
+
+class MemoryGuardTests(unittest.TestCase):
+    """The emergency guard ends a server below GUARD_RAM_BYTES of available RAM."""
+
+    def available(self, free, mapped, *, strata):
+        tree = SimpleNamespace(children=lambda recursive: [SimpleNamespace(pid=PID + 1)])
+        with patch("psutil.virtual_memory", return_value=SimpleNamespace(available=free)), \
+             patch("psutil.Process", return_value=tree), \
+             patch("harness.hardware.shared_working_set", return_value=mapped) as shared:
+            value = servermgmt.guard_available(SimpleNamespace(pid=PID), strata=strata)
+        return value, shared
+
+    def test_experts_read_from_the_files_count_as_available(self):
+        value, shared = self.available(300 * 2**20, 19 * 2**30, strata=True)
+        self.assertGreater(value, servermgmt.GUARD_RAM_BYTES)
+        shared.assert_called_once_with([PID, PID + 1])
+
+    def test_a_strata_server_without_mapped_pages_still_trips_the_guard(self):
+        value, _ = self.available(300 * 2**20, 0, strata=True)
+        self.assertLess(value, servermgmt.GUARD_RAM_BYTES)
+
+    def test_llama_is_counted_as_measured_in_september(self):
+        value, shared = self.available(300 * 2**20, 19 * 2**30, strata=False)
+        self.assertEqual(value, 300 * 2**20)
+        shared.assert_not_called()
+
+    def test_working_sets_are_read_only_when_memory_runs_short(self):
+        value, shared = self.available(8 * 2**30, 19 * 2**30, strata=True)
+        self.assertEqual(value, 8 * 2**30)
+        shared.assert_not_called()
+
+    def test_mapped_file_pages_are_shared_and_private_memory_is_not(self):
+        if os.name != "nt":
+            self.skipTest("Windows working sets")
+        before = shared_working_set([os.getpid()])
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "weights.bin"
+            path.write_bytes(os.urandom(32 * 2**20))
+            with path.open("rb") as handle, mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ) as view:
+                touched = sum(view[i] for i in range(0, len(view), 4096))
+                mapped = shared_working_set([os.getpid()])
+                private = bytearray(32 * 2**20)
+                for i in range(0, len(private), 4096):
+                    private[i] = 1
+                self.assertGreaterEqual(touched, 0)
+                self.assertGreater(mapped - before, 24 * 2**20)
+                self.assertLess(shared_working_set([os.getpid()]) - mapped, 8 * 2**20)
+        self.assertEqual(shared_working_set([2**31 - 1]), 0, "a process that cannot be read counts as zero")
 
 
 class ClientTests(unittest.TestCase):

@@ -45,7 +45,7 @@ import requests  # noqa: E402
 
 from harness import servermgmt, strata_backend  # noqa: E402
 from harness.config import Config, load_config  # noqa: E402
-from harness.hardware import detect_hardware  # noqa: E402
+from harness.hardware import detect_hardware, shared_working_set  # noqa: E402
 
 GIB = 1024**3
 NO_WINDOW = 0x08000000
@@ -215,7 +215,7 @@ class Monitor:
     """One sample every half second, peaks per phase, the whole series to telemetry.csv."""
 
     PEAKS = ("gpu_used", "gpu_unavailable", "gpu_model_delta", "tree_gpu_dedicated", "tree_gpu_shared",
-             "tree_rss", "tree_private", "ram_system_delta", "commit_total")
+             "tree_rss", "tree_private", "tree_shared_ws", "ram_system_delta", "commit_total")
 
     def __init__(self, case: dict, directory: Path, baseline: dict, ballast_pids: list[int]):
         self.case, self.directory, self.baseline = case, directory, baseline
@@ -251,6 +251,9 @@ class Monitor:
                             row["tree_private"] += getattr(info, "private", info.vms)
                         except psutil.Error:
                             pass
+                    # File pages the server maps (experts read in place): Windows drops them under
+                    # pressure but does not count them as available (Marvin's guard adds them back).
+                    row["tree_shared_ws"] = shared_working_set(pids)
                     row["gpu_model_delta"] = row["gpu_unavailable"] - self.baseline["gpu_unavailable"]
                     row["ram_system_delta"] = self.baseline["ram_available"] - row["ram_available"]
                     if writer is None:
@@ -263,6 +266,9 @@ class Monitor:
                         stats[key + "_peak_gib"] = round(max(stats.get(key + "_peak_gib", 0), row[key] / GIB), 3)
                     stats["ram_available_min_gib"] = round(min(stats.get("ram_available_min_gib", float("inf")),
                                                                row["ram_available"] / GIB), 3)
+                    stats["ram_available_with_mapped_min_gib"] = round(min(
+                        stats.get("ram_available_with_mapped_min_gib", float("inf")),
+                        (row["ram_available"] + row["tree_shared_ws"]) / GIB), 3)
                     stats["ballast_gpu_dedicated_min_gib"] = round(min(stats.get("ballast_gpu_dedicated_min_gib",
                                                                                  float("inf")),
                                                                        row["ballast_gpu_dedicated"] / GIB), 3)
@@ -657,6 +663,8 @@ def run_case(spec: dict, output: Path, report: dict, result_file: Path, installe
             case["ram_budget_gib"] = budget_gib(spec)
         samples = [{**gpu_memory(), "ram_available": psutil.virtual_memory().available} for _ in range(3)]
         case["baseline"] = baseline = {k: sum(s[k] for s in samples) / len(samples) for k in samples[0]}
+        # A run that was killed leaves its pid behind; the monitor would follow that dead process.
+        servermgmt.pid_file(cfg).unlink(missing_ok=True)
         monitor = Monitor(case, directory, baseline, [b.pid for b in ballasts])
         monitor.start()
         print("START", spec["id"], flush=True)
@@ -732,6 +740,8 @@ def run_case(spec: dict, output: Path, report: dict, result_file: Path, installe
         case["peak_tree_rss_gib"] = max((p.get("tree_rss_peak_gib", 0) for p in resources.values()), default=0)
         case["min_ram_available_gib"] = min((p.get("ram_available_min_gib", 1e9) for p in resources.values()),
                                             default=None)
+        case["min_ram_available_with_mapped_gib"] = min(
+            (p.get("ram_available_with_mapped_min_gib", 1e9) for p in resources.values()), default=None)
         if "vram_ballast" in case:
             case["fits_gpu_class"] = case["peak_tree_gpu_dedicated_gib"] <= USABLE_VRAM_GIB[spec["gpu_class"]] + 0.2
         case["seconds"] = round(time.monotonic() - started, 1)
@@ -749,8 +759,8 @@ def summarize(report: dict) -> str:
     lines = ["# Strata qualification " + report.get("started", ""), "",
              "| Case | OK | Fits GPU class | Cache budget / reserve MiB | Load s | Decode tok/s | Prefill tok/s (long) | Long input | "
              "First answer s | Cached follow-up s | STOP s | GPU total | Tree GPU | Tree shared | Tree RSS | "
-             "Min RAM free |",
-             "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
+             "Min RAM free | Min RAM free incl. mapped files |",
+             "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
     for cid, case in report["cases"].items():
         checks = case.get("checks", {})
         decode = (checks.get("decode", {}).get("evidence") or {}).get("decode_tokens_per_second")
@@ -768,7 +778,7 @@ def summarize(report: dict) -> str:
                      f"{(checks.get('stop_stream', {}).get('evidence') or {}).get('stop_seconds', '-')} | "
                      f"{case.get('peak_gpu_total_gib', '-')} | {case.get('peak_tree_gpu_dedicated_gib', '-')} | "
                      f"{case.get('peak_tree_gpu_shared_gib', '-')} | {case.get('peak_tree_rss_gib', '-')} | "
-                     f"{case.get('min_ram_available_gib', '-')} |")
+                     f"{case.get('min_ram_available_gib', '-')} | {case.get('min_ram_available_with_mapped_gib', '-')} |")
     return "\n".join(lines) + "\n"
 
 
@@ -776,7 +786,8 @@ CSV_FIELDS = ("case", "weights", "ram_class", "gpu_class", "mode", "kv_resident"
               "expert_cache", "ram_budget_gib", "finished", "functional", "failed_checks", "fits_gpu_class",
               "load_seconds", "decode_tps", "input_tokens", "prefill_tps", "first_answer_seconds", "recall",
               "cached_followup_seconds", "cached_followup", "stop_seconds", "gpu_total_peak",
-              "tree_gpu_dedicated_peak", "tree_gpu_shared_peak", "tree_rss_peak", "min_ram_available", "error")
+              "tree_gpu_dedicated_peak", "tree_gpu_shared_peak", "tree_rss_peak", "min_ram_available",
+              "min_ram_available_with_mapped", "error")
 
 
 def csv_row(cid: str, case: dict) -> dict:
@@ -801,7 +812,9 @@ def csv_row(cid: str, case: dict) -> dict:
             "tree_gpu_dedicated_peak": case.get("peak_tree_gpu_dedicated_gib", ""),
             "tree_gpu_shared_peak": case.get("peak_tree_gpu_shared_gib", ""),
             "tree_rss_peak": case.get("peak_tree_rss_gib", ""),
-            "min_ram_available": case.get("min_ram_available_gib", ""), "error": case.get("error", "")}
+            "min_ram_available": case.get("min_ram_available_gib", ""),
+            "min_ram_available_with_mapped": case.get("min_ram_available_with_mapped_gib", ""),
+            "error": case.get("error", "")}
 
 
 def export(args) -> int:

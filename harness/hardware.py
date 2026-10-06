@@ -99,3 +99,40 @@ def detect_hardware(*, fresh=False) -> Hardware:
 
 def mask(cpus: tuple[int, ...]) -> str:
     return hex(sum(1 << cpu for cpu in cpus))
+
+
+class _MemoryCounters(ctypes.Structure):
+    """PROCESS_MEMORY_COUNTERS_EX2 (Windows 10 1809 and later)."""
+    _fields_ = [("cb", ctypes.c_ulong), ("PageFaultCount", ctypes.c_ulong)] + [
+        (name, ctypes.c_size_t) for name in (
+            "PeakWorkingSetSize", "WorkingSetSize", "QuotaPeakPagedPoolUsage", "QuotaPagedPoolUsage",
+            "QuotaPeakNonPagedPoolUsage", "QuotaNonPagedPoolUsage", "PagefileUsage", "PeakPagefileUsage",
+            "PrivateUsage", "PrivateWorkingSetSize")] + [("SharedCommitUsage", ctypes.c_ulonglong)]
+
+
+def shared_working_set(pids) -> int:
+    """Bytes of these processes' working sets that are not private to them.
+
+    These are mostly file pages the processes map, such as model weights read in
+    place from their files. Windows drops them when memory runs short and reads
+    them again on use, yet does not count them as available memory. Processes
+    that cannot be read count as zero."""
+    if os.name != "nt":
+        return 0
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    kernel32.OpenProcess.argtypes = (ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong)
+    kernel32.K32GetProcessMemoryInfo.argtypes = (ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong)
+    kernel32.CloseHandle.argtypes = (ctypes.c_void_p,)
+    total = 0
+    for pid in pids:
+        handle = kernel32.OpenProcess(0x1000 | 0x0010, False, pid)  # limited query information, VM read
+        if not handle:
+            continue
+        try:
+            counters = _MemoryCounters(cb=ctypes.sizeof(_MemoryCounters))
+            if kernel32.K32GetProcessMemoryInfo(handle, ctypes.byref(counters), counters.cb):
+                total += max(0, counters.WorkingSetSize - counters.PrivateWorkingSetSize)
+        finally:
+            kernel32.CloseHandle(handle)
+    return total

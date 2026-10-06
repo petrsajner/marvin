@@ -25,6 +25,8 @@ _start_lock = threading.Lock()
 BIND_SERVER_TO_PROCESS = True
 MEMORY_MARKERS = ("out of memory", "cudaerrormemoryallocation", "failed to allocate",
                   "cannot allocate memory", "std::bad_alloc")
+# The emergency guard ends a server after ten seconds below this much available RAM.
+GUARD_RAM_BYTES = 512 * 1024**2
 
 
 def pid_file(cfg: Config) -> Path:
@@ -392,6 +394,24 @@ def _start_strata(cfg: Config, model_key: str, ctx: int, *, cancelled=None, on_p
                    strata=prepared)
 
 
+def guard_available(proc, *, strata: bool) -> int:
+    """Available RAM as the emergency memory guard counts it while a server runs.
+
+    Strata reads the experts it does not keep straight from the GGUF files. Those
+    pages stay in its working set, where Windows drops them when memory runs short
+    but does not count them as available, so they are added back."""
+    import psutil
+    from harness.hardware import shared_working_set
+    available = psutil.virtual_memory().available
+    if strata and available < GUARD_RAM_BYTES:
+        try:
+            pids = [proc.pid] + [p.pid for p in psutil.Process(proc.pid).children(recursive=True)]
+            available += shared_working_set(pids)
+        except psutil.Error:
+            pass
+    return available
+
+
 def _end_tree(proc) -> None:
     """End a process's children; the Strata server runs its engine and image encoder as children."""
     try:
@@ -456,14 +476,13 @@ def _launch(cfg: Config, model_key: str, argv: list[str], *, cwd: Path, log_path
     capacity = min(hw.vram_total, int(float(requested_budget) * 1024**3)) if requested_budget != "auto" else hw.vram_total
     if plan or capacity:
         def watch_memory():
-            import psutil
             low_samples = 0
             gpu_used = 0
             while proc.poll() is None:
-                available = psutil.virtual_memory().available
+                available = guard_available(proc, strata=bool(strata))
                 # Emergency host protection, not a profile reserve. Allow Windows
                 # to reclaim pages; never fail merely because commit/pagefile grew.
-                low_samples = low_samples + 1 if available < 512 * 1024**2 else 0
+                low_samples = low_samples + 1 if available < GUARD_RAM_BYTES else 0
                 stop_loading = not loaded.is_set() and cancelled and cancelled()
                 if low_samples >= 10 or stop_loading:
                     if low_samples >= 10:
