@@ -188,6 +188,13 @@ on real pressure). That needs Phase 0 data and then the owner's PC.
 
 ## Next work
 
+### Qualification
+
+The approved measurement plan is
+[2026-10-06-strata-qualification-plan.md](2026-10-06-strata-qualification-plan.md):
+IQ3_S and IQ2_XS, GPU classes 32/24/16 (VRAM ballast) and RAM classes
+64/48/32 (RAM ballast), the five September checks in every case.
+
 ### Before Phase 3: Phase 0 results
 
 - Set the profiles' allocation figures and `engine_args` (for example
