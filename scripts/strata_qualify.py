@@ -324,6 +324,7 @@ def cuda_free_gib() -> float:
 
 def case_config(spec: dict, directory: Path) -> Config:
     """Marvin's config with the Strata entry for these weights and one explicit 'audit' profile."""
+    directory.mkdir(parents=True, exist_ok=True)
     path = directory / "config.yaml"
     path.write_text("strata:\n  enabled: true\n", encoding="utf-8")
     cfg = load_config(path, root=directory)
