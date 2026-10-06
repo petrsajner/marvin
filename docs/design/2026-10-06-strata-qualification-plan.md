@@ -93,6 +93,24 @@ Added after the first IQ3_S results (owner, 6 October):
 | IQ3_S, IQ2_XS | 48, 32 | 32, 24, 16 | mapped from disk (`--mmap-experts`) | 256k (128k if 256k fails) |
 | IQ3_S, IQ2_XS | 48, 32 | 32, 24, 16 | RAM budget (`--resident-budget-gib`) | 256k (128k if 256k fails) |
 
+Added on 7 October (owner), because the resident mode sizes its share of RAM by
+what is free while the budget is fixed (on 48 GB the budget left about 11 GiB
+unused and was slower on a 24 GB card):
+
+| Weights | RAM | GPU classes | Expert mode | Contexts |
+|---|---|---|---|---|
+| IQ3_S | 48 | 16 | resident | 256k (128k if 256k fails) |
+| IQ3_S | 32 | 32, 24, 16 | resident | 256k (128k if 256k fails) |
+
+- **All disk-mode cases were measured again on 7 October.** Marvin's emergency
+  RAM guard (ten seconds under 512 MB of available RAM) counted the GGUF pages
+  Strata maps as used memory. Windows drops those clean pages when memory runs
+  short, but does not report them as available, so the guard ended working
+  servers in the mapped, budget and resident modes. For a Strata server the
+  guard now adds the server tree's shared working set back
+  (`servermgmt.guard_available`); private and page-locked memory still count.
+  The earlier runs are kept as `superseded` (`guard-…`) in the results, and the
+  record shows the lowest free RAM with and without the mapped pages.
 - The RAM budget follows Strata's setup: the machine's RAM less 24 GB, less a
   KV cache kept in RAM, at least 8 GiB.
 - Smaller cards are calibrated: a short launch reads what the server tree
@@ -103,7 +121,7 @@ Added after the first IQ3_S results (owner, 6 October):
 - The first IQ3_S 64 GB runs (uncalibrated, and the 32 GB ones right after
   Phase 0) are kept as `superseded` in the results and run again.
 
-81 entries in all (`python scripts/strata_qualify.py list`); the 128k disk
+89 entries in all (`python scripts/strata_qualify.py list`); the 128k disk
 cases only run when their 256k case fails. A case that cannot load
 ends at once and is recorded as rejected, like the September Flash 16 GB / 256k
 case. Before the matrix, Phase 0 (`scripts/strata_eval.py run`) gives the first

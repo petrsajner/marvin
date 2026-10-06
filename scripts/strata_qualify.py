@@ -85,7 +85,7 @@ def matrix() -> list[dict]:
     not hold), mmap (none locked; the rest read from the GGUF through the OS file
     cache) and budget (the hottest N GiB locked, the rest from the files). "kvres"
     keeps the whole KV cache in RAM and only the attention window in VRAM. For the
-    disk modes 128k runs only when 256k did not pass (owner, 6 October)."""
+    disk modes, and the resident rows added later, 128k runs only when 256k did not pass (owner, 6 October)."""
     rows = [("IQ3_S", 64, (32, 24, 16), "normal", False, (256, 128)),
             ("IQ3_S", 64, (16,), "normal", True, (256, 128)),
             ("IQ3_S", 64, (32,), "resident", False, (256,)),
@@ -96,6 +96,11 @@ def matrix() -> list[dict]:
             ("IQ2_XS", 32, (32, 24, 16), "resident", False, (256, 128))]
     rows += [(weights, ram, (32, 24, 16), mode, False, (256, 128))
              for weights in ("IQ3_S", "IQ2_XS") for ram in (48, 32) for mode in ("mmap", "budget")]
+    # The resident mode sizes its share of RAM by what is free, where the budget is fixed,
+    # so it is measured where IQ3_S had only the disk modes (owner, 7 October).
+    late = [("IQ3_S", 48, (16,), "resident", False, (256, 128)),
+            ("IQ3_S", 32, (32, 24, 16), "resident", False, (256, 128))]
+    rows += late
     cases = []
     for weights, ram, gpus, mode, kv_resident, contexts in rows:
         for gpu in gpus:
@@ -103,7 +108,8 @@ def matrix() -> list[dict]:
                 name = f"{weights.lower()}-ram{ram}-gpu{gpu}-{mode}{'-kvres' if kv_resident else ''}"
                 spec = {"id": f"{name}-{context}k", "weights": weights, "ram_class": ram, "gpu_class": gpu,
                         "mode": mode, "kv_resident": kv_resident, "context": context * 1024}
-                if mode in ("mmap", "budget") and context != contexts[0]:
+                fallback = mode in ("mmap", "budget") or (weights, ram, gpus, mode, kv_resident, contexts) in late
+                if fallback and context != contexts[0]:
                     spec["only_if_failed"] = f"{name}-{contexts[0]}k"
                 cases.append(spec)
     return cases
