@@ -128,8 +128,19 @@ IMAGES_KEPT = 4                # Screenshots still sent once context pressure fo
 PRUNE_WORTH = 0.05             # Pruning must free this share of the context to earn its rewrite.
 OVERFLOW_RE = re.compile(
     r"exceeds.{0,40}context|context.{0,40}(exceed|full|too (large|long))|"
-    r"prompt is too long|maximum context",
+    r"prompt is too long|maximum context|leaves no room to answer",
     re.IGNORECASE,
+)
+# Strata parses tool calls itself and fails the whole reply when one is not in the
+# format the chat template defines, instead of returning it as text.
+MALFORMED_TOOL_CALL_RE = re.compile(r"malformed tool call", re.IGNORECASE)
+# Consecutive unreadable replies before the step reports the error; any readable
+# reply starts the count again.
+MALFORMED_TOOL_CALL_RETRIES = 3
+MALFORMED_TOOL_CALL_NOTE = (
+    "[TOOL CALL NOT READ] The server could not parse the tool call in your last reply ({detail}), "
+    "so the reply was discarded and no tool ran. Make the call again, exactly in the tool-call "
+    "format the system prompt defines, one complete call per block."
 )
 _LOCAL_DOCUMENT_PATTERN = input_pattern("document_operation_pattern")
 DOCUMENT_OPERATION_RE = re.compile(
@@ -164,6 +175,11 @@ class Agent:
         self.cfg = cfg
         self.llm = llm
         self.session = session
+        # The conversation outlives model switches; its picture estimate follows the model of this run.
+        try:
+            session.image_token_cost = int(cfg.model().get("image_tokens") or Session.IMAGE_TOKENS)
+        except (AttributeError, KeyError, TypeError, ValueError):
+            pass
         self.registry = registry
         self.safety = safety
         self.work_mode = normalize_work_mode(work_mode, mode)
@@ -349,7 +365,8 @@ class Agent:
         messages = self._api_messages()
         # Remember the uncorrected size of this request, so the server's own
         # count of it can correct the estimate afterwards.
-        self._last_sent = self.session.tokens_for(*self._sent_size(messages))
+        self._last_sent = self.session.tokens_for(*self._sent_size(messages),
+                                                  image_tokens=self.session.image_tokens())
         # Record what is actually sent. The conversation on disk shows the final
         # state, so anything rewritten in place looks as though it always was that
         # way - which is exactly the case a lost prompt cache needs explained.
@@ -424,6 +441,7 @@ class Agent:
         self._tool_steps_since_update = 0
         self._summary_requested = False
         self._overflow_retried = False
+        self._malformed_tool_calls = 0
         self._tool_call_history = []
         self.safety.new_task()
         self.session.add("user", text, images=images)
@@ -451,6 +469,7 @@ class Agent:
         self._tool_steps_since_update = 0
         self._summary_requested = False
         self._overflow_retried = False
+        self._malformed_tool_calls = 0
         self._tool_call_history = []
         self.safety.new_task()
         self.ctx.changes.begin_task(label)
@@ -772,10 +791,21 @@ class Agent:
                 self._maybe_compress(force=True)
                 return StepResult(Status.CONTINUE,
                                   text="The context was compressed after an overflow; continuing the task.")
+            malformed = getattr(self, "_malformed_tool_calls", 0)
+            if MALFORMED_TOOL_CALL_RE.search(str(e)) and malformed < MALFORMED_TOOL_CALL_RETRIES:
+                # Silent and advisory (owner's choice, 2026-10-06): the model gets
+                # another try with the reason as an internal note, the user sees
+                # the task go on, and a readable reply resets the count.
+                self._malformed_tool_calls = malformed + 1
+                self.session.add("user", MALFORMED_TOOL_CALL_NOTE.format(detail=str(e)[:200]))
+                self._save_task_state("running")
+                return StepResult(Status.CONTINUE,
+                                  text="The model's tool call could not be read; it was asked to repeat it.")
             self._save_task_state("error", result=f"LLM error: {type(e).__name__}: {e}")
             return StepResult(Status.ERROR, text=f"LLM error: {type(e).__name__}: {e}")
 
         self._steps += 1
+        self._malformed_tool_calls = 0
 
         if getattr(res, "usage", None):
             self.session.meta["last_usage"] = res.usage

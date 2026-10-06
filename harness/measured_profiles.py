@@ -59,6 +59,26 @@ def profile(context, gpu_class, measured, *, precision="q8_0", value_precision=N
 
 SMALL_CARD_MEASUREMENT = "profiles-16gb-2026-09-19"
 
+# Strata (docs/design/2026-10-05-strata-backend.md). The Phase 0 run on the
+# owner's PC (scripts/strata_eval.py) measures these placements. Until its record
+# lands under docs/design/measurements/ they carry no allocation figures, and the
+# model entry stays behind the strata.enabled setting.
+STRATA_MEASUREMENT_ID = "strata-phase0-pending"
+
+
+def strata_profile(context, gpu_class, *, engine_args=(), measurement=STRATA_MEASUREMENT_ID):
+    """One Strata placement: int8 KV, every expert in RAM, free VRAM as the expert cache.
+
+    `engine_args` are this placement's own engine options, for example
+    ["--kv-resident", "32768"] to keep the whole KV cache in RAM. Strata's setup
+    leaves that out for IQ3_S on 64 GB, so these start without it.
+
+    The label reads like any other 8-bit cache profile in the picker (owner's
+    choice, 2026-10-06); cache_type keeps the engine's own name."""
+    return {"cache_type": "int8", "ctx_size": context * 1024, "gpu_class": gpu_class,
+            "label": f"Q8 · {context}k", "measurement_id": measurement,
+            "engine_args": list(engine_args)}
+
 PROFILES = {
     # The smallest quant. Two gigabytes less than IQ3_S, which buys either twice
     # the context or the vision projector back on the graphics card.
@@ -125,6 +145,12 @@ PROFILES = {
         "q8_0_256k": profile(256, 32, 28.883),
         "q8_0_512k_spill": profile(512, 24, 21.499, cpu_layers=21),
         "q8_0_256k_spill": profile(256, 24, 20.899, cpu_layers=18),
+    },
+    # The owner's decision of 2026-10-06: 256k and 128k, switchable like any other
+    # model's profiles. Smaller GPU and RAM classes follow from their own runs.
+    "flash_next_strata": {
+        "int8_256k": strata_profile(256, 32),
+        "int8_128k": strata_profile(128, 32),
     },
 }
 

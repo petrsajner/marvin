@@ -206,9 +206,24 @@ class Session:
     SCALE_KEY = "token_scale"
 
     @classmethod
-    def tokens_for(cls, chars: int, images: int = 0, scale: float = 1.0) -> int:
+    def tokens_for(cls, chars: int, images: int = 0, scale: float = 1.0, *,
+                   image_tokens: int | None = None) -> int:
         """The one place characters and pictures become a token count."""
-        return int((chars / cls.CHARS_PER_TOKEN + images * cls.IMAGE_TOKENS) * scale)
+        per_image = cls.IMAGE_TOKENS if image_tokens is None else image_tokens
+        return int((chars / cls.CHARS_PER_TOKEN + images * per_image) * scale)
+
+    def image_tokens(self) -> int:
+        """One picture's cost on the current model's engine; Strata reads one in at most 1,024 tokens.
+
+        The agent of each run sets image_token_cost from its own model, since a
+        conversation continues across model switches."""
+        cost = getattr(self, "image_token_cost", None)
+        if cost:
+            return cost
+        try:
+            return int(self.cfg.model().get("image_tokens") or self.IMAGE_TOKENS)
+        except (AttributeError, KeyError, TypeError, ValueError):
+            return self.IMAGE_TOKENS
 
     def token_scale(self) -> float:
         """The correction this conversation has learned from the server."""
@@ -259,7 +274,7 @@ class Session:
             total += len(str(m.get("reasoning") or m.get("reasoning_content") or ""))
         if include_pins:
             total += len(self.pinned_context_block())
-        return self.tokens_for(total, images, self.token_scale())
+        return self.tokens_for(total, images, self.token_scale(), image_tokens=self.image_tokens())
 
     def pin_context_file(self, path: Path) -> bool:
         resolved = str(path.resolve())
@@ -333,7 +348,8 @@ class Session:
         chars = len(str(c)) + len(str(m.get("reasoning") or m.get("reasoning_content") or ""))
         if m.get("tool_calls"):
             chars += len(_json.dumps(m["tool_calls"], ensure_ascii=False))
-        return self.tokens_for(chars, len(self._sent_images(m)), self.token_scale())
+        return self.tokens_for(chars, len(self._sent_images(m)), self.token_scale(),
+                               image_tokens=self.image_tokens())
 
     @classmethod
     def _is_user_boundary(cls, message: dict) -> bool:
@@ -430,7 +446,7 @@ class Session:
                 kept += count
                 continue
             dropped += count
-        return dropped, self.tokens_for(0, dropped, self.token_scale())
+        return dropped, self.tokens_for(0, dropped, self.token_scale(), image_tokens=self.image_tokens())
 
     def prune_images(self, keep: int = 4) -> int:
         """Give up all but the newest `keep` images and return how many were dropped.

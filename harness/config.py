@@ -73,12 +73,19 @@ BUILTIN_MODELS: dict[str, dict[str, Any]] = {'q4': {'alias': 'Qwen3.8-27B Q4_K_M
                  'sampling': {'thinking': {'temperature': 0.6, 'top_p': 0.95, 'min_p': 0.01},
                               'non_thinking': {'temperature': 0.2}}}}
 
+from harness.model_catalog import FLASH_NEXT_Q3, FLASH_NEXT_STRATA
+
+BUILTIN_MODELS["flash_next_q3"] = copy.deepcopy(FLASH_NEXT_Q3)
+BUILTIN_MODELS["flash_next_strata"] = copy.deepcopy(FLASH_NEXT_STRATA)
+
 from harness.measured_profiles import install_profiles
 install_profiles(BUILTIN_MODELS)
 
-from harness.model_catalog import FLASH_NEXT_Q3
-
-BUILTIN_MODELS["flash_next_q3"] = copy.deepcopy(FLASH_NEXT_Q3)
+# The inference engines a model entry can name. A closed list, not a registry:
+# servermgmt branches on it at the few places that touch the server process.
+BACKENDS = ("llama", "strata")
+# Shown only with strata.enabled until the Strata entry is qualified (Phase 4).
+STRATA_MODELS = ("flash_next_strata",)
 
 DEFAULTS: dict[str, Any] = {
     "server": {
@@ -138,6 +145,11 @@ DEFAULTS: dict[str, Any] = {
     },
     "web": {"host": "127.0.0.1", "port": 7860},
     "hardware": {"vram_gb": "auto"},
+    # Qwen3.8-Flash-Next on the Strata engine. Off until its runtime staging and
+    # qualification are done; turning it on shows the model in the picker. It
+    # runs from paths.strata_dir and paths.strata_data_dir, which can point at a
+    # folder Strata's own setup prepared (scripts/strata_eval.py install).
+    "strata": {"enabled": False},
     "skills": {
         "directory": "skills",
         "user_directory": "user-skills",
@@ -148,6 +160,10 @@ DEFAULTS: dict[str, Any] = {
         "llama_dir": "runtime/llama",
         "models_dir": "runtime/models",
         "sessions_dir": "sessions",
+        # Strata's program folder (serve/, data/, engine/, .venv) and its data
+        # folder (models/, packs/, mtp/).
+        "strata_dir": "runtime/strata",
+        "strata_data_dir": "runtime/models/strata",
     },
 }
 
@@ -254,19 +270,33 @@ class Config:
         key = key or self.model_key()
         return self.data["models"][key]
 
+    def backend(self, key: str | None = None) -> str:
+        """The engine that serves a model: llama (the default) or strata."""
+        value = self.model(key).get("backend", "llama")
+        if value not in BACKENDS:
+            raise ValueError(f"Model '{key or self.model_key()}' names the unknown inference backend "
+                             f"'{value}'. Supported backends: {', '.join(BACKENDS)}.")
+        return value
+
+    def model_root(self, key: str | None = None) -> Path:
+        """The folder a model's file, projector and download paths are relative to."""
+        if self.backend(key) == "strata":
+            return self.path("paths.strata_data_dir")
+        return self.path("paths.models_dir")
+
     def model_file(self, key: str | None = None) -> Path:
-        return self.path("paths.models_dir") / self.model(key)["file"]
+        return self.model_root(key) / self.model(key)["file"]
 
     def model_ready(self, key: str | None = None) -> bool:
         from harness.model_files import model_ready
-        return model_ready(self.path("paths.models_dir"), self.model(key))
+        return model_ready(self.model_root(key), self.model(key))
 
     def mmproj_file(self, key: str | None = None) -> Path | None:
         """Path to the vision projector; None for text-only models without mmproj."""
         mmproj = self.model(key).get("mmproj")
         if not mmproj:
             return None
-        return self.path("paths.models_dir") / mmproj
+        return self.model_root(key) / mmproj
 
     def mmproj_repo(self, key: str | None = None) -> str:
         model = self.model(key)
@@ -383,4 +413,8 @@ def load_config(path: Path | None = None, *, root: Path | None = None) -> Config
     _migrate_kv_labels(user)
     _migrate_memory_profiles(user)
     _remove_legacy_agent_limits(user)
-    return Config(_deep_merge(DEFAULTS, user), root or path.parent)
+    data = _deep_merge(DEFAULTS, user)
+    if not (data.get("strata") or {}).get("enabled"):
+        for key in STRATA_MODELS:
+            data["models"].pop(key, None)
+    return Config(data, root or path.parent)

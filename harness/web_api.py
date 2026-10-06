@@ -110,8 +110,11 @@ def create_app(cfg=None, *, service=None):
                     continue
                 current = service.preferences.get("kv_cache_modes", {}).get(key, cfg.kv_cache_mode(key))
                 model_options.append({"id": key, "name": model.get("status_label") or model["alias"],
-                    "vision": bool(model.get("mmproj")), "installed": cfg.model_ready(key),
-                    "uses_system_ram": bool(model.get("adaptive_runtime") or any(
+                    # Explicit capabilities first; a llama entry without them is
+                    # described by its projector and its expert offload.
+                    "vision": bool(model.get("vision", bool(model.get("mmproj")))),
+                    "installed": cfg.model_ready(key),
+                    "uses_system_ram": bool(model.get("uses_system_ram") or model.get("adaptive_runtime") or any(
                         "--n-cpu-moe" in p.get("server_args", []) for p in profiles.values())),
                     "profiles": [{"id": p, **spec, "fits_gpu_budget": True} for p, spec in profiles.items()],
                     "profile": current if current in profiles else next(iter(profiles))})

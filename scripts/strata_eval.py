@@ -594,7 +594,8 @@ def wait_ready(url: str, proc: subprocess.Popen, limit: float) -> float:
 def stop_server(url: str, proc: subprocess.Popen) -> dict:
     started = time.perf_counter()
     try:
-        unload = requests.post(f"{url}/unload", timeout=180).json()
+        # Strata accepts control requests only as JSON (415 otherwise).
+        unload = requests.post(f"{url}/unload", json={}, timeout=180).json()
     except Exception as exc:
         unload = {"error": f"{type(exc).__name__}: {exc}"}
     try:

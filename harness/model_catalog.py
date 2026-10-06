@@ -51,6 +51,62 @@ FLASH_NEXT_Q3 = {
     },
 }
 
+# Qwen3.8-Flash-Next on the Strata engine (docs/design/2026-10-05-strata-backend.md).
+# Strata has no K-quant expert kernels, so it needs ISTA-DASLab's GSQ-RCO files
+# instead of the Unsloth ones above. Paths are relative to paths.strata_data_dir,
+# laid out as Strata's own data folder (models/, packs/, mtp/), so a folder that
+# Strata's setup prepared can be used as it is.
+#
+# The engine is an implementation detail: names and labels describe the model
+# and its weights only, so switching to it looks like switching any other model.
+FLASH_NEXT_STRATA = {
+    "backend": "strata",
+    "alias": "Qwen3.8-Flash-Next IQ3_S (85 GB, text and vision)",
+    "status_label": "Qwen 3.8 Flash-Next · IQ3_S",
+    "family": "qwen4exp",
+    "repo": "ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF",
+    "revision": "ed59f92082b1e93c0e96d60a8b11aab089b52f09",
+    "download_dir": "models",
+    "download_transport": "range",
+    "file": "models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf",
+    "mmproj": "models/mmproj-Qwen3.8-Flash-Next-BF16.gguf",
+    "assets": [
+        {"path": "IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf", "size": 54817524224,
+         "sha256": "4c1eb2ceb4915e1192f4f386021897bde56a97f40a0bb78bb86465e0f7d2aca3"},
+        {"path": "IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf", "size": 28800138432,
+         "sha256": "316b46f3a2dbd68c900f43136ab9449f9dcc3725dfd8c794847c204bc161e113"},
+        {"path": "mmproj-Qwen3.8-Flash-Next-BF16.gguf", "size": 907543008,
+         "sha256": "b1a82259702816a5330d7bd7607cd9676b11780e79ff7348c21103ff3ce49bd0"},
+    ],
+    "optional_download": True,
+    "vision": True,
+    # Every expert stays in RAM; the GPU holds the dense weights and an expert cache.
+    "uses_system_ram": True,
+    # Strata reads an image in at most 1,024 tokens by default; the calibration
+    # from each answer's usage corrects the estimate per conversation.
+    "image_tokens": 1024,
+    "read_timeout": 1800,
+    "sampling": FLASH_NEXT_Q3["sampling"],
+    "strata": {
+        "version": "0.1.39",
+        "model_name": "qwen3.8-flash-next-iq3_s",
+        # The n-gram (PLE) table, read lazily from the SSD.
+        "ple_gguf": "models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf",
+        "pack": "packs/iq3_s",
+        "mtp": "mtp/rt",
+        "expert_profile": "data/expert-profile.bin",   # relative to paths.strata_dir
+        "kv": "int8",
+        "spec": 4,
+        "spec_min_p": 0.5,
+        "vision": "gpu",
+        "vision_max_tokens": 1024,
+        "vram_reserve_mib": 700,
+        "resident_experts": False,
+        # A per-request effort change then keeps the cached prompt.
+        "effort_position": "end",
+    },
+}
+
 # Auxiliary draft model for the speculative ("MTP") q4/q5 profiles. Selected via
 # a profile, never a standalone model entry; same upstream repository as the
 # Qwen3.8-27B weights so the tokenizer matches the target models exactly.

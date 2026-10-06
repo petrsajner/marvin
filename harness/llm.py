@@ -1,4 +1,4 @@
-"""Streaming OpenAI-compatible llama-server client with tools and reasoning support."""
+"""Streaming OpenAI-compatible client for llama-server and Strata, with tools and reasoning support."""
 from __future__ import annotations
 
 import json
@@ -28,6 +28,22 @@ class AssistantResult:
 
 REASONING_EFFORTS = ("xhigh", "high", "medium", "low")
 SENTENCE_END_RE = re.compile(r"[.!?…](?:[\"'»”\)\]]*)\s*$")
+
+
+def _backend(cfg: Config) -> str:
+    try:
+        return cfg.backend()
+    except (AttributeError, KeyError, ValueError):
+        return "llama"
+
+
+def _backend_fields(cfg: Config) -> dict:
+    """Request fields one backend needs and the other must not get."""
+    if _backend(cfg) == "strata":
+        # -1 is "the rest of the context", as llama-server does without a cap. Sent
+        # explicitly, so defaults saved from Strata's own web page never apply.
+        return {"max_tokens": -1}
+    return {}
 
 
 def _template_kwargs(cfg: Config) -> dict:
@@ -179,6 +195,7 @@ class LLMClient:
             "messages": messages,
             "stream": True,
             "stream_options": {"include_usage": True},
+            **_backend_fields(self.cfg),
             **s,
         }
         if tools:
@@ -198,6 +215,7 @@ class LLMClient:
             return res
         inbox = queue.Queue(maxsize=32)
         cancelled = threading.Event()
+        generating = threading.Event()
         stream_box = {}
 
         def publish(kind, value):
@@ -225,8 +243,19 @@ class LLMClient:
                 if callable(close):
                     close()
 
+        def poll_prefill():
+            # Strata streams no prompt progress; its monitor data has it while the
+            # prompt is read, so the reading indicator looks the same on both engines.
+            from harness.strata_backend import prompt_progress
+            while not cancelled.wait(1.0) and not generating.is_set():
+                progress = prompt_progress(self.cfg)
+                if progress and not generating.is_set():
+                    publish("progress", progress)
+
         worker = threading.Thread(target=receive, name="llm-transport", daemon=True)
         worker.start()
+        if on_prompt_progress and _backend(self.cfg) == "strata":
+            threading.Thread(target=poll_prefill, name="llm-prefill-progress", daemon=True).start()
         last_chunk_at = time.monotonic()
         last_probe_at = 0.0
         idle_probes = 0
@@ -260,6 +289,12 @@ class LLMClient:
                 if kind == "done":
                     res.stopped = stop_started is not None
                     break
+                if kind == "progress":
+                    last_chunk_at = time.monotonic()
+                    idle_probes = 0
+                    if on_prompt_progress and not generation_started:
+                        on_prompt_progress(chunk)
+                    continue
                 if kind == "error":
                     from harness.servermgmt import last_failure, record_allocation_failure
                     record_allocation_failure(self.cfg, chunk)
@@ -287,6 +322,7 @@ class LLMClient:
                 r = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
                 if not generation_started and (r or delta.content or delta.tool_calls):
                     generation_started = True
+                    generating.set()
                     generation_callback = getattr(self, "on_generation_started", None)
                     if generation_callback:
                         generation_callback()
@@ -361,6 +397,7 @@ class LLMClient:
         params: dict[str, Any] = {
             "model": self.model_name,
             "messages": messages,
+            **_backend_fields(self.cfg),
             **s,
         }
         if thinking is None:

@@ -19,11 +19,13 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("cmd", choices=["start", "stop", "restart", "switch", "status"])
     ap.add_argument("model_pos", nargs="?", help="model key for start/switch/restart")
-    ap.add_argument("--model", dest="model_opt", help="model key (alternativa k pozici)")
+    ap.add_argument("--model", dest="model_opt", help="model key (alternative to the positional one)")
     ap.add_argument("--ctx", type=int, help="override ctx size")
     args = ap.parse_args()
     args.model = args.model_opt or (args.model_pos or None)
     cfg = load_config()
+    # This command exits once the server is ready; the server must keep running.
+    servermgmt.BIND_SERVER_TO_PROCESS = False
 
     if args.cmd == "start":
         return servermgmt.start(cfg, args.model, args.ctx)

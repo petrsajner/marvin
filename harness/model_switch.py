@@ -185,7 +185,7 @@ class ModelSwitchController:
                     continue
                 self._publish(gen, ModelSwitchSnapshot("starting", target, phase="loading"))
                 if not self._ensure_controlled(run_cfg, target, gen):
-                    raise RuntimeError("llama-server could not be prepared")
+                    raise RuntimeError("The model server could not be prepared")
                 if self._cancelled(gen):
                     continue
                 self.cfg = run_cfg

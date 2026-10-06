@@ -6,8 +6,27 @@ This note lets a new session continue the Strata work without the earlier conver
 - **Commits:**
   - `a088fb8` adds the design note;
   - `b0fd45d` adds the Phase 0 script and records the owner's decisions;
-  - a later commit adds this note.
-- **No pull request yet.** Create one only when the owner asks.
+  - `23c2362` adds this note;
+  - `2d612de` Phase 1 (golden llama tests);
+  - the next commit is Phase 2 (backend seam).
+- **No pull request yet.** Create one only when the owner asks. Phases 1 and 2
+  are committed locally only; ask before pushing.
+
+## The owner's requirement for the whole work (6 October 2026)
+
+Switching to the Strata model must work exactly like switching models today:
+pick it, keep working in the same chat. The user must not notice that more than
+the model changed. So:
+
+- nothing the user sees names an engine (names, labels, status, notices,
+  errors); logs and diagnostics may;
+- the same switch phases, STOP, steering, recovery and prefill indicator;
+- Strata's preparation (engine, venv, pack, MTP) runs inside the normal
+  download and prepare flow (Phase 3), never as manual steps;
+- an existing chat continues on the new engine.
+
+Ask the owner (AskUserQuestion, with a recommendation) before any choice that
+changes what the user sees or departs from the design.
 
 ## Read first
 
@@ -53,6 +72,18 @@ Every existing llama.cpp model must keep working unchanged.
   - then measure configurations for smaller machines; the community runs
     Strata on 12 GB cards.
 
+### Second round (6 October 2026, during Phase 2)
+
+- **Visibility:** the Strata entry stays behind `strata.enabled` until Phase 3
+  can download and prepare everything itself.
+- **Malformed tool call:** retried silently with an internal note
+  (`[TOOL CALL NOT READ`); after 3 unreadable replies in a row the step reports
+  the error; any readable reply resets the count.
+- **No API key:** the Strata server runs without a key, like llama-server
+  (127.0.0.1 only). The design's per-launch key is dropped.
+- **Labels:** the profiles read "Q8 · 256k" and "Q8 · 128k"; the model is
+  "Qwen 3.8 Flash-Next · IQ3_S".
+
 ## Status
 
 ### Phase 0: ready, waiting on the owner's PC
@@ -86,88 +117,101 @@ scripted `MockEngine`:
 **Not verified:** Windows-specific parts of the script, real speed, vision and
 `timings`. The mock has no clock or vision.
 
-### Phases 1–4: not started
+### Phase 1: done (`2d612de`)
 
-The next session can build Phases 1 and 2 in the cloud while the owner runs
-Phase 0.
+`tests/test_server_launch.py` pins the llama path:
+
+- the exact argv of all 42 built-in llama profiles plus 9 variants (manual
+  budget, frozen recovery placements, budget reselection, smaller card, extra
+  arguments) in `tests/fixtures/llama_launch_golden.json`;
+- launch side effects, early exits, failed readiness, identity, stop,
+  `wait_health` and the `ensure` ladder.
+
+The fixture is built from the built-in defaults only. An intentional argv change
+regenerates it with `MARVIN_REGENERATE_GOLDEN=1` and is reviewed as a diff. The
+golden tests passed unchanged after the Phase 2 refactor.
+
+### Phase 2: done (committed locally)
+
+- **Config:** `backend` field (`Config.backend`, closed list `BACKENDS`);
+  `Config.model_root` puts a Strata model's files under `paths.strata_data_dir`.
+  `strata.enabled` (default off) shows `flash_next_strata`. New paths:
+  `paths.strata_dir` (default `runtime/strata`) and `paths.strata_data_dir`
+  (default `runtime/models/strata`), laid out like Strata's own setup, so a
+  folder from `scripts/strata_eval.py install` works as is.
+- **Catalog:** `FLASH_NEXT_STRATA` with pinned ISTA IQ3_S shards and projector
+  (sizes and SHA-256 from the Hub at `ed59f92…`). Profiles `int8_256k` and
+  `int8_128k` in `measured_profiles.py` with `measurement_id`
+  `strata-phase0-pending` and no allocation figures yet.
+- **`harness/strata_backend.py`:** writes `runtime/strata-run/strata-<key>.json`
+  in setup's format (pool workers like setup on a hybrid CPU, effort at the end,
+  vision on the GPU), deletes the web page's shared settings, starts
+  `<strata_dir>\.venv\Scripts\python.exe <strata_dir>\serve\server.py --engine strata …`,
+  recognizes its process, waits for `loaded`, unloads, reads the expert-cache
+  slot count from the engine log and reports why a start failed.
+- **`servermgmt`:** the launch part of `_start_locked` is the shared `_launch`.
+  Strata branches in `_start_locked` (runtime checked before the weights
+  download), `_managed_process`, `stop` (`/unload`, then the tree), `wait_health`
+  (`probe`), `record_allocation_failure` (only output after readiness counts for
+  request errors), the memory guard and the failure path (whole tree).
+  A recovery keeps the logged expert-cache size and the VRAM reserve.
+- **`harness/winjob.py`:** a kill-on-close job for the Strata server.
+  `scripts/server.py` turns it off, because the CLI exits after the start.
+- **Client:** `max_tokens: -1` for Strata; prefill progress polled from
+  `GET /metrics` (`live.prompt_read`, `prompt_total`, `prefill_tok_s_mean`)
+  while the prompt is read; silent malformed-tool-call retry; `OVERFLOW_RE`
+  knows "leaves no room to answer"; the picture estimate follows each run's model
+  (`Session.image_token_cost`, set by the agent).
+- **UI:** `vision` and `uses_system_ram` come from explicit model fields; the
+  chat view hides `[TOOL CALL NOT READ`; the prefill indicator shows
+  position/length when an engine does not report its reuse.
+- **Fixes:** `scripts/strata_eval.py` now sends `/unload` as JSON (it got 415
+  before and fell back to terminating the server).
+
+**Verified on Windows (this PC, no GPU use):**
+
+- the full suite (unit tests and `tests/test_core.py`);
+- recorded SSE streams of Strata's real server (mock engine) in
+  `tests/fixtures/strata_stream_*.sse`, replayed through `LLMClient`;
+- Marvin's agent against Strata's server: an unreadable tool call, a readable
+  one, the answer; and a conversation started on a llama model continued on it;
+- the real launch path with a stand-in `server.py` that serves the mock engine
+  after a 3 s "load": venv launcher plus interpreter in the job, readiness,
+  identity, expert-cache record, reply, `/unload`, tree stop; and a crashed
+  Marvin process (`os._exit`) took the whole server with it.
+
+**Not verified:** the real engine (speed, `timings`, vision, memory, recovery
+on real pressure). That needs Phase 0 data and then the owner's PC.
 
 ## Next work
 
-### Phase 1: safety net (no behavior change)
+### Before Phase 3: Phase 0 results
 
-Add golden tests for the llama path. No unit test asserts the full argv today.
-`harness/servermgmt.py:_start_locked` (`:221-408`) depends on the following;
-mock all of them:
+- Set the profiles' allocation figures and `engine_args` (for example
+  `--kv-resident 32768`) from the measurements; record them under
+  `docs/design/measurements/`.
+- Choose normal or resident experts (`strata.resident_experts`).
+- Check tool-call reliability and the effort position at the end.
 
-- **Server state:** `health`, `running_model`, `stop`.
-- **GPU fitting:** `harness.gpu.normalize_vram_setting`, plus `effective_vram_gb`,
-  `fitting_profiles` and `fits` for non-adaptive models.
-- **Model files:** `cfg.model_ready` and `harness.model_files.download_pinned_model`.
-- **Runtime:** `harness.runtime_update.ensure_runtime`, which returns the exe
-  path; `cfg.model_file(...).exists()` and `cfg.mmproj_file`.
-- **Planning:** `harness.runtime_plan.plan_for`. Flash is adaptive and gets
-  `plan.args` and `plan.context`.
-- **MTP:** `_mtp_draft_args` for profiles with `speculative == "mtp"`.
-- **Process launch:** `subprocess.Popen`, the PID file `runtime/llama-server.pid`
-  (`model:pid`) and `runtime/model-run.json`.
-- **Memory guard:** `harness.hardware.detect_hardware(fresh=True)` (`vram_total`)
-  and the `watch_memory` guard thread.
-- **Readiness:** `wait_health`.
+### Phase 3: runtime and model preparation (design sections 2.7–2.9)
 
-Assert the exact argv for every built-in model and profile in
-`harness/config.py` and `harness/measured_profiles.py`, including Flash
-adaptive, MTP, `_recovery_placement` and a manual VRAM budget (`--fit off`).
+Everything inside the existing download, verify and prepare phases, so the
+user sees only the usual progress:
 
-Also cover:
+- `harness/strata_runtime.py`: pinned source archive, `strata-windows-x64.zip`,
+  hashed wheel lock with the two NVIDIA wheels, own venv from Marvin's Python,
+  driver ≥ 580, staged and activated like `runtime_update.py`;
+- pack (`tools/iq_pack.py`, needs llama.cpp's `gguf-py` at the commit setup
+  pins), MTP (`mtp_fetch.py` at a pinned revision, `mtp_pack.py`, `mtp_rt.py`),
+  each resumable, hash-checked and reported as "preparing";
+- then show the entry (drop the `strata.enabled` gate) and remove the setup
+  hint from `strata_backend.explain`;
+- offline backup and installer include `runtime/strata` when installed.
 
-- `_managed_process` identity (`:132-158`);
-- `stop` (`:171-196`);
-- the `ensure` recovery ladder (`:428-460`).
+### Phase 4
 
-Existing helpers to reuse are in `tests/test_runtime_support.py` and
-`tests/test_memory_profiles.py`.
-
-### Phase 2: backend seam
-
-Design section 2:
-
-- **Model entry:** a `backend: "llama" | "strata"` field, default `llama`.
-- **Catalog:** a `FLASH_NEXT_STRATA` entry in `harness/model_catalog.py`,
-  registered like `FLASH_NEXT_Q3` (`harness/config.py:79-81`). It is hidden
-  behind a config flag until Phase 4.
-- **`harness/strata_backend.py`:**
-  - writes the Strata config JSON (format: `strata-iq3_s.json` written by
-    Strata setup);
-  - spawns `<strata venv>\python.exe serve\server.py --engine strata --config … --host 127.0.0.1 --port <server.port>`
-    with `STRATA_API_KEY` set to a per-launch key.
-- **`servermgmt` dispatch** at:
-  - `_start_locked`;
-  - `_managed_process`: the Strata process is `python.exe`, so today's
-    `llama-server.exe` name check would delete its PID file;
-  - `wait_health`: require `service == "strata"` and `loaded`;
-  - `stop`: `POST /unload`, then terminate the tree;
-  - `record_allocation_failure`: Strata log markers.
-- **Windows job object** (KILL_ON_JOB_CLOSE) for the Strata server. Marvin has
-  none today.
-- **Client:**
-  - the per-launch API key;
-  - send `max_tokens` explicitly;
-  - one bounded advisory retry on "malformed tool call";
-  - add `leaves no room to answer` to `OVERFLOW_RE` (`harness/agent.py:129`);
-  - per-backend `IMAGE_TOKENS` (`harness/session.py:204`);
-  - optional prefill progress by polling `GET /status` (`prompt_read`,
-    `prompt_total`).
-- **`harness/web_api.py:113-114`:** `vision` and `uses_system_ram` come from
-  explicit fields, not `mmproj` or `--n-cpu-moe` greps.
-- **Neutral wording:** `harness/model_switch.py:188` says "llama-server could
-  not be prepared".
-
-### Phases 3 and 4
-
-Design sections 2.7–2.10 and 3: Strata runtime staging (pinned zip and wheel
-lock, own venv, driver ≥ 580), pack and MTP preparation through the existing
-download UI, picker, localization (EN and `harness/locales/cs.json`), manuals,
-measurements, then smaller-machine profiles.
+Qualification on the owner's PC, manuals (EN and CS), release notes, then the
+Strata entry replaces `flash_next_q3`; later, smaller-machine profiles.
 
 ## Testing in the cloud without a GPU
 

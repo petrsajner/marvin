@@ -70,7 +70,7 @@ def main() -> int:
         m = cfg.data["models"][key]
         if m.get("assets"):
             from harness.model_files import download_pinned_model
-            download_pinned_model(models_dir, m)
+            download_pinned_model(cfg.model_root(key), m)
             continue
         target = models_dir / m["file"]
         if target.exists() and target.stat().st_size > 1 << 30:

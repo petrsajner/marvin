@@ -1,4 +1,8 @@
-"""Manage the llama-server inference backend: start, stop, switch and status.
+"""Manage the inference server: start, stop, switch and status.
+
+llama-server runs every model except those whose entry names `backend: strata`;
+those run on the Strata engine (harness/strata_backend.py). Each function that
+touches the server process branches once on the backend.
 
 Shared by the CLI, TUI and web application."""
 from __future__ import annotations
@@ -15,10 +19,28 @@ from harness.config import Config
 
 HEALTH_TIMEOUT = 900  # Seconds; the initial load of a large model can take time.
 _start_lock = threading.Lock()
+# A Strata server pins tens of gigabytes of RAM, so it ends with this process
+# however it ends (harness/winjob.py). The CLI, which starts a server and exits,
+# turns this off.
+BIND_SERVER_TO_PROCESS = True
+MEMORY_MARKERS = ("out of memory", "cudaerrormemoryallocation", "failed to allocate",
+                  "cannot allocate memory", "std::bad_alloc")
 
 
 def pid_file(cfg: Config) -> Path:
     return cfg.path("paths.runtime_dir") / "llama-server.pid"
+
+
+def _backend_of(cfg: Config, model: str) -> str:
+    """The backend of a recorded model, from its entry or, once the entry is gone, from its launch record."""
+    entry = cfg.data.get("models", {}).get(model)
+    if isinstance(entry, dict):
+        return entry.get("backend", "llama")
+    try:
+        run = json.loads((cfg.path("paths.runtime_dir") / "model-run.json").read_text(encoding="utf-8"))
+        return run.get("backend", "llama") if run.get("model") == model else "llama"
+    except (OSError, ValueError, AttributeError):
+        return "llama"
 
 
 def last_failure(cfg: Config) -> dict:
@@ -35,14 +57,18 @@ def record_allocation_failure(cfg, error=""):
         record = json.loads((cfg.path("paths.runtime_dir") / "model-run.json").read_text(encoding="utf-8"))
         if record.get("model") != cfg.model_key():
             return
-        path = cfg.path("paths.runtime_dir") / "llama-server.log"
-        with path.open("rb") as stream:
-            stream.seek(max(record.get("log_offset", 0), path.stat().st_size - 65536))
-            tail = stream.read().decode(errors="replace")
+        markers = MEMORY_MARKERS
+        if record.get("backend") == "strata":
+            from harness import strata_backend
+            tail = strata_backend.recent_log_text(cfg, record)
+            markers += strata_backend.MEMORY_MARKERS
+        else:
+            path = cfg.path("paths.runtime_dir") / "llama-server.log"
+            with path.open("rb") as stream:
+                stream.seek(max(record.get("log_offset", 0), path.stat().st_size - 65536))
+                tail = stream.read().decode(errors="replace")
         message = (str(error) + "\n" + tail).lower()
-        if not any(marker in message for marker in (
-                "out of memory", "cudaerrormemoryallocation", "failed to allocate",
-                "cannot allocate memory", "std::bad_alloc")):
+        if not any(marker in message for marker in markers):
             return
         from harness.changes import atomic_write_text
         atomic_write_text(cfg.path("paths.runtime_dir") / "model-failure.json", json.dumps({
@@ -62,12 +88,13 @@ def health(cfg: Config, timeout: float = 3.0) -> bool:
 
 
 def wait_health(cfg: Config, timeout: float = HEALTH_TIMEOUT,
-                proc: subprocess.Popen | None = None, cancelled=None) -> bool:
+                proc: subprocess.Popen | None = None, cancelled=None, probe=None) -> bool:
+    """Wait until the server answers `probe` (default: /health with status 200)."""
     t0 = time.time()
     while time.time() - t0 < timeout:
         if cancelled and cancelled():
             return False
-        if health(cfg):
+        if (probe or health)(cfg):
             return True
         if proc is not None and proc.poll() is not None:
             return False
@@ -135,12 +162,18 @@ def _managed_process(cfg: Config):
     if record is None:
         pid_file(cfg).unlink(missing_ok=True)
         return None
-    _, pid = record
+    model, pid = record
     try:
         import psutil
         proc = psutil.Process(pid)
         if not proc.is_running() or proc.status() == psutil.STATUS_ZOMBIE:
             raise psutil.NoSuchProcess(pid)
+        if _backend_of(cfg, model) == "strata":
+            from harness import strata_backend
+            if not strata_backend.owns_process(cfg, model, proc):
+                pid_file(cfg).unlink(missing_ok=True)
+                return None
+            return proc
         if (proc.name() or "").lower() != "llama-server.exe":
             pid_file(cfg).unlink(missing_ok=True)
             return None
@@ -171,9 +204,18 @@ def slots_processing(cfg: Config) -> bool | None:
 def stop(cfg: Config, quiet: bool = False) -> bool:
     import psutil
     pf = pid_file(cfg)
+    record = _pid_record(cfg)
+    strata = record is not None and _backend_of(cfg, record[0]) == "strata"
     proc = _managed_process(cfg)
     killed = False
     if proc is not None:
+        if strata:
+            # The engine quits and frees the GPU and its pinned RAM itself; the
+            # process tree is ended below either way.
+            from harness import strata_backend
+            outcome = strata_backend.unload(cfg)
+            if not quiet:
+                print(f"[INFO] Strata unload: {outcome}")
         try:
             children = proc.children(recursive=True)
             for c in children:
@@ -192,7 +234,8 @@ def stop(cfg: Config, quiet: bool = False) -> bool:
             time.sleep(1)
     pf.unlink(missing_ok=True)
     if not quiet:
-        print("[OK] llama-server stopped." if killed else "[INFO] llama-server was not running.")
+        name = "Strata server" if strata else "llama-server"
+        print(f"[OK] {name} stopped." if killed else f"[INFO] {name} was not running.")
     return True
 
 
@@ -229,11 +272,13 @@ def _start_locked(cfg: Config, model_key: str | None = None,
     from harness.gpu import normalize_vram_setting
     cfg.data.setdefault("hardware", {})["vram_gb"] = normalize_vram_setting(
         cfg.data.get("hardware", {}).get("vram_gb", "auto"))
+    strata = cfg.backend(model_key) == "strata"
 
     if health(cfg):
         current = running_model(cfg)
         if current == model_key:
-            print(f"[OK] llama-server already running with model '{model_key}' ({cfg.base_url})")
+            print(f"[OK] {'Strata server' if strata else 'llama-server'} already running "
+                  f"with model '{model_key}' ({cfg.base_url})")
             print("   ", vram_str())
             return 0
         print(f"[INFO] Model '{current}' is running, switching to '{model_key}' ...")
@@ -254,6 +299,12 @@ def _start_locked(cfg: Config, model_key: str | None = None,
             cfg.set_kv_cache_mode(model_key, selected)
     requested_context = ctx_size or cfg.context_size(model_key)
     (cfg.path("paths.runtime_dir") / "model-failure.json").unlink(missing_ok=True)
+    if strata:
+        from harness import strata_backend
+        problems = strata_backend.runtime_problems(cfg, model_key)
+        if problems:
+            # Said before the weights download: they are of no use without the engine.
+            raise RuntimeError(strata_backend.explain(cfg, model_key, problems))
     if model.get("assets") and not cfg.model_ready(model_key):
         if model.get("adaptive_runtime"):
             from harness.runtime_plan import plan_for
@@ -261,10 +312,12 @@ def _start_locked(cfg: Config, model_key: str | None = None,
         from harness.model_files import download_pinned_model
         if on_phase:
             on_phase("downloading")
-        download_pinned_model(cfg.path("paths.models_dir"), model, should_stop=cancelled,
+        download_pinned_model(cfg.model_root(model_key), model, should_stop=cancelled,
                               on_progress=on_download_progress, on_phase=on_phase)
     if on_phase:
         on_phase("preparing")
+    if strata:
+        return _start_strata(cfg, model_key, requested_context, cancelled=cancelled, on_phase=on_phase)
     from harness.runtime_update import ensure_runtime
     exe = ensure_runtime(cfg, model_key, cancelled=cancelled)
     if exe is None:
@@ -322,28 +375,79 @@ def _start_locked(cfg: Config, model_key: str | None = None,
                                 on_download_progress=on_download_progress)
     argv += [str(x) for x in srv.get("extra_args", [])]
     cfg.data["_active_placement"] = active_placement
+    return _launch(cfg, model_key, argv, cwd=exe.parent,
+                   log_path=cfg.path("paths.runtime_dir") / "llama-server.log",
+                   ctx=ctx, plan=plan, placement=active_placement, cancelled=cancelled, on_phase=on_phase)
 
+
+def _start_strata(cfg: Config, model_key: str, ctx: int, *, cancelled=None, on_phase=None) -> int:
+    from harness import strata_backend
+    from harness.hardware import detect_hardware
+    prepared = strata_backend.prepare(cfg, model_key, ctx, hardware=detect_hardware(fresh=True))
+    if cancelled and cancelled():
+        return 1
+    cfg.data["_active_placement"] = prepared.placement
+    return _launch(cfg, model_key, prepared.argv, cwd=prepared.cwd, log_path=strata_backend.server_log(cfg),
+                   ctx=ctx, plan=None, placement=prepared.placement, cancelled=cancelled, on_phase=on_phase,
+                   strata=prepared)
+
+
+def _end_tree(proc) -> None:
+    """End a process's children; the Strata server runs its engine and image encoder as children."""
+    try:
+        import psutil
+        children = psutil.Process(proc.pid).children(recursive=True)
+    except Exception:
+        return
+    for child in children:
+        try:
+            child.kill()
+        except Exception:
+            pass
+
+
+def _settle_strata(cfg: Config, run: dict, *, ready: bool) -> None:
+    """Record what the engine settled on, so a recovery keeps the same expert cache and only shrinks the context."""
+    from harness import strata_backend
+    from harness.changes import atomic_write_text
+    slots = strata_backend.observed_expert_cache(run)
+    if slots:
+        run["placement"]["expert_cache_slots"] = slots
+    if ready:
+        run.update(strata_backend.log_offsets(cfg, run))
+    atomic_write_text(cfg.path("paths.runtime_dir") / "model-run.json", json.dumps(run))
+
+
+def _launch(cfg: Config, model_key: str, argv: list[str], *, cwd: Path, log_path: Path, ctx: int, plan,
+            placement: dict, cancelled=None, on_phase=None, strata=None) -> int:
+    """Start the server process, record it, guard host memory and wait until it is ready."""
     if on_phase:
         on_phase("loading")
 
-    log_path = cfg.path("paths.runtime_dir") / "llama-server.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_offset = log_path.stat().st_size if log_path.exists() else 0
     logf = open(log_path, "ab", buffering=0)
     logf.write(f"\n===== START {model_key} {time.strftime('%Y-%m-%d %H:%M:%S')} =====\n".encode())
+    # Strata's server is Python: it gets its own environment and no console input.
+    options = {"stdin": subprocess.DEVNULL, "env": strata.env} if strata else {}
     try:
         proc = subprocess.Popen(
             argv, stdout=logf, stderr=subprocess.STDOUT,
             creationflags=subprocess.CREATE_NO_WINDOW,
-            cwd=str(exe.parent),
+            cwd=str(cwd), **options,
         )
     finally:
         logf.close()
+    if strata and BIND_SERVER_TO_PROCESS:
+        from harness.winjob import contain
+        contain(proc)
     pid_file(cfg).write_text(f"{model_key}:{proc.pid}", encoding="utf-8")
     from harness.changes import atomic_write_text
-    atomic_write_text(cfg.path("paths.runtime_dir") / "model-run.json", json.dumps({
-        "model": model_key, "pid": proc.pid, "context": ctx, "placement": active_placement,
-        "log_offset": log_offset, "started": time.time()}))
+    run = {"model": model_key, "pid": proc.pid, "context": ctx, "placement": placement,
+           "log_offset": log_offset, "started": time.time()}
+    if strata:
+        run.update(strata.run)
+    atomic_write_text(cfg.path("paths.runtime_dir") / "model-run.json", json.dumps(run))
     loaded = threading.Event()
     memory_failure = []
     requested_budget = cfg.data.get("hardware", {}).get("vram_gb", "auto")
@@ -374,6 +478,8 @@ def _start_locked(cfg: Config, model_key: str | None = None,
                                         "vram_gb": cfg.data.get("hardware", {}).get("vram_gb", "auto")}))
                         with log_path.open("ab") as log:
                             log.write(f"\n[MEMORY GUARD] {code}; requesting a safer profile.\n".encode())
+                    if strata:
+                        _end_tree(proc)
                     try:
                         proc.terminate()
                     except OSError:
@@ -387,9 +493,16 @@ def _start_locked(cfg: Config, model_key: str | None = None,
     print(f"        log: {log_path}")
     print("[WAIT] loading the model into VRAM ...", end="", flush=True)
     t0 = time.time()
-    if not wait_health(cfg, proc=proc, cancelled=cancelled):
+    readiness = {}
+    if strata:
+        from harness import strata_backend
+        # Its port opens once the model is loaded, and /health then answers 200 even unloaded.
+        readiness["probe"] = strata_backend.ready
+    if not wait_health(cfg, proc=proc, cancelled=cancelled, **readiness):
         print(f"\n[ERROR] Server startup failed after {time.time() - t0:.0f}s. Last log lines:")
         print(log_path.read_bytes()[-2000:].decode(errors="replace"))
+        if strata:
+            _end_tree(proc)
         if proc.poll() is None:
             proc.kill()
         try:
@@ -397,12 +510,20 @@ def _start_locked(cfg: Config, model_key: str | None = None,
         except subprocess.TimeoutExpired:
             raise RuntimeError("The stopped model has not released its memory yet")
         pid_file(cfg).unlink(missing_ok=True)
+        if strata:
+            _settle_strata(cfg, run, ready=False)
         if not (cancelled and cancelled()):
             record_allocation_failure(cfg)
         if memory_failure:
             raise RuntimeError(memory_failure[0])
+        if strata and not (cancelled and cancelled()):
+            # Strata says why it stopped (driver, CUDA libraries, files); the
+            # recovery ladder still takes over when that was memory.
+            raise RuntimeError(strata_backend.start_failure(cfg, run))
         return 1
     loaded.set()
+    if strata:
+        _settle_strata(cfg, run, ready=True)
     print(f" OK ({time.time() - t0:.0f}s)")
     print("   ", vram_str())
     return 0

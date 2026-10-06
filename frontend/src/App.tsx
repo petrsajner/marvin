@@ -2311,14 +2311,39 @@ function formatDuration(seconds: number) {
 // server still holds is free to send, so a low share means something near the
 // start of the conversation changed and all of it is being recomputed.
 function prefillSummary(
-  progress: { total?: number; cache?: number; processed?: number; time_ms?: number },
+  progress: {
+    total?: number;
+    cache?: number;
+    processed?: number;
+    time_ms?: number;
+    rate?: number;
+  },
   tr: (text: string) => string,
 ) {
   const total = Number(progress.total || 0);
-  const cache = Number(progress.cache || 0);
   const processed = Number(progress.processed || 0);
   const elapsed = Number(progress.time_ms || 0) / 1000;
   const parts: string[] = [];
+  // Some engines report how far the prompt is read but not how much of it they
+  // reused; then the position against the length is the honest figure.
+  if (progress.cache === undefined) {
+    const share = Math.round((100 * processed) / Math.max(1, total));
+    parts.push(
+      formatTokens(processed) +
+        "/" +
+        formatTokens(total) +
+        " (" +
+        Math.max(0, Math.min(100, share)) +
+        "%)",
+    );
+    const left = total - processed;
+    const rate = Number(progress.rate || 0);
+    if (rate > 0 && left > rate) {
+      parts.push(tr("remaining") + " ~" + formatDuration(left / rate));
+    }
+    return " · " + parts.join(" · ");
+  }
+  const cache = Number(progress.cache || 0);
   const todo = Math.max(1, total - cache);
   const done = Math.max(0, processed - cache);
   // Label it. A bare percentage after "Reading context" reads as how full the

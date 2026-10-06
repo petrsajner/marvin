@@ -2,8 +2,10 @@
 
 Research date: 5 October 2026. Baseline: Marvin 1.18.2 (`de6bc00`) and Strata
 v0.1.39 ([Niko1221/Strata](https://github.com/Niko1221/Strata) `6f32ec0`).
-Status: **design approved for Phase 0** (owner decisions of 6 October 2026 in
-section 5). Phase 0 tooling: `scripts/strata_eval.py`.
+Status: **Phases 1 and 2 built**; Phase 0 runs on the owner's PC (owner
+decisions of 6 October 2026 in section 5, including the second round that
+changed parts of section 2). Phase 0 tooling: `scripts/strata_eval.py`.
+Current state: `docs/design/2026-10-06-strata-handover.md`.
 
 Strata is a C++/CUDA engine that runs only Qwen3.8-Flash-Next, plus a Python
 server with an OpenAI-compatible API. Marvin already runs Flash-Next through
@@ -224,8 +226,8 @@ Strata server line references are to `serve/server.py` unless another file is na
   `AGENTS.md`; the speed projection is experimental. Marvin does not enable or
   send them.
 - **Strata's web page and `/settings`.** The server always serves them on its
-  port. Marvin binds 127.0.0.1, uses a per-launch API key, and never links the
-  page.
+  port. Marvin binds 127.0.0.1 and never links the page. It sets no API key,
+  like llama-server (owner, 6 October).
 - **Image URL and local path inputs.** Marvin sends only `data:` URLs.
 
 ## 2. Integration design
@@ -303,8 +305,8 @@ dispatches once on `cfg.model(key).get("backend", "llama")`:
 
 ### 2.4 Client (`harness/llm.py`, `harness/agent.py`, `harness/session.py`)
 
-1. **API key.** `LLMClient` uses the per-launch key for a Strata model. Today it
-   always sends `api_key="local"`.
+1. **API key.** None, as for llama-server; `LLMClient` keeps `api_key="local"`.
+   The server's environment drops an inherited `STRATA_API_KEY`.
 2. **Effort position.** The generated config sets `"effort_position": "end"`,
    so a per-request effort change does not invalidate the whole prompt. Its
    quality effect is checked in qualification.
@@ -312,17 +314,20 @@ dispatches once on `cfg.model(key).get("backend", "llama")`:
    under Marvin's runtime folder. Marvin also sends `max_tokens` explicitly for
    Strata models, so no web-page default can apply.
 4. **Malformed tool call.** An SSE error whose message starts with
-   "malformed tool call" becomes one advisory retry, like the overflow path at
-   `agent.py:766-773`. The retry is a `CONTINUE` with guidance to repeat the
-   call in the documented format, not `Status.ERROR`. It is bounded per task.
+   "malformed tool call" becomes a silent advisory retry: a `CONTINUE` with an
+   internal `[TOOL CALL NOT READ` note, no notice in the chat. After 3
+   unreadable replies in a row the step reports the error; a readable reply
+   resets the count.
 5. **Overflow.** Extend `OVERFLOW_RE` with `leaves no room to answer`.
 6. **Image estimate.** `IMAGE_TOKENS` becomes per-backend. Strata's value is
    measured; its default cap is 1,024 tokens.
-7. **Prefill progress.** Optional, phase 3. While a Strata request is reading
-   its prompt, poll `GET /status` about once a second and translate
-   `prompt_read`/`prompt_total` into the existing `prompt_progress` callback.
-   Without it the UI shows the generic reading state. At the published prefill
-   speed this only matters above about 50k new tokens.
+7. **Prefill progress.** Built in Phase 2, because the switch must look the
+   same. While a Strata request reads its prompt, the client polls
+   `GET /metrics` once a second; `live.prompt_read`, `prompt_total`,
+   `elapsed_s` and `prefill_tok_s_mean` become the usual `prompt_progress`
+   event. (`/status` has no live progress in v0.1.39.) Strata does not report
+   the reused prefix during the read, so the indicator shows position against
+   length and the remaining time from the read rate.
 8. **Unchanged:** sampling, `chat_template_kwargs`, `reasoning_content`, tool
    accumulation, the `/slots` stall probe, cancel by closing the stream, and
    `usage.prompt_tokens` calibration.
@@ -494,6 +499,17 @@ new Strata profiles are measured, because they are new weights and a new runtime
 5. **Scope:** first get the most out of the owner's PC (RTX 5090 32 GB, 64 GB
    RAM). Then measure which configurations to offer on smaller machines; the
    community runs Strata on 12 GB cards.
+
+Second round, the same day:
+
+6. **Invisible engine.** Switching to the Strata model works like any model
+   switch: pick it and continue in the same chat. Nothing the user sees names an
+   engine; preparation runs inside the usual download and prepare phases.
+7. **Hidden until Phase 3** behind `strata.enabled`.
+8. **Silent malformed-tool-call retry** (section 2.4, item 4).
+9. **No API key** (section 2.4, item 1).
+10. **Labels:** "Qwen 3.8 Flash-Next · IQ3_S", profiles "Q8 · 256k" and
+    "Q8 · 128k".
 
 ## 6. Phase 0 procedure
 

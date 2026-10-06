@@ -1,2 +1,3 @@
 *.bat text eol=crlf
 *.pdf binary
+tests/fixtures/*.sse -text
