@@ -7,6 +7,11 @@ not changed. See docs/design/2026-10-05-strata-backend.md.
 
     python scripts/strata_eval.py install                    # IQ3_S, all experts in RAM
     python scripts/strata_eval.py install --low-ram resident # adds the resident variant
+
+With the model files where Marvin's entry looks for them (paths.strata_data_dir),
+so they are downloaded only once; every command then takes the same --root:
+
+    python scripts/strata_eval.py install --root runtime/strata-eval --data-dir runtime/models/strata
     python scripts/strata_eval.py run --context 262144
     python scripts/strata_eval.py run --context 131072
     python scripts/strata_eval.py report
@@ -105,9 +110,10 @@ def install(args) -> int:
     root = args.root.resolve()
     source = fetch_strata(root)
     python = ensure_venv(root)
+    data_dir = (args.data_dir or root / "Strata-data").resolve()
     command = [str(python), "setup.py", "--family", "qwen", "--model", args.model, "--context", str(args.context),
                "--kv", "int8", "--vision", "gpu", "--low-ram", args.low_ram, "--experimental-speed-projection", "off",
-               "--port", str(DEFAULT_PORT), "--data-dir", str(root / "Strata-data"),
+               "--port", str(DEFAULT_PORT), "--data-dir", str(data_dir),
                "--yes", "--no-start", "--no-browser"]
     if (strata_dir(root) / f"strata-{args.model.lower()}.json").exists():
         command.append("--setup")
@@ -760,6 +766,9 @@ def main() -> int:
     p.add_argument("--model", default="IQ3_S")
     p.add_argument("--context", type=int, default=262144)
     p.add_argument("--low-ram", choices=["off", "resident"], default="off")
+    p.add_argument("--data-dir", type=Path,
+                   help="model files, packs and MTP (default <root>/Strata-data); Marvin's own is "
+                        "runtime/models/strata")
     p.set_defaults(func=install)
     p = sub.add_parser("run", help="start one configuration, run the scenarios and stop it")
     p.add_argument("--root", type=Path, default=default_root())
