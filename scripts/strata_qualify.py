@@ -50,6 +50,19 @@ DATA_DIR = ROOT / "runtime" / "models" / "strata"
 # What a card of each class leaves the model beside a desktop (the earlier profiles' limits).
 USABLE_VRAM_GIB = {24: 21.9, 16: 14.3}
 WEIGHTS = {"IQ3_S": 54817524224, "IQ2_XS": 39225954592}
+# The Hub's SHA-256 at ISTA-DASLab's pinned revision ed59f92, relative to <data>/models.
+KNOWN_SHA256 = {
+    "IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf":
+        "4c1eb2ceb4915e1192f4f386021897bde56a97f40a0bb78bb86465e0f7d2aca3",
+    "IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf":
+        "316b46f3a2dbd68c900f43136ab9449f9dcc3725dfd8c794847c204bc161e113",
+    "IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf":
+        "92cee27ae5bbadcd732416a0f7a7f0acc092399dbbe8f5a5efa707c2ec0a49d7",
+    "IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00002-of-00002.gguf":
+        "316b46f3a2dbd68c900f43136ab9449f9dcc3725dfd8c794847c204bc161e113",
+    "mmproj-Qwen3.8-Flash-Next-BF16.gguf":
+        "b1a82259702816a5330d7bd7607cd9676b11780e79ff7348c21103ff3ce49bd0",
+}
 CHECKS = ("decode", "tool_roundtrip", "vision", "stop_stream", "application", "long")
 
 
@@ -308,6 +321,39 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def verify_weights() -> dict:
+    """Hash every downloaded model file once; a record keyed by size and mtime avoids hashing it again."""
+    record_path = ROOT / "runtime" / "strata-eval" / "weights-verified.json"
+    try:
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        record = {}
+    for relative, expected in KNOWN_SHA256.items():
+        path = DATA_DIR / "models" / relative
+        if not path.is_file():
+            continue
+        stat = path.stat()
+        known = record.get(relative, {})
+        if known.get("size") == stat.st_size and known.get("mtime_ns") == stat.st_mtime_ns:
+            continue
+        # Strata's setup hard-links the shared second shard; the same file is hashed once.
+        twin = next((other for other in record if other != relative and (DATA_DIR / "models" / other).is_file()
+                     and os.path.samefile(DATA_DIR / "models" / other, path)
+                     and record[other].get("mtime_ns") == stat.st_mtime_ns), None)
+        if twin:
+            record[relative] = {**record[twin], "ok": record[twin]["sha256"] == expected, "same_file_as": twin}
+            record_path.write_text(json.dumps(record, indent=1), encoding="utf-8")
+            continue
+        print("SHA-256", relative, flush=True)
+        actual = sha256(path)
+        record[relative] = {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns, "sha256": actual,
+                            "ok": actual == expected}
+        record_path.parent.mkdir(parents=True, exist_ok=True)
+        record_path.write_text(json.dumps(record, indent=1), encoding="utf-8")
+        print("   ", "ok" if actual == expected else f"MISMATCH (expected {expected})", flush=True)
+    return record
+
+
 # -- the long input check ----------------------------------------------------------------------------------------
 
 def count_tokens(cfg: Config, text: str) -> int:
@@ -529,6 +575,9 @@ def run(args) -> int:
                                  "weights": {}}}
     installed_gib = hw.ram_total / GIB
     wanted = set(args.only.split(",")) if args.only else None
+    if args.verify:
+        report["provenance"]["weights"] = verify_weights()
+        save(result_file, report)
     for spec in matrix():
         if wanted and spec["id"] not in wanted:
             continue
@@ -539,9 +588,10 @@ def run(args) -> int:
         if not shard.exists() or (shard.stat().st_size != WEIGHTS[spec["weights"]] and not args.any_weights):
             print("SKIP", spec["id"], "weights not downloaded:", shard, flush=True)
             continue
-        if args.verify and spec["weights"] not in report["provenance"]["weights"]:
-            print("SHA-256", shard.name, flush=True)
-            report["provenance"]["weights"][spec["weights"]] = sha256(shard)
+        relative = f"{spec['weights']}/{shard.name}"
+        if args.verify and not report["provenance"]["weights"].get(relative, {}).get("ok"):
+            print("SKIP", spec["id"], "weights failed or missed the SHA-256 check:", relative, flush=True)
+            continue
         if servermgmt.health(Config(copy.deepcopy(load_config().data), ROOT)):
             raise RuntimeError("A model server is running on Marvin's port; stop it first")
         run_case(spec, output, report, result_file, installed_gib)
@@ -555,6 +605,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("list", help="print the case matrix")
+    sub.add_parser("verify", help="hash the downloaded weights against the Hub's SHA-256 (cached)")
     p = sub.add_parser("run", help="run the cases whose weights are downloaded")
     p.add_argument("--only", help="comma-separated case ids")
     p.add_argument("--output", type=Path)
@@ -570,6 +621,9 @@ def main() -> int:
             print(spec["id"])
         print(len(matrix()), "cases")
         return 0
+    if args.command == "verify":
+        record = verify_weights()
+        return 0 if record and all(item["ok"] for item in record.values()) else 1
     return run(args)
 
 
