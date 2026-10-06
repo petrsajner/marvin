@@ -195,6 +195,19 @@ The approved measurement plan is
 IQ3_S and IQ2_XS, GPU classes 32/24/16 (VRAM ballast) and RAM classes
 64/48/32 (RAM ballast), the five September checks in every case.
 
+**State on 6 October, 23:10 (before the owner's restart for the larger page file):**
+
+- Phase 0 passed for IQ3_S at 256k and 128k.
+- Done: every IQ3_S case on the 32 GB card, and the first two IQ2_XS cases.
+  The results are in `%LOCALAPPDATA%\StrataEval\qualify\2026-10-06\results.json`;
+  for the Claude app that path is under
+  `Packages\Claude_pzs8sxrjxfjjc\LocalCache\Local`.
+- Next: `python scripts/strata_qualify.py run --verify --resume` measures the
+  rest, including the 24/16 GB cards with the VRAM ballast. The page file is now
+  a fixed 64–96 GB.
+- The engine-reserve runs of the smaller cards are kept under `superseded`. The
+  calibrated reserve held 16 GB cards to 14.15 GiB, but not 24 GB cards.
+
 ### Before Phase 3: Phase 0 results
 
 - Set the profiles' allocation figures and `engine_args` (for example
