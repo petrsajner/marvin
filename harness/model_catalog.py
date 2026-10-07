@@ -107,6 +107,33 @@ FLASH_NEXT_STRATA = {
     },
 }
 
+# The same model with IQ2_XS experts: 2-3x faster than IQ3_S on 48 and 32 GB of
+# RAM, at a cost in weight quality the user takes on knowingly (owner,
+# 2026-10-07; docs/design/strata-qualification-2026-10-07.md). The second shard
+# and the projector are IQ3_S's files: a download links them instead of fetching
+# them again, and its own receipt keeps the two entries from unverifying each other.
+FLASH_NEXT_STRATA_IQ2 = {
+    **FLASH_NEXT_STRATA,
+    "alias": "Qwen3.8-Flash-Next IQ2_XS (69 GB, text and vision, faster on smaller PCs)",
+    "status_label": "Qwen 3.8 Flash-Next · IQ2_XS",
+    "receipt": ".marvin-verified-iq2_xs.json",
+    "file": "models/IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf",
+    "assets": [
+        {"path": "IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf", "size": 39225954592,
+         "sha256": "92cee27ae5bbadcd732416a0f7a7f0acc092399dbbe8f5a5efa707c2ec0a49d7"},
+        {"path": "IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00002-of-00002.gguf", "size": 28800138432,
+         "sha256": "316b46f3a2dbd68c900f43136ab9449f9dcc3725dfd8c794847c204bc161e113"},
+        {"path": "mmproj-Qwen3.8-Flash-Next-BF16.gguf", "size": 907543008,
+         "sha256": "b1a82259702816a5330d7bd7607cd9676b11780e79ff7348c21103ff3ce49bd0"},
+    ],
+    "strata": {
+        **FLASH_NEXT_STRATA["strata"],
+        "model_name": "qwen3.8-flash-next-iq2_xs",
+        "ple_gguf": "models/IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00002-of-00002.gguf",
+        "pack": "packs/iq2_xs",
+    },
+}
+
 # Auxiliary draft model for the speculative ("MTP") q4/q5 profiles. Selected via
 # a profile, never a standalone model entry; same upstream repository as the
 # Qwen3.8-27B weights so the tokenizer matches the target models exactly.

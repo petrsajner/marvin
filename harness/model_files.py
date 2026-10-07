@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import time
@@ -31,9 +32,15 @@ def signature(spec: dict) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
-def read_receipt(directory: Path) -> dict:
+def receipt_file(directory: Path, spec: dict | None = None) -> Path:
+    """The download receipt. Specs that share a directory (two weights of one model with a common
+    projector) name their own, so neither reports the other's files as unverified."""
+    return directory / ((spec or {}).get("receipt") or ".marvin-verified.json")
+
+
+def read_receipt(directory: Path, spec: dict | None = None) -> dict:
     try:
-        receipt = json.loads((directory / ".marvin-verified.json").read_text(encoding="utf-8"))
+        receipt = json.loads(receipt_file(directory, spec).read_text(encoding="utf-8"))
         return receipt if isinstance(receipt, dict) and isinstance(receipt.get("files"), dict) else {}
     except (OSError, ValueError):
         return {}
@@ -57,8 +64,22 @@ def model_ready(models_dir: Path, spec: dict) -> bool:
     if not assets:
         return (Path(models_dir) / spec["file"]).is_file()
     directory = local_model_dir(models_dir, spec)
-    receipt = read_receipt(directory)
+    receipt = read_receipt(directory, spec)
     return receipt.get("signature") == signature(spec) and all(asset_verified(directory, a, receipt) for a in assets)
+
+
+def verified_twin(directory: Path, asset: dict) -> Path | None:
+    """A file another receipt in this directory verified with the same checksum and size."""
+    for path in sorted(directory.glob(".marvin-verified*.json")):
+        try:
+            files = json.loads(path.read_text(encoding="utf-8")).get("files", {})
+        except (OSError, ValueError, AttributeError):
+            continue
+        for relative, record in (files.items() if isinstance(files, dict) else ()):
+            if (isinstance(record, dict) and record.get("sha256") == asset["sha256"] and relative != asset["path"]
+                    and asset_verified(directory, {**asset, "path": relative}, {"files": files})):
+                return asset_path(directory, relative)
+    return None
 
 
 def ranged_download(directory: Path, spec: dict, asset: dict, *, progress, should_stop=None, force=False, on_progress=None) -> Path:
@@ -151,13 +172,15 @@ def _download_pinned_model(models_dir: Path, spec: dict, *, force=False, progres
     disable_progress_bars()
     directory = local_model_dir(models_dir, spec)
     directory.mkdir(parents=True, exist_ok=True)
-    receipt = read_receipt(directory)
+    receipt = read_receipt(directory, spec)
     if receipt.get("signature") != signature(spec):
         receipt = {"signature": signature(spec), "files": {}}
     missing_bytes = 0
     for asset in spec["assets"]:
         target = asset_path(directory, asset["path"])
         if not force and target.is_file() and target.stat().st_size == asset["size"]:
+            continue
+        if not force and verified_twin(directory, asset):
             continue
         partial = target.with_name(target.name + ".marvin.part")
         resumed = (partial.stat().st_size if not force and
@@ -182,6 +205,16 @@ def _download_pinned_model(models_dir: Path, spec: dict, *, force=False, progres
             on_phase("downloading")
         started = time.monotonic()
         progress(f"[DOWNLOAD {index}/{len(spec['assets'])}] {asset['path']} ({asset['size']/1e9:.2f} GB)")
+        twin = None if force or target.is_file() else verified_twin(directory, asset)
+        if twin:
+            # The same file under another name for weights that share it: a hard link takes no space.
+            target.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                os.link(twin, target)
+                progress(f"[LINKED] {asset['path']} = {twin.relative_to(directory).as_posix()}")
+            except OSError as exc:
+                progress(f"[COPY] {asset['path']} from {twin.name} (no hard link: {exc})")
+                shutil.copyfile(twin, target)
         if not force and target.is_file() and target.stat().st_size == asset["size"]:
             path = target
         elif spec.get("download_transport") == "range":
@@ -212,7 +245,7 @@ def _download_pinned_model(models_dir: Path, spec: dict, *, force=False, progres
             path = target
         stat = path.stat()
         receipt["files"][asset["path"]] = {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns, "sha256": actual}
-        atomic_write_text(directory / ".marvin-verified.json", json.dumps(receipt, indent=2))
+        atomic_write_text(receipt_file(directory, spec), json.dumps(receipt, indent=2))
         progress(f"[DONE] {asset['path']} ({time.monotonic()-started:.1f}s)")
         completed_bytes += asset["size"]
         if on_progress:

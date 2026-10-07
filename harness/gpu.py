@@ -66,9 +66,19 @@ def profile_min_vram(profile: dict) -> float:
         return 1e9
 
 
+def installed_ram_gib() -> float:
+    import psutil
+    return psutil.virtual_memory().total / 1024**3
+
+
 def fitting_profiles(cfg, model_key: str, vram_gb: float | None) -> dict[str, dict]:
-    """Return profiles compatible with a known GPU capacity budget."""
+    """Return profiles compatible with a known GPU capacity budget and this PC's RAM class."""
     profiles = cfg.kv_cache_profiles(model_key)
+    if any("ram_class" in prof for prof in profiles.values()):
+        # Profiles measured per RAM class (Strata keeps the experts in RAM).
+        from harness.measured_profiles import ram_class
+        machine = ram_class(installed_ram_gib())
+        profiles = {key: prof for key, prof in profiles.items() if prof.get("ram_class", machine) == machine}
     if vram_gb is None:
         return profiles
     if cfg.model(model_key).get("adaptive_runtime"):
@@ -159,7 +169,8 @@ def lower_memory_profiles(cfg, model_key=None):
     precision = current.get("cache_type", current_key)
     group = {name: profile for name, profile in profiles.items()
              if profile.get("cache_type", name) == precision
-             and profile.get("gpu_class") == current.get("gpu_class")}
+             and profile.get("gpu_class") == current.get("gpu_class")
+             and profile.get("ram_class") == current.get("ram_class")}
     current_mtp = current.get("speculative") == "mtp"
     keep_mtp = current_mtp or key in cfg.data.get("_recovery_origin_mtp", ())
     ladder: list[str] = []

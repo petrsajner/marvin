@@ -73,10 +73,11 @@ BUILTIN_MODELS: dict[str, dict[str, Any]] = {'q4': {'alias': 'Qwen3.8-27B Q4_K_M
                  'sampling': {'thinking': {'temperature': 0.6, 'top_p': 0.95, 'min_p': 0.01},
                               'non_thinking': {'temperature': 0.2}}}}
 
-from harness.model_catalog import FLASH_NEXT_Q3, FLASH_NEXT_STRATA
+from harness.model_catalog import FLASH_NEXT_Q3, FLASH_NEXT_STRATA, FLASH_NEXT_STRATA_IQ2
 
 BUILTIN_MODELS["flash_next_q3"] = copy.deepcopy(FLASH_NEXT_Q3)
 BUILTIN_MODELS["flash_next_strata"] = copy.deepcopy(FLASH_NEXT_STRATA)
+BUILTIN_MODELS["flash_next_strata_iq2"] = copy.deepcopy(FLASH_NEXT_STRATA_IQ2)
 
 from harness.measured_profiles import install_profiles
 install_profiles(BUILTIN_MODELS)
@@ -84,8 +85,8 @@ install_profiles(BUILTIN_MODELS)
 # The inference engines a model entry can name. A closed list, not a registry:
 # servermgmt branches on it at the few places that touch the server process.
 BACKENDS = ("llama", "strata")
-# Shown only with strata.enabled until the Strata entry is qualified (Phase 4).
-STRATA_MODELS = ("flash_next_strata",)
+# Shown only with strata.enabled until Marvin prepares the engine itself (Phase 3).
+STRATA_MODELS = ("flash_next_strata", "flash_next_strata_iq2")
 
 DEFAULTS: dict[str, Any] = {
     "server": {

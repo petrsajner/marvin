@@ -59,25 +59,44 @@ def profile(context, gpu_class, measured, *, precision="q8_0", value_precision=N
 
 SMALL_CARD_MEASUREMENT = "profiles-16gb-2026-09-19"
 
-# Strata (docs/design/2026-10-05-strata-backend.md). The Phase 0 run on the
-# owner's PC (scripts/strata_eval.py) measures these placements. Until its record
-# lands under docs/design/measurements/ they carry no allocation figures, and the
-# model entry stays behind the strata.enabled setting.
-STRATA_MEASUREMENT_ID = "strata-phase0-pending"
+# Strata (docs/design/2026-10-05-strata-backend.md), approved by the owner on
+# 2026-10-07 from docs/design/strata-qualification-2026-10-07.md. The model
+# entries stay behind the strata.enabled setting until Marvin prepares the engine.
+STRATA_MEASUREMENT_ID = "strata-qualification-2026-10-07"
 
 
-def strata_profile(context, gpu_class, *, engine_args=(), measurement=STRATA_MEASUREMENT_ID):
-    """One Strata placement: int8 KV, every expert in RAM, free VRAM as the expert cache.
+def strata_profile(context, gpu_class, ram_class, measured, *, mode="normal", kv_resident=False,
+                   expert_cache=None, measurement=STRATA_MEASUREMENT_ID):
+    """One Strata placement: int8 KV with MTP, for one GPU class and one RAM class.
 
-    `engine_args` are this placement's own engine options, for example
-    ["--kv-resident", "32768"] to keep the whole KV cache in RAM. Strata's setup
-    leaves that out for IQ3_S on 64 GB, so these start without it.
+    Modes: "normal" keeps every expert in RAM; "resident" page-locks the experts
+    the GPU does not hold, as far as the free RAM allows, and reads the rest from
+    the GGUF files in place. `kv_resident` keeps the whole KV cache in RAM, which
+    leaves a 16 GB card more room for experts. `expert_cache` fixes the GPU's
+    expert cache (a byte budget in largest-expert units) at what was measured to
+    fit the class; without it the engine fills the free VRAM.
 
     The label reads like any other 8-bit cache profile in the picker (owner's
     choice, 2026-10-06); cache_type keeps the engine's own name."""
-    return {"cache_type": "int8", "ctx_size": context * 1024, "gpu_class": gpu_class,
-            "label": f"Q8 · {context}k", "measurement_id": measurement,
-            "engine_args": list(engine_args)}
+    engine_args = ["--resident-experts"] if mode == "resident" else []
+    if kv_resident:
+        engine_args += ["--kv-resident", "32768"]
+    spec = {"cache_type": "int8", "ctx_size": context * 1024, "gpu_class": gpu_class, "ram_class": ram_class,
+            "min_vram_gb": measured, "label": f"Q8 · {context}k", "measurement_id": measurement,
+            "engine_args": engine_args}
+    if expert_cache:
+        spec["expert_cache"] = expert_cache
+    return spec
+
+
+def strata_menu(rows):
+    """Profiles from (RAM class, GPU class, mode, KV in RAM, ((context, measured GiB, cache), ...)) rows."""
+    menu = {}
+    for ram, gpu, mode, kv_resident, contexts in rows:
+        for context, measured, cache in contexts:
+            menu[f"int8_{context}k_r{ram}g{gpu}"] = strata_profile(
+                context, gpu, ram, measured, mode=mode, kv_resident=kv_resident, expert_cache=cache)
+    return menu
 
 PROFILES = {
     # The smallest quant. Two gigabytes less than IQ3_S, which buys either twice
@@ -146,12 +165,35 @@ PROFILES = {
         "q8_0_512k_spill": profile(512, 24, 21.499, cpu_layers=21),
         "q8_0_256k_spill": profile(256, 24, 20.899, cpu_layers=18),
     },
-    # The owner's decision of 2026-10-06: 256k and 128k, switchable like any other
-    # model's profiles. Smaller GPU and RAM classes follow from their own runs.
-    "flash_next_strata": {
-        "int8_256k": strata_profile(256, 32),
-        "int8_128k": strata_profile(128, 32),
-    },
+    # Measured server VRAM and the cache budgets of the 2026-10-07 record. Below
+    # 64 GB of RAM the resident mode won everywhere; with 64 GB a 16 GB card keeps
+    # the KV cache in RAM.
+    "flash_next_strata": strata_menu([
+        (64, 32, "normal", False, ((256, 30.535, None), (128, 30.56, None))),
+        (64, 24, "normal", False, ((256, 21.943, 4110), (128, 21.945, 4882))),
+        (64, 16, "normal", True, ((256, 14.344, 2240), (128, 14.345, 2330))),
+        (48, 32, "resident", False, ((256, 30.468, None), (128, 30.346, None))),
+        (48, 24, "resident", False, ((256, 21.941, 4118), (128, 21.942, 4890))),
+        # 128k with its own larger cache ran out of memory on the long input; this
+        # is the 256k placement with a smaller KV, as recovery from 256k runs it.
+        (48, 16, "resident", False, ((256, 14.349, 1054), (128, 14.349, 1054))),
+        (32, 32, "resident", False, ((256, 30.469, None), (128, 30.401, None))),
+        (32, 24, "resident", False, ((256, 21.94, 4129), (128, 21.941, 4901))),
+        (32, 16, "resident", False, ((256, 14.345, 1065), (128, 14.344, 1837))),
+    ]),
+    "flash_next_strata_iq2": strata_menu([
+        (64, 32, "normal", False, ((256, 30.081, None), (128, 30.518, None))),
+        (64, 24, "normal", False, ((256, 21.95, 7921), (128, 21.95, 9282))),
+        (64, 16, "normal", True, ((256, 14.349, 4619), (128, 14.35, 4780))),
+        # The 48 GB / 256k run lost its server's VRAM counter; the placement is the
+        # 64 GB one, which RAM does not change.
+        (48, 32, "normal", False, ((256, 30.081, None), (128, 30.411, None))),
+        (48, 24, "normal", False, ((256, 21.95, 7921), (128, 21.95, 9282))),
+        (48, 16, "normal", False, ((256, 14.348, 2517), (128, 14.348, 3878))),
+        (32, 32, "resident", False, ((256, 30.332, None), (128, 30.342, None))),
+        (32, 24, "resident", False, ((256, 21.952, 7940), (128, 21.946, 9300))),
+        (32, 16, "resident", False, ((256, 14.349, 2535), (128, 14.349, 3896))),
+    ]),
 }
 
 
@@ -166,6 +208,12 @@ def install_profiles(models):
 def gpu_class(capacity):
     # Reported usable capacity is slightly below the card's nominal size.
     return 32 if capacity >= 31 else 24 if capacity >= 23 else 16 if capacity >= 15 else 0
+
+
+def ram_class(installed_gib):
+    """The RAM class of the installed memory; Windows reports a little less than the modules' size.
+    More than 64 GB uses the 64 GB profiles."""
+    return 64 if installed_gib >= 60 else 48 if installed_gib >= 44 else 32 if installed_gib >= 30 else 0
 
 
 def placement(cfg, key=None):

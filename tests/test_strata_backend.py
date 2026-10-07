@@ -26,6 +26,9 @@ from harness.hardware import Hardware, shared_working_set
 from harness.runtime_plan import GIB
 
 KEY = "flash_next_strata"
+IQ2 = "flash_next_strata_iq2"
+# The owner's PC: 64 GB of RAM and a 32 GB card.
+P256, P128 = "int8_256k_r64g32", "int8_128k_r64g32"
 PID = 52345
 NO_WINDOW = 0x08000000
 HYBRID = Hardware("Intel64 Family 6 Model 198", 20, 20, tuple(range(8)), tuple(range(20)),
@@ -95,7 +98,10 @@ class ConfigTests(unittest.TestCase):
         self.assertNotIn(KEY, strata_config(self.root, enabled=False).data["models"])
         cfg = strata_config(self.root)
         self.assertIn(KEY, cfg.data["models"])
-        self.assertEqual(list(cfg.kv_cache_profiles(KEY)), ["int8_256k", "int8_128k"])
+        self.assertIn(IQ2, cfg.data["models"])
+        self.assertNotIn(IQ2, strata_config(self.root, enabled=False).data["models"])
+        self.assertEqual(len(cfg.kv_cache_profiles(KEY)), 18, "nine RAM and GPU classes, two contexts each")
+        self.assertEqual(cfg.kv_cache_mode(KEY), P256)
         self.assertEqual(cfg.context_size(KEY), 262144)
 
     def test_a_hidden_default_model_falls_back_to_an_available_one(self):
@@ -129,17 +135,64 @@ class ConfigTests(unittest.TestCase):
                          (cfg.model_root(KEY) / spec["strata"]["ple_gguf"]).resolve())
         self.assertEqual(asset_path(directory, spec["assets"][2]["path"]), cfg.mmproj_file(KEY).resolve())
 
-    def test_profiles_wait_for_their_measurement_and_fit_the_32_gb_class(self):
+    def offered(self, cfg, key, vram, ram):
+        from harness import gpu
+        with patch("harness.gpu.installed_ram_gib", return_value=ram):
+            return gpu.offered_profiles(cfg, key, vram)
+
+    def test_profiles_carry_their_measurement(self):
+        cfg = strata_config(self.root)
+        for key in (KEY, IQ2):
+            for name, profile in cfg.kv_cache_profiles(key).items():
+                self.assertEqual(profile["measurement_id"], "strata-qualification-2026-10-07", name)
+                self.assertGreater(profile["min_vram_gb"], 14, name)
+                self.assertLessEqual(profile["min_vram_gb"], {32: 31.0, 24: 22.0, 16: 14.4}[profile["gpu_class"]], name)
+                self.assertNotIn("server_args", profile)
+                self.assertEqual("expert_cache" in profile, profile["gpu_class"] < 32, name)
+
+    def test_the_picker_offers_the_profiles_of_this_ram_and_gpu_class(self):
+        cfg = strata_config(self.root)
+        # Windows reports a little less than the installed modules.
+        self.assertEqual(list(self.offered(cfg, KEY, 31.84, 63.7)), [P256, P128])
+        self.assertEqual(list(self.offered(cfg, KEY, 31.84, 127.6)), [P256, P128], "more than 64 GB uses 64 GB")
+        self.assertEqual(list(self.offered(cfg, KEY, 23.84, 47.7)), ["int8_256k_r48g24", "int8_128k_r48g24"])
+        self.assertEqual(list(self.offered(cfg, IQ2, 15.9, 31.8)), ["int8_256k_r32g16", "int8_128k_r32g16"])
+        self.assertEqual(self.offered(cfg, KEY, 31.84, 15.8), {}, "under 32 GB of RAM nothing is offered")
+        self.assertEqual(self.offered(cfg, KEY, 11.9, 63.7), {})
+
+    def test_each_class_runs_the_measured_expert_mode(self):
+        cfg = strata_config(self.root)
+        profiles = cfg.kv_cache_profiles(KEY)
+        self.assertEqual(profiles[P256]["engine_args"], [])
+        self.assertEqual(profiles["int8_256k_r64g16"]["engine_args"], ["--kv-resident", "32768"])
+        self.assertEqual(profiles["int8_256k_r48g24"]["engine_args"], ["--resident-experts"])
+        self.assertEqual(profiles["int8_256k_r48g24"]["expert_cache"], 4118)
+        # 48/16 at 128k is the 256k placement with a smaller KV, as recovery from 256k runs it.
+        self.assertEqual(profiles["int8_128k_r48g16"]["expert_cache"], profiles["int8_256k_r48g16"]["expert_cache"])
+        self.assertEqual(cfg.kv_cache_profiles(IQ2)["int8_256k_r48g16"]["engine_args"], [])
+
+    def test_recovery_stays_in_the_ram_and_gpu_class(self):
         from harness import gpu
         cfg = strata_config(self.root)
-        for name, profile in cfg.kv_cache_profiles(KEY).items():
-            self.assertEqual(profile["measurement_id"], "strata-phase0-pending", name)
-            self.assertNotIn("min_vram_gb", profile)
-            self.assertNotIn("server_args", profile)
-        self.assertEqual(list(gpu.offered_profiles(cfg, KEY, 31.84)), ["int8_256k", "int8_128k"])
-        self.assertEqual(gpu.offered_profiles(cfg, KEY, 23.84), {})
-        cfg.set_kv_cache_mode(KEY, "int8_256k")
-        self.assertEqual(gpu.lower_memory_profiles(cfg, KEY), ["int8_128k"])
+        cfg.set_kv_cache_mode(KEY, P256)
+        self.assertEqual(gpu.lower_memory_profiles(cfg, KEY), [P128])
+        cfg.set_kv_cache_mode(KEY, "int8_256k_r32g24")
+        self.assertEqual(gpu.lower_memory_profiles(cfg, KEY), ["int8_128k_r32g24"])
+        cfg.set_kv_cache_mode(KEY, "int8_128k_r32g24")
+        self.assertEqual(gpu.lower_memory_profiles(cfg, KEY), [])
+
+    def test_the_iq2_entry_shares_the_data_folder_with_its_own_receipt(self):
+        from harness.model_files import receipt_file
+        cfg = strata_config(self.root)
+        iq3, iq2 = cfg.model(KEY), cfg.model(IQ2)
+        self.assertEqual(cfg.model_root(IQ2), cfg.model_root(KEY))
+        self.assertEqual(iq2["download_dir"], iq3["download_dir"])
+        self.assertNotEqual(receipt_file(Path("d"), iq2), receipt_file(Path("d"), iq3))
+        self.assertEqual(cfg.mmproj_file(IQ2), cfg.mmproj_file(KEY))
+        self.assertEqual(iq2["assets"][1]["sha256"], iq3["assets"][1]["sha256"], "the second shard is one file")
+        self.assertEqual(iq2["strata"]["pack"], "packs/iq2_xs")
+        self.assertIn("IQ2_XS", iq2["strata"]["ple_gguf"])
+        self.assertTrue(iq2["optional_download"])
 
     def test_the_optional_entry_is_never_chosen_or_downloaded_automatically(self):
         from harness import gpu
@@ -157,6 +210,46 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(session.image_tokens(), 1024)
         self.assertEqual(session.tokens_for(0, 2, image_tokens=session.image_tokens()), 2048)
         self.assertEqual(Session.tokens_for(0, 1), Session.IMAGE_TOKENS)
+
+
+class SharedAssetTests(unittest.TestCase):
+    """Two weights of one model share a data folder, the second shard and the projector."""
+
+    def spec(self, name, assets):
+        import hashlib
+        return {"repo": "org/model", "revision": "abc", "download_dir": "models", "download_transport": "range",
+                "receipt": f".marvin-verified-{name}.json",
+                "assets": [{"path": path, "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+                           for path, data in assets]}
+
+    def test_a_file_another_entry_verified_is_linked_instead_of_downloaded(self):
+        from harness import model_files
+        shared, own = b"shared shard " * 100, b"iq2 shard"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            first = self.spec("first", [("IQ3_S/b.gguf", shared)])
+            second = self.spec("second", [("IQ2_XS/a.gguf", own), ("IQ2_XS/b.gguf", shared)])
+            (root / "models/IQ3_S").mkdir(parents=True)
+            (root / "models/IQ3_S/b.gguf").write_bytes(shared)
+            fetched = []
+
+            def ranged(directory, spec, asset, **kwargs):
+                fetched.append(asset["path"])
+                target = model_files.asset_path(directory, asset["path"])
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(own)
+                return target
+
+            with patch.object(model_files, "ranged_download", side_effect=ranged), \
+                 patch("huggingface_hub.hf_hub_download", side_effect=AssertionError("no download")):
+                model_files.download_pinned_model(root, first, progress=lambda *_: None)
+                model_files.download_pinned_model(root, second, progress=lambda *_: None)
+            self.assertEqual(fetched, ["IQ2_XS/a.gguf"], "the shared shard is not fetched again")
+            self.assertEqual((root / "models/IQ2_XS/b.gguf").read_bytes(), shared)
+            self.assertTrue(model_files.model_ready(root, first), "the first entry stays verified")
+            self.assertTrue(model_files.model_ready(root, second))
+            if os.name == "nt":
+                self.assertTrue((root / "models/IQ2_XS/b.gguf").samefile(root / "models/IQ3_S/b.gguf"))
 
 
 class ServerConfigTests(unittest.TestCase):
@@ -198,8 +291,7 @@ class ServerConfigTests(unittest.TestCase):
         })
 
     def test_context_profile_arguments_and_cpu_follow_the_launch(self):
-        self.cfg.set_kv_cache_mode(KEY, "int8_128k")
-        self.cfg.data["models"][KEY]["kv_cache_profiles"]["int8_128k"]["engine_args"] = ["--kv-resident", "32768"]
+        self.cfg.set_kv_cache_mode(KEY, "int8_128k_r64g16")
         args = strata_backend.engine_args(self.cfg, KEY, 131072, strata_backend.placement(self.cfg, KEY), UNIFORM)
         self.assertEqual(args[args.index("--max-context") + 1], "131072")
         self.assertEqual(args[args.index("--kv-resident") + 1], "32768")
@@ -225,12 +317,11 @@ class ServerConfigTests(unittest.TestCase):
         self.assertEqual(strata_backend.placement(self.cfg, KEY)["expert_cache"], "auto")
 
     def test_a_smaller_card_profile_fixes_the_expert_cache(self):
-        self.cfg.set_kv_cache_mode(KEY, "int8_128k")
-        self.cfg.data["models"][KEY]["kv_cache_profiles"]["int8_128k"]["expert_cache"] = 4700
+        self.cfg.set_kv_cache_mode(KEY, "int8_128k_r64g24")
         where = strata_backend.placement(self.cfg, KEY)
-        self.assertEqual(where["expert_cache"], 4700)
+        self.assertEqual(where["expert_cache"], 4882)
         args = strata_backend.engine_args(self.cfg, KEY, 131072, where)
-        self.assertEqual(args[args.index("--expert-cache") + 1], "4700")
+        self.assertEqual(args[args.index("--expert-cache") + 1], "4882")
         # A recovery still keeps what the failed run logged.
         self.cfg.data["_recovery_placement"] = {"model": KEY, "expert_cache_slots": 5100}
         self.assertEqual(strata_backend.placement(self.cfg, KEY)["expert_cache"], 5100)
@@ -357,6 +448,7 @@ class LaunchTests(unittest.TestCase):
              patch.object(servermgmt.subprocess, "Popen", side_effect=popen), \
              patch.object(servermgmt.subprocess, "CREATE_NO_WINDOW", NO_WINDOW, create=True), \
              patch("harness.gpu.vram_total_gb", return_value=31.84), \
+             patch("harness.gpu.installed_ram_gib", return_value=63.7), \
              patch.object(Config, "model_ready", return_value=downloaded), \
              patch("harness.model_files.download_pinned_model") as download, \
              patch("harness.runtime_update.ensure_runtime", side_effect=AssertionError("llama runtime")), \
@@ -428,7 +520,7 @@ class LaunchTests(unittest.TestCase):
         self.assertEqual(servermgmt.last_failure(self.cfg), {}, "a driver problem is not memory pressure")
 
     def test_memory_failure_at_256k_retries_128k_with_the_same_expert_cache(self):
-        self.cfg.set_kv_cache_mode(KEY, "int8_256k")
+        self.cfg.set_kv_cache_mode(KEY, P256)
         result = self.launch(entry="ensure", ready=[False, True],
                              engine_output=["strata generate: expert cache auto: 29.10 GiB free, 700 MiB reserved (+218 MiB) -> 8641 slots\n"
                                             "strata generate: expert cache 9840 slots, 23.41 GiB of VRAM\n"
@@ -440,7 +532,7 @@ class LaunchTests(unittest.TestCase):
         self.assertEqual(second[second.index("--max-context") + 1], "131072")
         self.assertEqual(second[second.index("--expert-cache") + 1], "8641")
         self.assertEqual(second[second.index("--vram-reserve-mib") + 1], "700")
-        self.assertEqual(self.cfg.kv_cache_mode(KEY), "int8_128k")
+        self.assertEqual(self.cfg.kv_cache_mode(KEY), P128)
         self.assertEqual(self.cfg.data["_recovered_contexts"], {KEY: 131072})
 
 
@@ -866,7 +958,7 @@ class SeamlessSwitchTests(unittest.TestCase):
                  strata_backend.start_failure(self.cfg, {"engine_log": "", "log_offset": 0}).split(". Logs:")[0]]
         for text in shown:
             self.assertNotRegex(text, "(?i)strata|llama", text)
-        self.assertEqual([p["label"] for p in self.cfg.kv_cache_profiles(KEY).values()], ["Q8 · 256k", "Q8 · 128k"])
+        self.assertEqual({p["label"] for p in self.cfg.kv_cache_profiles(KEY).values()}, {"Q8 · 256k", "Q8 · 128k"})
 
     def test_picture_estimate_follows_the_model_of_each_run(self):
         from harness.agent import Agent, build_registry
@@ -946,7 +1038,8 @@ class WebStateTests(unittest.TestCase):
             cfg.data["agent"].update(workspace=None, autonomy="auto")
             service = ApplicationService(cfg, llm_factory=helpers.Model, manage_model=False)
             try:
-                with patch("harness.gpu.vram_total_gb", return_value=31.84):
+                with patch("harness.gpu.vram_total_gb", return_value=31.84), \
+                     patch("harness.gpu.installed_ram_gib", return_value=63.7):
                     models = TestClient(create_app(cfg, service=service)).get("/api/state").json()["models"]
             finally:
                 service.close()
@@ -955,7 +1048,7 @@ class WebStateTests(unittest.TestCase):
         self.assertTrue(entry["vision"])
         self.assertTrue(entry["uses_system_ram"])
         self.assertFalse(entry["installed"])
-        self.assertEqual([p["id"] for p in entry["profiles"]], ["int8_256k", "int8_128k"])
+        self.assertEqual([p["id"] for p in entry["profiles"]], [P256, P128])
 
 
 if __name__ == "__main__":
