@@ -134,7 +134,10 @@ class StalePayloadTests(unittest.TestCase):
     def test_a_stale_environment_is_not_declared_ready(self):
         """An environment installed for older requirements has to be rebuilt."""
         (self.venv / ".requirements.sha256").write_text("f" * 64 + "\n", encoding="ascii")
-        with self.assertRaises(BaseException):
+        # The fake interpreter is never started: Windows answers a two-byte .exe
+        # with a modal "Unsupported 16-Bit Application" dialog.
+        with patch.object(self.bootstrap.subprocess, "run", side_effect=OSError("not a real interpreter")), \
+             self.assertRaises(BaseException):
             # Rebuilding needs a real payload, which this fake root does not have;
             # the point is that it does not take the ready path.
             self.prepare()
