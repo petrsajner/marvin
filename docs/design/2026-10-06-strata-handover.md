@@ -208,6 +208,26 @@ only it (`runtime_plan.py`, `gguf_metadata.py`, the `adaptive_runtime` branches,
 its installer row and golden records). A saved selection of it moves to
 `flash_next_strata` where that entry is available.
 
+### Integration in Marvin with the real engine (7 October 2026)
+
+`tests/e2e_flash_next.py` runs the real application worker against the installed
+Marvin's models and the prepared Strata, on its own port and runtime folder:
+
+- **switch** (passed): one chat on Q5 (a file and a code word), then Flash-Next
+  (read the file, recalled the code word, read an image, took a second word),
+  then Q5 again (recalled both). The first Flash-Next start adopted Strata's
+  data folder with a checksum instead of a download.
+- **coding** (passed): `apply_patch`, the project check and a summary. With
+  thinking at `xhigh` (the workspace's default) Flash-Next used 8 tools in
+  62 s, like Q5 (6 tools, 39 s). With thinking off it twice kept checking its
+  plan because the "Git diff reviewed" item cannot be ticked in a folder that is
+  not a git repository: 22 tools once, 200 another time; the exact-repeat loop
+  warning never fired, as the calls cycled through three tools.
+- **pressure** (passed): 48 GB of RAM, 16 GB card, 256k; another process took
+  the free RAM, the engine ran out of memory reading a 120k-token input, Marvin
+  restarted at 128k with the same expert cache (1054) and finished the task.
+  On a 32 GB card the same pressure did not stop the engine.
+
 ### Phase 3: runtime and model preparation (design sections 2.7–2.9)
 
 Everything inside the existing download, verify and prepare phases, so the
