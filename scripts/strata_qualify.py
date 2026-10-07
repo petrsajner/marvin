@@ -55,7 +55,7 @@ KEY = "flash_next_strata"
 # (code, docs and the measurement record) stays where it is.
 LOCAL = Path(os.environ.get("LOCALAPPDATA") or Path.home())
 EVAL_ROOT = LOCAL / "StrataEval"
-STRATA_DIR = EVAL_ROOT / "Strata"
+STRATA_DIR = LOCAL / "QwenHarness" / "runtime" / "strata"   # the engine the installed Marvin prepared
 DATA_DIR = LOCAL / "QwenHarness" / "runtime" / "models" / "strata"   # the installed Marvin's strata_data_dir
 # What a card of each class leaves the model beside a desktop (the earlier profiles' limits).
 USABLE_VRAM_GIB = {24: 21.9, 16: 14.3}

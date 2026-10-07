@@ -9,8 +9,8 @@ Portable records: [JSON](measurements/2026-10-06-strata.json) and
 [CSV](measurements/2026-10-06-strata.csv) for the matrix;
 [JSON](measurements/2026-10-07-strata-iq2-agent.json) and
 [CSV](measurements/2026-10-07-strata-iq2-agent.csv) for the IQ2_XS agent
-re-test. Per-case server and engine logs and the half-second telemetry stay on
-the measuring PC under `%LOCALAPPDATA%\StrataEval\qualify`.
+re-test. The per-case server and engine logs and the half-second telemetry were
+removed from the measuring PC once this record was written (owner, 7 October).
 
 ## In brief
 

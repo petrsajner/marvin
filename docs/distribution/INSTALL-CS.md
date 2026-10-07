@@ -1,13 +1,13 @@
-# Marvin 1.17.4 - instalace pro Windows
+# Marvin 1.19.0 - instalace pro Windows
 
 Veřejné stažení: **[Full](https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Full.exe)** · **[Minimal](https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Minimal.exe)**.
 Odkazy míří na nejnovější vydání. Veřejné soubory mají stálé názvy `Marvin-Setup-Full.exe` a `Marvin-Setup-Minimal.exe`; místní a offline balíčky obsahují také číslo verze v názvu.
 
 ## Minimal a Full
 
-- `Marvin-Setup-1.17.4-Minimal.exe`: menší instalátor. Vyžaduje samostatný 64bitový Python 3.12 s Python Launcherem (`py`). Balíčky a llama.cpp/CUDA získá při nastavení.
-- `Marvin-Setup-1.17.4-Full.exe`: obsahuje vlastní Python 3.12, uzamčené balíčky a ověřené llama.cpp/CUDA b10935. Systémový Python není potřeba. Modely nejsou součástí samotného EXE.
-- `Marvin-Offline-Backup-1.17.4`: úplná místní sada s Full instalátorem, modely včetně Flash-Next a jeho jádra, jejich projektory, runtime, snapshotem závislostí a manifestem kontrolních součtů.
+- `Marvin-Setup-1.19.0-Minimal.exe`: menší instalátor. Vyžaduje samostatný 64bitový Python 3.12 s Python Launcherem (`py`). Balíčky a llama.cpp/CUDA získá při nastavení.
+- `Marvin-Setup-1.19.0-Full.exe`: obsahuje vlastní Python 3.12, uzamčené balíčky a ověřené llama.cpp/CUDA b10935. Systémový Python není potřeba. Modely nejsou součástí samotného EXE.
+- `Marvin-Offline-Backup-1.19.0`: úplná místní sada s Full instalátorem, modely včetně Flash-Next a jeho jádra, jejich projektory, runtime, snapshotem závislostí a manifestem kontrolních součtů.
 
 Obě varianty vyžadují podporované 64bitové Windows a ovladač NVIDIA nainstalovaný uživatelem. WebView2 pro desktopové okno instalátor rozpozná a připraví automaticky. Minimal jej v případě potřeby stáhne; Full obsahuje celý runtime i pro instalaci bez internetu. Není potřeba otevírat stránky Microsoftu ani WebView2 instalovat samostatně. Microsoft Edge je nadále potřeba pro volitelné prohlížečové nástroje. Samostatný CUDA Toolkit ani Node.js nejsou potřeba.
 
@@ -19,7 +19,7 @@ Obě varianty vyžadují podporované 64bitové Windows a ovladač NVIDIA nainst
 4. Ponechte zapnuté stažení modelů a dokončete nastavení.
 5. Spusťte Marvin z plochy nebo nabídky Start. Model se načte automaticky.
 
-Při aktualizaci použijte stávající adresář aplikace a nejprve ukončete běžící úlohy i Marvin. Chaty, projekty, paměť, skilly a modely zůstávají zachované. Při změně venv na Full se původní prostředí uchová pod `runtime/environment-history` a nové vznikne čistě z přibalených balíčků.
+Při aktualizaci použijte stávající adresář aplikace a nejprve ukončete běžící úlohy i Marvin. Chaty, projekty, paměť, skilly a modely zůstávají zachované, včetně vah a připravených souborů Flash-Next: průvodce nechá již stažené modely zaškrtnuté, nastavení je místo nového stahování jen ověří a Marvin připraví jen to, co ještě chybí (při aktualizaci z 1.18 a starší jádro Flash-Next, asi 0,7 GB, při jeho prvním startu). Při změně venv na Full se původní prostředí uchová pod `runtime/environment-history` a nové vznikne čistě z přibalených balíčků.
 
 ## Offline Backup
 

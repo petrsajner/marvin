@@ -1,13 +1,13 @@
-# Marvin 1.17.4 - Windows Installation
+# Marvin 1.19.0 - Windows Installation
 
 Public downloads: **[Full](https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Full.exe)** · **[Minimal](https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Minimal.exe)**.
 These links follow the latest release. Public assets keep the names `Marvin-Setup-Full.exe` and `Marvin-Setup-Minimal.exe`; local and offline builds also include the version number in their filenames.
 
 ## Minimal and Full
 
-- `Marvin-Setup-1.17.4-Minimal.exe`: smaller installer. Requires separate 64-bit Python 3.12 with the Python Launcher (`py`); prepares packages and llama.cpp/CUDA during setup.
-- `Marvin-Setup-1.17.4-Full.exe`: includes private Python 3.12, locked packages, and validated llama.cpp/CUDA b10935. No system Python is required. The EXE itself does not include model weights.
-- `Marvin-Offline-Backup-1.17.4`: complete local bundle with Full Setup, all included models and projectors including Flash-Next and its model engine, runtime, dependency snapshot, and checksum manifest.
+- `Marvin-Setup-1.19.0-Minimal.exe`: smaller installer. Requires separate 64-bit Python 3.12 with the Python Launcher (`py`); prepares packages and llama.cpp/CUDA during setup.
+- `Marvin-Setup-1.19.0-Full.exe`: includes private Python 3.12, locked packages, and validated llama.cpp/CUDA b10935. No system Python is required. The EXE itself does not include model weights.
+- `Marvin-Offline-Backup-1.19.0`: complete local bundle with Full Setup, all included models and projectors including Flash-Next and its model engine, runtime, dependency snapshot, and checksum manifest.
 
 Both variants require supported 64-bit Windows and a user-installed NVIDIA driver. WebView2 for the desktop window is detected and prepared automatically. Minimal downloads it if needed; Full includes the complete runtime for offline installation. No Microsoft website or separate WebView2 installation is required. Microsoft Edge is still required for the optional browser tools. A separate CUDA Toolkit or Node.js is not required.
 
@@ -19,7 +19,7 @@ Both variants require supported 64-bit Windows and a user-installed NVIDIA drive
 4. Leave model download enabled and finish setup.
 5. Start Marvin from the desktop or Start menu. The model starts automatically.
 
-To update, use the existing application directory and close running tasks and Marvin first. Conversations, projects, memories, skills and models remain in place. When replacing a venv with Full, the old environment is retained under `runtime/environment-history`; the new one is created from bundled packages.
+To update, use the existing application directory and close running tasks and Marvin first. Conversations, projects, memories, skills and models remain in place, including Flash-Next's weights and prepared files: the wizard keeps already downloaded models checked, the setup verifies them instead of downloading them again, and Marvin prepares only what is still missing (for an update from 1.18 or earlier, Flash-Next's model engine, about 0.7 GB, on its first start). When replacing a venv with Full, the old environment is retained under `runtime/environment-history`; the new one is created from bundled packages.
 
 ## Offline Backup
 

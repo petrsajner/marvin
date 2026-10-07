@@ -262,7 +262,7 @@ def main() -> int:
     parser.add_argument("scenario", choices=("switch", "coding", "pressure", "clean", "all"))
     parser.add_argument("--models-dir", type=Path, default=LOCAL / "QwenHarness" / "runtime" / "models")
     parser.add_argument("--llama-dir", type=Path, default=LOCAL / "QwenHarness" / "runtime" / "llama")
-    parser.add_argument("--strata-dir", type=Path, default=LOCAL / "StrataEval" / "Strata")
+    parser.add_argument("--strata-dir", type=Path, default=LOCAL / "QwenHarness" / "runtime" / "strata")
     parser.add_argument("--strata-data-dir", type=Path, default=LOCAL / "QwenHarness" / "runtime" / "models" / "strata")
     parser.add_argument("--coding-model", default=KEY, help="the model the coding scenario runs on (a comparison)")
     parser.add_argument("--thinking", default="off", choices=("off", "low", "medium", "xhigh"),
