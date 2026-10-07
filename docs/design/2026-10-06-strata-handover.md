@@ -264,12 +264,12 @@ the engine, verified the 84 GB of weights, packed, downloaded and built the
 draft layer, and answered; 19.6 minutes for the first Flash-Next turn, most of
 it the draft layer's 5 GB download. Nothing was missing afterwards.
 
-### Release 1.19.0 (built 7 October 2026, waiting for the owner's test)
+### Release 1.19.0 (rebuilt 8 October 2026 with the field-test fixes, waiting for the owner's test)
 
-`dist/Marvin-Setup-1.19.0-Minimal.exe` (54,124,530 bytes, SHA-256
-`8a079da96c81ff9e6da75060611d0f74909fdc51a6b18800e385dd6de809b7c3`) and
-`dist/Marvin-Setup-1.19.0-Full.exe` (914,588,982 bytes,
-`cadb4c99b564f6512b645fd3fdf9b11f03439efea4489b12dc35d65078e54755`), built by
+`dist/Marvin-Setup-1.19.0-Minimal.exe` (54,122,111 bytes, SHA-256
+`6a899d28efa75bb8045bf6a19683170e22fa6e0e1619c0ea489efc91ccdf88ff`) and
+`dist/Marvin-Setup-1.19.0-Full.exe` (914,589,170 bytes,
+`ba964d7d89d06d61d6b2c2d8954bf6c0321759299d1cf2ced4cb003c7788d76b`), built by
 `installer/release.bat` with all tests and the Full runtime check passing.
 Draft notes: `docs/distribution/RELEASE-NOTES-1.19.0.md`. The owner tests the
 installed build before the release; the offline backup 1.18.2 is refreshed to
