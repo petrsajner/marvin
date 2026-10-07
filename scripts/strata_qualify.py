@@ -301,14 +301,19 @@ def cudart_path() -> str:
     return str(hits[0])
 
 
-def start_ballast(args: list[str]) -> tuple[subprocess.Popen, dict]:
-    proc = subprocess.Popen([sys.executable, str(ROOT / "scripts" / "strata_ballast.py"), *args],
-                            stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, creationflags=NO_WINDOW)
-    line = proc.stdout.readline().strip()
-    if not line.startswith("READY "):
+def start_ballast(args: list[str], attempts: int = 6) -> tuple[subprocess.Popen, dict]:
+    for attempt in range(attempts):
+        proc = subprocess.Popen([sys.executable, str(ROOT / "scripts" / "strata_ballast.py"), *args],
+                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, creationflags=NO_WINDOW)
+        line = proc.stdout.readline().strip()
+        if line.startswith("READY "):
+            return proc, json.loads(line[6:])
         proc.kill()
-        raise RuntimeError(f"ballast {' '.join(args)} failed: {line or proc.returncode}")
-    return proc, json.loads(line[6:])
+        # Right after a server that pinned tens of GiB ends, Windows may not yet have the pages to lock
+        # (error 1450); they come back within seconds.
+        if "(1450)" not in line or attempt == attempts - 1:
+            raise RuntimeError(f"ballast {' '.join(args)} failed: {line or proc.returncode}")
+        time.sleep(10)
 
 
 def stop_ballast(proc: subprocess.Popen | None):
