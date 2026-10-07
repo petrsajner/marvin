@@ -175,7 +175,7 @@ PROFILES = {
     # Measured server VRAM and the cache budgets of the 2026-10-07 record. Below
     # 64 GB of RAM the resident mode won everywhere; with 64 GB a 16 GB card keeps
     # the KV cache in RAM.
-    "flash_next_strata": strata_menu([
+    "flash_next_strata": strata_menu(STRATA_IQ3_ROWS := [
         (64, 32, "normal", False, ((256, 30.535, None), (128, 30.56, None))),
         (64, 24, "normal", False, ((256, 21.943, 4110), (128, 21.945, 4882))),
         (64, 16, "normal", True, ((256, 14.344, 2240), (128, 14.345, 2330))),
@@ -188,7 +188,7 @@ PROFILES = {
         (32, 24, "resident", False, ((256, 21.94, 4129), (128, 21.941, 4901))),
         (32, 16, "resident", False, ((256, 14.345, 1065), (128, 14.344, 1837))),
     ]),
-    "flash_next_strata_iq2": strata_menu([
+    "flash_next_strata_iq2": strata_menu(STRATA_IQ2_ROWS := [
         (64, 32, "normal", False, ((256, 30.081, None), (128, 30.518, None))),
         (64, 24, "normal", False, ((256, 21.95, 7921), (128, 21.95, 9282))),
         (64, 16, "normal", True, ((256, 14.349, 4619), (128, 14.35, 4780))),
@@ -204,6 +204,52 @@ PROFILES = {
 }
 
 
+# Cards of 48 and 96 GB (owner, 2026-10-08). Not measured: the owner's PC has a
+# 32 GB card and a larger one cannot be simulated. What fits a 32 GB card keeps its
+# measured allocation; the larger placements are estimated from those measurements
+# (KV per token at Q8, F16 at about twice that, the MTP draft's measured increment,
+# a Nemotron expert block at about 0.4 GiB) and stop where the menu already stops:
+# 256k for Qwen and Ornith, 512k for Nemotron.
+DERIVED_MEASUREMENT_ID = "derived-larger-cards-2026-10-08"
+LARGER_CARDS = (48, 96)
+
+
+def larger_card_profiles(gpu):
+    def derived(context, measured, **kwargs):
+        return profile(context, gpu, measured, measurement=DERIVED_MEASUREMENT_ID, **kwargs)
+
+    menu = {
+        "q2": {"q8_0_256k": derived(256, 20.27, gpu_vision=True)},
+        "q4": {"q8_0_256k": derived(256, 26.137), "q8_0_256k_mtp": derived(256, 28.982, speculative=True),
+               "q8_0_192k": derived(192, 23.502), "q8_0_192k_mtp": derived(192, 26.033, speculative=True),
+               "f16_256k": derived(256, 34.3, precision="f16"), "f16_128k": derived(128, 24.371, precision="f16")},
+        "q5": {"q8_0_256k": derived(256, 28.97), "q8_0_256k_mtp": derived(256, 31.52, speculative=True),
+               "q8_0_192k": derived(192, 26.58), "q8_0_192k_mtp": derived(192, 29.126, speculative=True),
+               "f16_256k": derived(256, 36.65, precision="f16"), "f16_128k": derived(128, 27.654, precision="f16")},
+        "ornith_q5": {"q8_0_256k": derived(256, 27.906), "q8_0_192k": derived(192, 27.129)},
+        "nemotron_q4": {"q8_0_512k": derived(512, 25.420), "q8_0_256k": derived(256, 24.311)},
+        "nemotron_q5": {"q8_0_512k": derived(512, 29.9), "q8_0_256k": derived(256, 28.883)},
+    }
+    return {model: {f"{name}_g{gpu}": spec for name, spec in profiles.items()} for model, profiles in menu.items()}
+
+
+def larger_card_strata(rows_32):
+    """Flash-Next on 48 and 96 GB cards: the 32 GB placements, whose expert cache fills the larger card."""
+    rows = [(ram, gpu, mode, kv, contexts) for gpu in LARGER_CARDS
+            for ram, cls, mode, kv, contexts in rows_32 if cls == 32]
+    menu = strata_menu(rows)
+    for spec in menu.values():
+        spec["measurement_id"] = DERIVED_MEASUREMENT_ID
+    return menu
+
+
+for _gpu in LARGER_CARDS:
+    for _model, _profiles in larger_card_profiles(_gpu).items():
+        PROFILES[_model].update(_profiles)
+PROFILES["flash_next_strata"].update(larger_card_strata(STRATA_IQ3_ROWS))
+PROFILES["flash_next_strata_iq2"].update(larger_card_strata(STRATA_IQ2_ROWS))
+
+
 def install_profiles(models):
     for key, profiles in PROFILES.items():
         models[key]["kv_cache_profiles"] = copy.deepcopy(profiles)
@@ -213,7 +259,12 @@ def install_profiles(models):
 
 
 def gpu_class(capacity):
-    # Reported usable capacity is slightly below the card's nominal size.
+    # Reported usable capacity is slightly below the card's nominal size; a 64 or
+    # 72 GB card uses the 48 GB profiles.
+    if capacity >= 90:
+        return 96
+    if capacity >= 44:
+        return 48
     return 32 if capacity >= 31 else 24 if capacity >= 23 else 16 if capacity >= 15 else 0
 
 

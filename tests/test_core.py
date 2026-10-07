@@ -484,8 +484,9 @@ def test_gpu_autofit() -> None:
                                "q8_0_128k", "q8_0_96k"},
           "IQ3 has only the approved 16 and 24 GB profiles")
     check(set(cfg.kv_cache_profiles("q2")) == {"q8_0_96k_vision", "q8_0_64k_vision",
-                                               "q8_0_128k", "q4_0_192k", "q8_0_256k"},
-          "Q2 has the approved 16 GB profiles and one for a large card")
+                                               "q8_0_128k", "q4_0_192k", "q8_0_256k",
+                                               "q8_0_256k_g48", "q8_0_256k_g96"},
+          "Q2 has the approved 16 GB profiles and one for each large card class")
     check(cfg.model("q2").get("optional_download") is True
           and best_fit(cfg, 16.0) == ("q3", "q8_0_64k"),
           "Q2 is offered for 16 GB but never chosen automatically")

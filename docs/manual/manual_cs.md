@@ -65,7 +65,7 @@ V nastavení modelu vyberte **Qwen 3.8 Flash-Next · IQ3_S**, případně **Qwen
 
 Ovládání chatu, příloh a nástrojů je stejné jako u ostatních modelů a na Flash-Next i zpět můžete přepnout uprostřed chatu: konverzace, její soubory i dřívější odpovědi zůstávají.
 
-Flash-Next drží většinu vah v systémové RAM a nejpoužívanější části na grafické kartě. Běží na kartách NVIDIA se 16 GB a více, na počítačích s 32 GB RAM a více a s ovladačem NVIDIA 580 nebo novějším. Marvin vybere profil změřený pro vaši kartu a vaši RAM; oba nabízejí kontext 256k a 128k. Dlouhý nový dokument přečte zhruba za minutu; navazující otázky využívají již přečtený kontext.
+Flash-Next drží většinu vah v systémové RAM a nejpoužívanější části na grafické kartě. Běží na kartách NVIDIA se 16 GB a více, na počítačích s 32 GB RAM a více a s ovladačem NVIDIA 580 nebo novějším. Marvin vybere profil změřený pro vaši kartu a vaši RAM; oba nabízejí kontext 256k a 128k. Na kartě se 48 nebo 96 GB použije stejné nastavení jako na 32GB kartě a větší grafickou paměť zaplní dalšími experty modelu, takže běží rychleji (odhad, neměřeno). Dlouhý nový dokument přečte zhruba za minutu; navazující otázky využívají již přečtený kontext.
 
 ## První spuštění
 
@@ -265,6 +265,8 @@ Myšlení zůstává také u promptu, protože ho můžete měnit mezi otázkami
 | 32 GB | Nemotron Q5 | Q8 | 512k / 256k |
 
 Na kartách třídy 32 GB je výchozí Qwen Q5 s Q8 KV a kontextem 192k. Menší karty dostanou odpovídající Q8 profil podle tabulky. F16 je volitelně pouze pro Qwen Q4/Q5 na 32GB kartách. IQ3 se nabízí pouze na 16/24GB kartách. Každá kombinace modelu a přesnosti KV nabízí dvě nejvyšší odpovídající velikosti kontextu.
+
+Karty se 48 GB a více (včetně 64 a 72GB karet) používají vlastní profily **48 GB** a karty s 96 GB profily **96 GB**. Jsou odhadnuté ze změřených hodnot pro 32 GB, nikoli změřené, protože taková karta nebyla k dispozici: vše, co se vejde na 32GB kartu, a navíc Qwen Q4/Q5 s Q8 256k (i s MTP) a F16 256k a Nemotron Q5 s 512k celý na GPU. Qwen a Ornith zůstávají nejvýš na 256k, Nemotron na 512k.
 
 Qwen Q4/Q5 nabízejí také volitelné **MTP varianty** svých Q8 profilů (například „Q8 · 192k · MTP" vedle „Q8 · 192k"). MTP varianta generuje zhruba 2–3× rychleji pomocí malého draft modelu trénovaného pro stejný model; kvalita odpovědí zůstává stejná. Potřebuje asi 2–2,9 GB dodatečné paměti GPU a 1,4 GB draft model se při prvním spuštění automaticky stáhne a ověří. Na kartách třídy 24 GB mají MTP varianty pouze Qwen Q4. Pokud při běhu MTP relace dojde paměť, Marvin nejprve přepne na stejný kontext bez MTP, poté zkusí nižší kontext s MTP a nakonec bez MTP.
 

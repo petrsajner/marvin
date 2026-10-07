@@ -65,7 +65,7 @@ Select **Qwen 3.8 Flash-Next · IQ3_S** in model settings, or **Qwen 3.8 Flash-N
 
 Chat, attachments and tools use the same controls as with any other model, and you can switch to Flash-Next and back within the same chat: the conversation, its files and earlier answers carry over.
 
-Flash-Next keeps most of its weights in system RAM and the parts it uses most on the graphics card. It runs on NVIDIA cards with 16 GB or more, on PCs with 32 GB of RAM or more, with NVIDIA driver 580 or newer. Marvin picks the profile measured for your card and your RAM; both offer 256k and 128k of context. A long new document is read in about a minute; follow-up questions reuse what was read.
+Flash-Next keeps most of its weights in system RAM and the parts it uses most on the graphics card. It runs on NVIDIA cards with 16 GB or more, on PCs with 32 GB of RAM or more, with NVIDIA driver 580 or newer. Marvin picks the profile measured for your card and your RAM; both offer 256k and 128k of context. On a 48 or 96 GB card it uses the same settings as on a 32 GB card and fills the extra graphics memory with more of the model's experts, which makes it faster (estimated, not measured). A long new document is read in about a minute; follow-up questions reuse what was read.
 
 ## First launch
 
@@ -298,6 +298,8 @@ Thinking depth also stays beside the prompt because it can change between questi
 | 32 GB | Nemotron Q5 | Q8 | 512k / 256k |
 
 On 32 GB-class cards, the new-installation default is Qwen Q5 with Q8 KV and 192k context. Smaller cards select an appropriate Q8 profile from the table. F16 is an explicit option only for Qwen Q4/Q5 on 32 GB-class cards. IQ3 is offered on 16/24 GB cards only. Each model and KV precision group offers the two highest relevant context choices.
+
+Cards with 48 GB or more (64 and 72 GB cards included) use their own **48 GB** profiles and cards with 96 GB the **96 GB** ones. They are estimated from the 32 GB measurements, not measured, because no such card was available: everything that fits a 32 GB card, plus Qwen Q4/Q5 at Q8 256k (also with MTP) and F16 256k, and Nemotron Q5 at 512k entirely on the GPU. Qwen and Ornith stay at most at 256k, Nemotron at 512k.
 
 Qwen Q4/Q5 also offer opt-in **MTP variants** of their Q8 profiles (for example "Q8 · 192k · MTP" next to "Q8 · 192k"). An MTP variant generates about 2–3× faster using a small draft model trained for the same model; answer quality stays the same. It needs about 2–2.9 GB of extra GPU memory, and the 1.4 GB draft model is downloaded and verified automatically on the first start. On 24 GB-class cards only Qwen Q4 has MTP variants. If memory runs out during an MTP session, Marvin first switches to the same context without MTP, then tries the next lower context with MTP, and finally that context without MTP.
 

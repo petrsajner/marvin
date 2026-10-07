@@ -49,7 +49,7 @@ HARDWARE = Hardware("Intel64 Family 6 Model 198", 20, 20, tuple(range(8)), tuple
                     64 * GIB, 48 * GIB, "NVIDIA GeForce RTX 5090", "GPU-test", "580.00",
                     int(31.84 * GIB), int(29.4 * GIB))
 # Detected capacity per GPU class, as the picker sees a real card of that size.
-DETECTED = {32: 31.84, 24: 23.84, 16: 15.84}
+DETECTED = {96: 95.59, 48: 47.5, 32: 31.84, 24: 23.84, 16: 15.84}
 
 
 def builtin_config(root: Path) -> Config:

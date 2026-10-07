@@ -210,6 +210,22 @@ class MemoryProfileTests(unittest.TestCase):
             self.assertEqual(actual, table)
         self.assertFalse(gpu.offered_profiles(self.cfg, "q3", 96))
 
+    def test_larger_cards_get_their_own_estimated_menu(self):
+        """48 and 96 GB cards (owner, 2026-10-08): estimated from the 32 GB measurements."""
+        from harness.measured_profiles import DERIVED_MEASUREMENT_ID, gpu_class
+        self.assertEqual([gpu_class(c) for c in (31.84, 43.9, 47.5, 71.6, 89.9, 95.59)], [32, 32, 48, 48, 48, 96])
+        for capacity, cls in ((47.5, 48), (95.59, 96)):
+            q5 = gpu.offered_profiles(self.cfg, "q5", capacity)
+            self.assertEqual({(p["cache_type"], p["ctx_size"] // 1024, bool(p.get("speculative"))) for p in q5.values()},
+                             {("q8_0", 256, False), ("q8_0", 256, True), ("q8_0", 192, False), ("q8_0", 192, True),
+                              ("f16", 256, False), ("f16", 128, False)})
+            self.assertTrue(all(p["gpu_class"] == cls and p["measurement_id"] == DERIVED_MEASUREMENT_ID
+                                for p in q5.values()))
+            nemotron = gpu.offered_profiles(self.cfg, "nemotron_q5", capacity)[f"q8_0_512k_g{cls}"]
+            self.assertNotIn("--n-cpu-moe", nemotron["server_args"], "512k entirely on the GPU")
+            self.assertFalse(gpu.offered_profiles(self.cfg, "q3", capacity), "IQ3 stays a small-card model")
+        self.assertEqual(gpu.best_fit(self.cfg, 47.5), ("q5", "q8_0_256k_g48"))
+
     def test_mtp_recovery_ladder_drops_the_draft_before_the_context(self):
         self.cfg.data["default_model"] = "q5"
         self.cfg.set_kv_cache_mode("q5", "q8_0_mtp")
@@ -256,7 +272,8 @@ class MemoryProfileTests(unittest.TestCase):
                     continue
                 twins = [v for v in profiles.values() if not v.get("speculative")
                          and v["ctx_size"] == values["ctx_size"]
-                         and v["cache_type"] == values["cache_type"]]
+                         and v["cache_type"] == values["cache_type"]
+                         and v["gpu_class"] == values["gpu_class"]]      # as the MTP switch pairs them
                 self.assertEqual(len(twins), 1, name)
                 self.assertEqual(values["gpu_class"], twins[0]["gpu_class"], name)
                 self.assertEqual(values["server_args"], twins[0]["server_args"], name)

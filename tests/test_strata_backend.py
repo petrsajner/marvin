@@ -98,7 +98,7 @@ class ConfigTests(unittest.TestCase):
         cfg = load_config(self.root / "missing.yaml", root=self.root)
         self.assertIn(KEY, cfg.data["models"])
         self.assertIn(IQ2, cfg.data["models"])
-        self.assertEqual(len(cfg.kv_cache_profiles(KEY)), 18, "nine RAM and GPU classes, two contexts each")
+        self.assertEqual(len(cfg.kv_cache_profiles(KEY)), 30, "fifteen RAM and GPU classes, two contexts each")
         self.assertEqual(cfg.kv_cache_mode(KEY), P256)
         self.assertEqual(cfg.context_size(KEY), 262144)
 
@@ -138,13 +138,16 @@ class ConfigTests(unittest.TestCase):
         cfg = strata_config(self.root)
         for key in (KEY, IQ2):
             for name, profile in cfg.kv_cache_profiles(key).items():
-                self.assertEqual(profile["measurement_id"], "strata-qualification-2026-10-07", name)
+                derived = profile["gpu_class"] > 32       # 48 and 96 GB cards: no such card to measure on
+                self.assertEqual(profile["measurement_id"], "derived-larger-cards-2026-10-08" if derived
+                                 else "strata-qualification-2026-10-07", name)
                 self.assertGreater(profile["min_vram_gb"], 14, name)
-                self.assertLessEqual(profile["min_vram_gb"], {32: 31.0, 24: 22.0, 16: 14.4}[profile["gpu_class"]], name)
+                self.assertLessEqual(profile["min_vram_gb"], {96: 31.0, 48: 31.0, 32: 31.0, 24: 22.0, 16: 14.4}[
+                    profile["gpu_class"]], name)
                 self.assertNotIn("server_args", profile)
                 self.assertEqual("expert_cache" in profile, profile["gpu_class"] < 32, name)
                 # Where the engine fills the card, it keeps the reserve it asked for.
-                self.assertEqual(profile.get("vram_reserve_mib"), 1100 if profile["gpu_class"] == 32 else None, name)
+                self.assertEqual(profile.get("vram_reserve_mib"), 1100 if profile["gpu_class"] >= 32 else None, name)
 
     def test_the_picker_offers_the_profiles_of_this_ram_and_gpu_class(self):
         cfg = strata_config(self.root)
@@ -154,6 +157,10 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(list(self.offered(cfg, KEY, 23.84, 47.7)), ["int8_256k_r48g24", "int8_128k_r48g24"])
         self.assertEqual(list(self.offered(cfg, IQ2, 15.9, 31.8)), ["int8_256k_r32g16", "int8_128k_r32g16"])
         self.assertEqual(self.offered(cfg, KEY, 31.84, 15.8), {}, "under 32 GB of RAM nothing is offered")
+        # Larger cards: the 32 GB placements, whose expert cache fills the card.
+        self.assertEqual(list(self.offered(cfg, KEY, 47.5, 63.7)), ["int8_256k_r64g48", "int8_128k_r64g48"])
+        self.assertEqual(list(self.offered(cfg, IQ2, 95.59, 31.8)), ["int8_256k_r32g96", "int8_128k_r32g96"])
+        self.assertEqual(cfg.kv_cache_profiles(KEY)["int8_256k_r48g96"]["engine_args"], ["--resident-experts"])
         self.assertEqual(self.offered(cfg, KEY, 11.9, 63.7), {})
 
     def test_each_class_runs_the_measured_expert_mode(self):

@@ -74,6 +74,8 @@ same files as IQ3_S's, so it adds 39 GB.
 
 ### How Marvin would offer it
 
+Added on 8 October (owner): 48 and 96 GB cards (`gpu_class` 48 from 44 GiB, 96 from 90 GiB) get the 32 GB rows with their measured figures, marked `derived-larger-cards-2026-10-08`; the engine's expert cache fills the larger card. Not measured: no such card here.
+
 - One model entry per weights; `flash_next_q3` (llama.cpp) is removed.
 - A profile carries its GPU class and its RAM class. The RAM class comes from
   the installed RAM: 64 from about 60 GiB reported, 48 from 44, 32 from 30. A
