@@ -883,7 +883,8 @@ def run(args) -> int:
         if spec["id"] in report["cases"] and report["cases"][spec["id"]].get("finished"):
             continue
         sibling = report["cases"].get(spec.get("only_if_failed", ""), {})
-        if sibling.get("functional_ok"):
+        # A case named in --only runs even when its 256k case passed (the 128k step a profile falls back to).
+        if sibling.get("functional_ok") and not wanted:
             print("SKIP", spec["id"], "its 256k case passed", flush=True)
             continue
         shard = DATA_DIR / "models" / spec["weights"] / \
