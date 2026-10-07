@@ -7,7 +7,7 @@ Odkazy míří na nejnovější vydání. Veřejné soubory mají stálé názvy
 
 - `Marvin-Setup-1.17.4-Minimal.exe`: menší instalátor. Vyžaduje samostatný 64bitový Python 3.12 s Python Launcherem (`py`). Balíčky a llama.cpp/CUDA získá při nastavení.
 - `Marvin-Setup-1.17.4-Full.exe`: obsahuje vlastní Python 3.12, uzamčené balíčky a ověřené llama.cpp/CUDA b10935. Systémový Python není potřeba. Modely nejsou součástí samotného EXE.
-- `Marvin-Offline-Backup-1.17.4`: úplná místní sada s Full instalátorem, modely včetně Flash-Next, jejich projektory, runtime, snapshotem závislostí a manifestem kontrolních součtů.
+- `Marvin-Offline-Backup-1.17.4`: úplná místní sada s Full instalátorem, modely včetně Flash-Next a jeho jádra, jejich projektory, runtime, snapshotem závislostí a manifestem kontrolních součtů.
 
 Obě varianty vyžadují podporované 64bitové Windows a ovladač NVIDIA nainstalovaný uživatelem. WebView2 pro desktopové okno instalátor rozpozná a připraví automaticky. Minimal jej v případě potřeby stáhne; Full obsahuje celý runtime i pro instalaci bez internetu. Není potřeba otevírat stránky Microsoftu ani WebView2 instalovat samostatně. Microsoft Edge je nadále potřeba pro volitelné prohlížečové nástroje. Samostatný CUDA Toolkit ani Node.js nejsou potřeba.
 
@@ -29,6 +29,6 @@ Existující instalaci lze propojit se zálohou také přes nabídku Start **Ins
 
 ## Flash-Next
 
-V průvodci je Flash-Next volitelný; při nové online instalaci není automaticky zaškrtnutý. Lze jej později vybrat v **Model a zařízení**. Stahuje přibližně 90,9 GB a používá Q3 váhy, Q8 KV a 128k až 256k kontext podle dostupné RAM/VRAM. Podrobnosti a skutečně naměřené limity jsou v manuálu. Výchozím obecným modelem nové instalace zůstává Qwen Q5/Q8/192k.
+V průvodci je Flash-Next volitelný a nikdy není zaškrtnutý automaticky. Lze jej později vybrat v **Model a zařízení**. **IQ3_S** stáhne 84,5 GB; **IQ2_XS** stáhne 69 GB (vedle IQ3_S, se kterým sdílí dva soubory, asi 39 GB) a na počítačích se 48 nebo 32 GB RAM odpovídá rychleji. Obě varianty potřebují kartu NVIDIA se 16 GB a více, 32 GB RAM a více a ovladač 580 nebo novější a nabízejí kontext 256k a 128k. Při prvním startu si Marvin připraví jádro a soubory modelu (zhruba 7 GB navíc, z toho 5 GB stahováním). Naměřené rychlosti jsou v manuálu. Výchozím obecným modelem nové instalace zůstává Qwen Q5/Q8/192k.
 
 Distribuce ani offline instalační sada neobsahují osobní chaty, projekty nebo paměť. Ty zálohujte samostatně. Oba aktualizované PDF manuály jsou součástí instalátorů. Ovladač NVIDIA instaluje uživatel.

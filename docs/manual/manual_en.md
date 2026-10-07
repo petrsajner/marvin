@@ -30,7 +30,7 @@ Selecting a project gives the model access to that directory through tools. It d
 | GPU | NVIDIA RTX 5090 with 32 GB VRAM |
 | Driver | Current NVIDIA driver compatible with the bundled CUDA build |
 | System RAM | Enough for Windows, model mapping, projects, and tools; 64 GB or more is comfortable |
-| Free disk space | Depends on selected models; Flash-Next alone requires approximately 90.9 GB |
+| Free disk space | Depends on selected models; Flash-Next IQ3_S needs about 92 GB (84.5 GB of weights and about 7 GB it prepares) |
 | Python | Full: private Python 3.12 included. Minimal: install 64-bit Python 3.12 separately |
 | Desktop window | WebView2 prepared automatically; Full includes the offline runtime |
 | Browser tools | Microsoft Edge, normally present on Windows 11 |
@@ -57,13 +57,15 @@ The default installation directory is:
 %LOCALAPPDATA%\QwenHarness
 ```
 
-Download size depends on the selected models. Interrupted downloads can be resumed by running **Set up environment and models** again from the Start Menu. The optional Flash-Next model downloads when selected in the application.
+Download size depends on the selected models. Interrupted downloads can be resumed by running **Set up environment and models** again from the Start Menu. The optional Flash-Next model downloads when selected in the application or in the installer's model list.
 
 ## Qwen3.8-Flash-Next
 
-Select **Qwen 3.8 Flash-Next · Q3** in model settings. Marvin checks available memory before downloading, downloads and verifies every model part including image support, and prepares the model. Transfer progress shows both percentage and data size; it can be stopped and resumed later. Chat, attachments, and tools use the same controls as before.
+Select **Qwen 3.8 Flash-Next · IQ3_S** in model settings, or **Qwen 3.8 Flash-Next · IQ2_XS** for smaller weights that answer faster on PCs with 48 or 32 GB of RAM. On the first selection Marvin prepares everything the model needs: its model engine, the weights (downloaded and verified, including image support), the model files it reads the weights through, and a draft layer of about 5 GB that speeds up answers. Each phase shows its progress; a transfer can be stopped and resumed later. On this PC the whole first preparation took about 20 minutes, most of it the draft layer's download; later starts take 30 seconds to a minute and a half.
 
-This model uses Q8 cache and at least 128k context. The application chooses CPU threads and placement in system and graphics memory automatically. If a larger requested context does not fit, it selects a smaller profile down to 128k and displays the actual size. A smaller GPU moves more weights into system RAM; Windows can reclaim memory during startup. Processing a long new document can take several minutes; subsequent questions reuse the processed context.
+Chat, attachments and tools use the same controls as with any other model, and you can switch to Flash-Next and back within the same chat: the conversation, its files and earlier answers carry over.
+
+Flash-Next keeps most of its weights in system RAM and the parts it uses most on the graphics card. It runs on NVIDIA cards with 16 GB or more, on PCs with 32 GB of RAM or more, with NVIDIA driver 580 or newer. Marvin picks the profile measured for your card and your RAM; both offer 256k and 128k of context. A long new document is read in about a minute; follow-up questions reuse what was read.
 
 ## First launch
 
@@ -303,7 +305,7 @@ While a speculative profile is running, the header shows an **MTP** badge next t
 
 **Semantic search** (Settings > Model and device) adds meaning-based retrieval over the project files and past conversations — Czech and English, including paraphrases — combined with keyword search. It is off by default; enabling it downloads a small embedding model (~635 MB) that runs only on the CPU, without touching the graphics card. The first search in a project builds the index in the background; the agent sees the progress and repeats the search when needed.
 
-Nemotron is text-only. Qwen, Ornith, and Flash-Next use their own image support. The model list reports file availability; Flash-Next requires every shard and its projector. Qwen also offers compact profiles for smaller cards. The table does not promise that every combination will run on every PC; the selected model's settings show its exact profile choices.
+Nemotron is text-only. Qwen, Ornith, and Flash-Next use their own image support. The model list reports file availability; Flash-Next requires its shards, its projector and its prepared files, and Marvin prepares any that are missing when you select it. Qwen also offers compact profiles for smaller cards. The table does not promise that every combination will run on every PC; the selected model's settings show its exact profile choices.
 
 ## GPU memory budget and automatic recovery
 
@@ -315,13 +317,21 @@ If an actual allocation failure or sustained critical physical RAM interrupts a 
 
 ## Flash-Next settings and realistic waiting times
 
-Flash-Next downloads approximately **90.9 GB** across four files. Subsequent starts use the local copy, and changing KV does not download the weights again. Preparation shows downloading, file verification, and model loading separately. Transfer progress includes percentage and data size.
+**IQ3_S** downloads 84.5 GB in three files. **IQ2_XS** downloads 69 GB, of which 29.7 GB (the second shard and the image projector) are the same files as IQ3_S's, so beside IQ3_S it adds about 39 GB. The first preparation adds about 7 GB of model files and 0.7 GB for the model engine. Later starts use the local copies; changing the context repeats none of it.
 
-Flash-Next offers the highest two feasible choices from **256k, 192k and 128k**, using Q3 weights and Q8 KV. Marvin selects CPU threads and GPU/CPU weight placement automatically. The minimum is 128k. Planning uses installed RAM and measured allocations; low initial free RAM alone does not block a start, because Windows can reclaim memory. Actual loading and sustained physical memory pressure still determine whether a configuration works.
+Loading takes about 30 seconds with 64 GB of RAM and up to about a minute and a half on smaller PCs, which read part of the weights from the SSD. While the model fills system RAM the PC may respond slowly for a moment.
 
-With the qualified 256k configuration on RTX 5090 / 64 GB RAM / Core Ultra 7 265K, short generation measured about **24.5 tokens/s**. Reading **253,883 prompt tokens** took about **44 minutes**; the cached follow-up returned in **1.73 seconds**. The long-context model peak was about **29.25 GiB GPU + 41.39 GiB resident RAM**. Generation slowed to about 16 tokens/s with that context occupied. A large first read remains slow; cached follow-ups are much faster.
+Both weights use Q8 cache with 256k and 128k profiles. Marvin chooses by your card (32, 24 or 16 GB) and your RAM (64, 48 or 32 GB; more than 64 GB uses the 64 GB profiles). Measured in October 2026 on an RTX 5090, with smaller cards and RAM simulated; *answer* is a short reply with thinking off, *long input* the first answer to an input that fills 256k:
 
-The September 15 qualification covered 55 launches, tools, vision where supported, STOP and varied long text. For Flash-Next 256k, smaller-card placement predicts approximately **48.7 GiB model resident RAM at 24 GB GPU**, or **55.9-57.3 GiB at 16 GB GPU**. These estimates are not initial-free-RAM requirements. The 16 GB placement with 64 GB RAM reached critical physical memory during 256k warmup, so that combination is not offered at 256k. The 192k/128k choices still depend on actual startup; they are not promises of physical small-card qualification.
+| IQ3_S | 32 GB card | 24 GB card | 16 GB card |
+|---|---|---|---|
+| 64 GB RAM | 110 tokens/s, long input 43 s | 92 tokens/s, 43 s | 73 tokens/s, 49 s |
+| 48 GB RAM | 72 tokens/s, 56 s | 41 tokens/s, 71 s | 25 tokens/s, 4.3 min |
+| 32 GB RAM | 45 tokens/s, 2.9 min | 24 tokens/s, 4.7 min | 13 tokens/s, 10 min |
+
+IQ2_XS answers at 107–136 tokens/s with 64 or 48 GB of RAM on every card, and at 119 / 71 / 32 tokens/s with 32 GB of RAM on a 32 / 24 / 16 GB card. A cached follow-up returns in about one second everywhere. For comparison, the previous Flash-Next build answered at about 25 tokens/s and needed about 44 minutes for the same long input on the strongest PC.
+
+If memory runs short during a task, Marvin restarts the same model at 128k with the same settings and continues; completed tool results stay in the history. With 48 GB of RAM and a 16 GB card, a very long input can exceed the memory even at 128k; then select a smaller model and use **Continue**.
 
 Profile names 128k/192k/256k refer to 131,072 / 196,608 / 262,144 tokens. The numeric indicator may round the same capacity to a value such as 262k.
 
@@ -344,7 +354,7 @@ Ornith supports thinking on/off natively. The intermediate depths are prompt-gui
 
 ## KV cache precision
 
-KV cache stores the model's attention history. It is separate from weight quantization: **Q3** describes Flash-Next's weights, while **Q8** describes its context cache. Changing KV does not change the downloaded weight files.
+KV cache stores the model's attention history. It is separate from weight quantization: **IQ3_S** describes Flash-Next's weights, while **Q8** describes its context cache. Changing KV does not change the downloaded weight files.
 
 | Setting | Benefit | Tradeoff |
 |---|---|---|
@@ -973,7 +983,8 @@ During confirmation, `y` allows, `n` denies, and `a` allows all remaining writes
 | `runtime\llama` | `llama.cpp` CUDA binaries |
 | `runtime\workspace-settings.json` | Current workspace UI preferences and the last successful model |
 | `runtime\application.sqlite3` | Durable task queue, events, and file registry |
-| `runtime\execution-plans` | Automatically calculated Flash-Next runtime settings |
+| `runtime\models\strata` | Flash-Next's weights and the model files prepared from them |
+| `runtime\strata` | Flash-Next's model engine, prepared automatically |
 | `sessions\<id>` | Messages, metadata, attachments, task state, research, compression, exports |
 | `projects` | Managed project folders created by the app |
 | `projects.json` | Registered project list |
@@ -1015,7 +1026,7 @@ Backup creation copies model, runtime, and Python dependency files directly from
    - When Setup.exe is inside the backup folder beside `manifest.json`, run it there; it detects the backup automatically.
    - Put the backup beside Setup.exe and rename it exactly to `QwenHarness-Offline-Backup`; the installer detects it automatically.
    - Install Marvin, open the Start Menu, run **Set up from offline backup**, and select the backup folder.
-4. When Setup recognizes a backup beside itself, the first preparation restores local files first. A complete restore copies every model included in the bundle, including Flash-Next, and verifies SHA-256. The wizard's model selection governs any additional downloads.
+4. When Setup recognizes a backup beside itself, the first preparation restores local files first. A complete restore copies every model included in the bundle, including Flash-Next and its model engine, and verifies SHA-256. The wizard's model selection governs any additional downloads.
 5. The Start Menu command **Set up from offline backup** also restores locally first. Ordinary setup without that selection uses the internet and a registered backup as fallback. Anything absent from the local bundle still has to be obtained separately.
 
 Use **Use as fallback** to register a backup for future download failures, **Verify SHA-256** to check every file against its manifest, and **Clear selection** to stop using that fallback. Selecting a backup does not disable internet access. Keep Setup.exe, `manifest.json`, `README-OFFLINE.txt`, `requirements.txt`, `python-dependencies`, and `payload` together in the same backup folder.
@@ -1030,6 +1041,7 @@ The offline installation backup does not include chats, projects, memory, or per
 | `runtime\app.log` | Native app lifecycle/crash details |
 | `runtime\webapp.log` | Web UI startup and Python errors |
 | `runtime\llama-server.log` | Model loading, context, CUDA, inference, and timing |
+| `runtime\strata-server.log` | Flash-Next loading and inference |
 
 # 19. Troubleshooting
 
@@ -1037,10 +1049,11 @@ The offline installation backup does not include chats, projects, memory, or per
 
 - Open **Settings > Model and device**, read the error, and try restart.
 - Confirm all selected model files are complete, including Flash-Next's shards and projector.
-- Read `runtime\llama-server.log`.
+- Read `runtime\llama-server.log`, or `runtime\strata-server.log` for Flash-Next.
 - Check NVIDIA driver/GPU availability.
 - Stop another process using port 8080.
-- If memory allocation fails, check both free VRAM and system RAM. Flash-Next requires both; a smaller GPU needs more system RAM.
+- If memory allocation fails, check both free VRAM and system RAM. Flash-Next keeps its weights in system RAM; other large programs left open reduce what it can use.
+- Flash-Next needs NVIDIA driver 580 or newer.
 
 ## Web UI port is occupied
 

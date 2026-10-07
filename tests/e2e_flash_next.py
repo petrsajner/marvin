@@ -9,6 +9,7 @@ Marvin's state is untouched; stop Marvin's model first.
     python tests/e2e_flash_next.py switch     # Q5 -> Flash-Next -> Q5 in one chat
     python tests/e2e_flash_next.py coding     # an agent edits code and runs the project check
     python tests/e2e_flash_next.py pressure   # 48 GB of RAM, memory taken mid-task: 256k -> 128k
+    python tests/e2e_flash_next.py clean      # no engine, no prepared files: Marvin prepares them
     python tests/e2e_flash_next.py all
 """
 from __future__ import annotations
@@ -84,7 +85,35 @@ def service_for(cfg: Config, model: str, thinking="off") -> ApplicationService:
     return service
 
 
-def switch(args, directory: Path) -> dict:
+def clean(args, directory: Path) -> dict:
+    """A PC with no engine and no prepared files: Marvin prepares everything when Flash-Next is chosen.
+
+    The weights are hard-linked from the given data folder to save their 84 GB
+    download; Marvin still verifies them. The engine, the pack and the draft
+    layer (about 5 GB from Hugging Face) are made from nothing."""
+    from harness import strata_backend, strata_runtime
+    source = args.strata_data_dir
+    args = copy.copy(args)
+    args.strata_dir = directory / "runtime" / "strata"
+    args.strata_data_dir = directory / "runtime" / "models" / "strata"
+    for relative in ("models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf",
+                     "models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf",
+                     "models/mmproj-Qwen3.8-Flash-Next-BF16.gguf"):
+        target = args.strata_data_dir / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        os.link(source / relative, target)
+    result = switch(args, directory, fresh=True)
+    (directory / "check").mkdir()
+    cfg = make_config(args, directory / "check")
+    result["prepared"] = {"engine": strata_runtime.installed_record(cfg),
+                          "missing_after": strata_backend.model_problems(cfg, KEY),
+                          "draft_layer": sorted(p.name for p in (args.strata_data_dir / "mtp" / "rt").iterdir())}
+    require(not result["prepared"]["missing_after"] and result["prepared"]["engine"].get("version"),
+            "everything was prepared", result["prepared"])
+    return result
+
+
+def switch(args, directory: Path, fresh=False) -> dict:
     """The owner's requirement: switch the model and carry on in the same chat."""
     from PIL import Image
     cfg = make_config(args, directory)
@@ -106,7 +135,7 @@ def switch(args, directory: Path) -> dict:
         service.save_preferences()
         steps["flash_recall"] = r = run(service, session,
             "Use read_file to read notes.txt and tell me its exact content, and the code word I gave you earlier.",
-            "switch-flash-recall")
+            "switch-flash-recall", timeout=5400 if fresh else 900)
         require(r["status"] == "complete" and r["model"] == KEY and "Q5_WAS_HERE" in r["answer"]
                 and "AMBER-4417" in r["answer"] and "read_file" in r["tools"], "Flash-Next continues the chat", r)
 
@@ -230,7 +259,7 @@ def pressure(args, directory: Path) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("scenario", choices=("switch", "coding", "pressure", "all"))
+    parser.add_argument("scenario", choices=("switch", "coding", "pressure", "clean", "all"))
     parser.add_argument("--models-dir", type=Path, default=LOCAL / "QwenHarness" / "runtime" / "models")
     parser.add_argument("--llama-dir", type=Path, default=LOCAL / "QwenHarness" / "runtime" / "llama")
     parser.add_argument("--strata-dir", type=Path, default=LOCAL / "StrataEval" / "Strata")
@@ -240,7 +269,7 @@ def main() -> int:
                         help="thinking for the coding scenario (the workspace's default is xhigh)")
     parser.add_argument("--output", type=Path, help="write the results as JSON here")
     args = parser.parse_args()
-    scenarios = {"switch": switch, "coding": coding, "pressure": pressure}
+    scenarios = {"switch": switch, "coding": coding, "pressure": pressure, "clean": clean}
     chosen = list(scenarios) if args.scenario == "all" else [args.scenario]
     results, failed = {}, False
     for name in chosen:

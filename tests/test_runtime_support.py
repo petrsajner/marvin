@@ -230,6 +230,54 @@ class ModelFileTests(unittest.TestCase):
             for expected in ("weights.gguf", "llama-server.exe", "whisper-cli.exe"):
                 self.assertIn(expected, collected)
 
+    def test_flash_next_engine_and_its_shared_shard_travel_once(self):
+        """The engine Marvin prepared goes along; the second shard IQ3_S and IQ2_XS share
+        is stored once and linked again on restore, and the engine's environment is
+        pointed at the restoring installation's Python."""
+        import os
+        from scripts.offline_backup import create_backup, restore_backup, verify_backup
+        with tempfile.TemporaryDirectory() as temporary:
+            outer = Path(temporary)
+            source = outer / "source"
+            models = source / "runtime/models/strata/models"
+            (models / "IQ3_S").mkdir(parents=True)
+            (models / "IQ2_XS").mkdir()
+            (models / "IQ3_S/shard-2.gguf").write_bytes(b"SHARED" * 1000)
+            os.link(models / "IQ3_S/shard-2.gguf", models / "IQ2_XS/shard-2.gguf")
+            (models / "IQ3_S/shard-1.gguf").write_bytes(b"IQ3" * 100)
+            engine = source / "runtime/strata"
+            (engine / "engine").mkdir(parents=True)
+            (engine / "engine/strata.exe").write_bytes(b"ENGINE")
+            (engine / ".venv").mkdir()
+            (engine / ".venv/pyvenv.cfg").write_text("home = C:\\Elsewhere\\Python312\nversion = 3.12.9\n")
+            (source / "runtime/llama").mkdir(parents=True)
+            (source / "runtime/llama/llama-server.exe").write_bytes(b"LLAMA")
+            (source / ".venv/Lib/site-packages/example").mkdir(parents=True)
+            (source / ".venv/Lib/site-packages/example/__init__.py").write_text("VALUE = 1\n")
+            (source / "requirements.txt").write_text("example==1.0\n")
+            (source / "version.txt").write_text("test-version\n")
+            backup = outer / "backup"
+            manifest = create_backup(source, backup)
+            linked = [item for item in manifest["files"] if item.get("link_to")]
+            self.assertEqual([Path(item["path"]).parent.name for item in linked], ["IQ3_S"])
+            self.assertEqual(len(list(backup.rglob("shard-2.gguf"))), 1, "the shared shard is stored once")
+            self.assertIn("payload/runtime/strata/engine/strata.exe", {item["path"] for item in manifest["files"]})
+            self.assertTrue(verify_backup(backup)["ok"])
+            restored = outer / "restored"
+            (restored / ".venv/Scripts").mkdir(parents=True)
+            (restored / ".venv/Scripts/python.exe").touch()
+            (restored / "runtime/python").mkdir(parents=True)
+            (restored / "runtime/python/python.exe").touch()
+            (restored / "requirements.txt").write_text("example==1.0\n")
+            result = restore_backup(restored, backup)
+            first = restored / "runtime/models/strata/models/IQ2_XS/shard-2.gguf"
+            second = restored / "runtime/models/strata/models/IQ3_S/shard-2.gguf"
+            self.assertEqual(second.read_bytes(), b"SHARED" * 1000)
+            self.assertTrue(first.samefile(second), "linked again, not copied twice")
+            self.assertIn(f"home = {restored / 'runtime/python'}",
+                          (restored / "runtime/strata/.venv/pyvenv.cfg").read_text())
+            self.assertTrue(result["strata_environment"].startswith("home = "))
+
 
 class HardwareIdentityTests(unittest.TestCase):
     def hardware(self, total=32, free=30, ram=56, total_ram=64):

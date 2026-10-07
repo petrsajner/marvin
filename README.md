@@ -53,7 +53,7 @@ These are product decisions, not postponed roadmap items.
   Last used folder is remembered.
 - 🖼️ **Image analysis** — native vision (mmproj), including screenshots
 - 🖱️ **Computer control** — screenshot → clicking, typing, keys (pyautogui + mss)
-- 🔀 **Switchable models** — Qwen IQ3/Q4/Q5, Flash-Next Q3, Ornith Q5 and Nemotron Q4/Q5
+- 🔀 **Switchable models** — Qwen IQ3/Q4/Q5, Flash-Next IQ3_S/IQ2_XS, Ornith Q5 and Nemotron Q4/Q5
 - 🎚️ **KV cache precision** — Q8 by default, with optional F16 on 32 GB-class cards;
   Ornith fixed at Q8
 - 🧠 **Thinking on/off** — model reasoning mode (switchable at runtime)
@@ -187,20 +187,21 @@ Flash-Next is optional and is downloaded when selected in the application.
 
 ### Qwen3.8-Flash-Next
 
-Select **Qwen 3.8 Flash-Next · Q3** in Settings. Marvin checks available RAM and VRAM,
-downloads and verifies the 90.9 GB model and its image support, then configures CPU
-threads and expert placement automatically. Download progress is visible and can
-be interrupted and resumed. Chat, images and agent tools use the existing UI.
+Select **Qwen 3.8 Flash-Next · IQ3_S** (84.5 GB) or **· IQ2_XS** (69 GB, faster with
+48 or 32 GB of RAM) in Settings. On the first selection Marvin prepares the model's
+engine, downloads and verifies the weights and their image support, and prepares the
+model files and a draft layer for faster answers. Progress is visible and a download
+can be interrupted and resumed. Chat, images and agent tools use the existing UI, and
+a chat can switch to Flash-Next and back.
 
-Flash-Next uses Q8 KV cache with a minimum 128k context. Larger profiles require
-a compatible measured placement; Windows may reclaim RAM during startup. Recovery changes only context, down to 128k.
-A smaller GPU also needs more system RAM for this model. This differs from the
-smaller Qwen models that primarily run in VRAM.
+Flash-Next keeps most of its weights in system RAM. It needs an NVIDIA card with 16 GB
+or more, 32 GB of RAM or more and driver 580 or newer. Marvin picks the profile measured
+for the card and the RAM; each offers 256k and 128k of Q8 context, and recovery steps
+down to 128k when memory runs short.
 
-On the tested RTX 5090 / 64 GB RAM / Core Ultra 7 265K, Q3 generated about 27 tok/s.
-A 122,397-token input took 17m 34s to process; the next question reused that context
-and took 1.27s. These are individual measurements, not a guarantee for other machines.
-See the [integration evidence](docs/design/2026-09-13-qwen38-flash-next-integration.md).
+On an RTX 5090 with 64 GB of RAM, IQ3_S answers at about 110 tok/s and reads a
+254k-token input in 43 s; a cached follow-up takes about a second. Smaller cards and
+less RAM are slower. See the [measurement record](docs/design/strata-qualification-2026-10-07.md).
 
 ## Running
 

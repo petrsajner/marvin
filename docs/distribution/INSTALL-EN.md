@@ -7,7 +7,7 @@ These links follow the latest release. Public assets keep the names `Marvin-Setu
 
 - `Marvin-Setup-1.17.4-Minimal.exe`: smaller installer. Requires separate 64-bit Python 3.12 with the Python Launcher (`py`); prepares packages and llama.cpp/CUDA during setup.
 - `Marvin-Setup-1.17.4-Full.exe`: includes private Python 3.12, locked packages, and validated llama.cpp/CUDA b10935. No system Python is required. The EXE itself does not include model weights.
-- `Marvin-Offline-Backup-1.17.4`: complete local bundle with Full Setup, all included models and projectors including Flash-Next, runtime, dependency snapshot, and checksum manifest.
+- `Marvin-Offline-Backup-1.17.4`: complete local bundle with Full Setup, all included models and projectors including Flash-Next and its model engine, runtime, dependency snapshot, and checksum manifest.
 
 Both variants require supported 64-bit Windows and a user-installed NVIDIA driver. WebView2 for the desktop window is detected and prepared automatically. Minimal downloads it if needed; Full includes the complete runtime for offline installation. No Microsoft website or separate WebView2 installation is required. Microsoft Edge is still required for the optional browser tools. A separate CUDA Toolkit or Node.js is not required.
 
@@ -29,6 +29,6 @@ An existing installation can also select a backup through **Set up from offline 
 
 ## Flash-Next
 
-Flash-Next is optional in the wizard and is not automatically checked for a fresh online installation. It can also be selected later in **Model and device**. It downloads approximately 90.9 GB and uses Q3 weights, Q8 KV, and 128k to 256k context according to available RAM/VRAM. See the manual for measured results and limits. The general new-installation default remains Qwen Q5/Q8/192k.
+Flash-Next is optional in the wizard and is never checked automatically. It can also be selected later in **Model and device**. **IQ3_S** downloads 84.5 GB; **IQ2_XS** downloads 69 GB (about 39 GB beside IQ3_S, with which it shares two files) and answers faster on PCs with 48 or 32 GB of RAM. Both need an NVIDIA card with 16 GB or more, 32 GB of RAM or more and driver 580 or newer, and offer 256k and 128k context. On its first start Marvin prepares the model's engine and files (about 7 GB more, including a 5 GB download). See the manual for measured speeds. The general new-installation default remains Qwen Q5/Q8/192k.
 
 The distribution and offline installation bundle contain no personal chats, projects, or memories. Back those up separately. Both updated PDF manuals are included in each installer. The NVIDIA driver remains user-managed.

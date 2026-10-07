@@ -231,25 +231,38 @@ Marvin's models and the prepared Strata, on its own port and runtime folder:
   restarted at 128k with the same expert cache (1054) and finished the task.
   On a 32 GB card the same pressure did not stop the engine.
 
-### Phase 3: runtime and model preparation (design sections 2.7–2.9)
+### Phase 3: runtime and model preparation: done (7 October 2026)
 
-Everything inside the existing download, verify and prepare phases, so the
-user sees only the usual progress:
+Everything runs inside the existing download, verify and prepare phases:
 
-- `harness/strata_runtime.py`: pinned source archive, `strata-windows-x64.zip`,
-  hashed wheel lock with the two NVIDIA wheels, own venv from Marvin's Python,
-  driver ≥ 580, staged and activated like `runtime_update.py`;
-- pack (`tools/iq_pack.py`, needs llama.cpp's `gguf-py` at the commit setup
-  pins), MTP (`mtp_fetch.py` at a pinned revision, `mtp_pack.py`, `mtp_rt.py`),
-  each resumable, hash-checked and reported as "preparing";
-- then show the entry (drop the `strata.enabled` gate) and remove the setup
-  hint from `strata_backend.explain`;
-- offline backup and installer include `runtime/strata` when installed; the
-  backup must keep the hard-linked shard as one file, and the installer's model
-  list gets the Flash-Next rows back (IQ3_S, IQ2_XS) with their RAM needs;
-- the user manuals (EN and CS), the installation guides and the README still
-  describe the removed llama.cpp Flash-Next (Q3, 90.9 GB, automatic planning)
-  and are rewritten for IQ3_S/IQ2_XS when the entry becomes visible.
+- `harness/strata_runtime.py` (`25a3768`): the engine first, from Strata's
+  source at commit `a1641e9` (the v0.1.39 tag moved there from `6f32ec0` with
+  the same 852 files, so GitHub's generated archives are checked by their
+  content), the release `strata-windows-x64.zip` by its SHA-256, llama.cpp's
+  gguf-py at the commit setup pins, and a venv from Marvin's Python with
+  `pip --require-hashes` over `requirements-strata-py312.lock`
+  (`scripts/lock_strata_dependencies.py`; cmake and ninja left out). Staged
+  under `runtime/strata-candidates`, checked (BUILD.json version, cuBLAS) and
+  swapped in with the previous one kept. An old driver is reported, not refused.
+- After the weights: `iq_pack.py` (with `STRATA_GGUF_PY`), then `mtp_fetch.py`
+  (its pinned revision `de4b8e4` and per-tensor SHA-256), `mtp_pack.py`
+  (`q2_0`, the author's choice by measured acceptance; the owner keeps it) and
+  `mtp_rt.py` into `rt.partial`, renamed to `rt` only when finished; the draft
+  vocabulary from `data/draft_vocab.bin`.
+- The `strata.enabled` gate is gone; both entries are built in, optional and
+  never chosen automatically.
+- Installer rows for IQ3_S and IQ2_XS (checked only when already present) and
+  the lock file; the offline backup carries `runtime/strata`, stores the shared
+  shard once with a `link_to` record, links it again on restore and points the
+  restored venv's `pyvenv.cfg` at `runtime/python`.
+- Manuals (EN, CS), installation guides and README describe IQ3_S/IQ2_XS.
+
+**Verified on this PC:** a real install into an empty folder (27 s with a warm
+pip cache), and `tests/e2e_flash_next.py clean`: no engine and no prepared
+files (weights hard-linked), Q5 → Flash-Next → Q5 in one chat; Marvin prepared
+the engine, verified the 84 GB of weights, packed, downloaded and built the
+draft layer, and answered; 19.6 minutes for the first Flash-Next turn, most of
+it the draft layer's 5 GB download. Nothing was missing afterwards.
 
 ### Phase 4
 

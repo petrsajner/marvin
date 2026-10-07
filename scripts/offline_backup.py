@@ -108,6 +108,13 @@ def _runtime_sources(root: Path) -> list[tuple[Path, Path, str]]:
             if source.is_file():
                 rel = Path("payload") / "runtime" / "openart" / source.relative_to(openart)
                 sources.append((source, rel, "openart"))
+    strata = runtime / "strata"
+    if strata.is_dir():
+        # Flash-Next's engine with its private Python environment, once prepared.
+        for source in sorted(strata.rglob("*")):
+            if source.is_file() and "__pycache__" not in source.parts:
+                rel = Path("payload") / "runtime" / "strata" / source.relative_to(strata)
+                sources.append((source, rel, "strata"))
     webview = runtime / "webview2"
     if webview.is_dir():
         for source in sorted(webview.iterdir()):
@@ -125,6 +132,28 @@ def _runtime_sources(root: Path) -> list[tuple[Path, Path, str]]:
     if installer.is_file():
         sources.append((installer, Path(installer.name), "installer"))
     return sources
+
+
+def _same_file_key(path: Path) -> tuple[int, int] | None:
+    """The identity of a file with more than one name (a hard link), else None."""
+    stat = path.stat()
+    return (stat.st_dev, stat.st_ino) if stat.st_nlink > 1 and stat.st_ino else None
+
+
+def _payload_target(root: Path, relative: str) -> Path:
+    return root / Path(*_safe_relative(relative).parts[1:])
+
+
+def _fix_strata_environment(root: Path) -> str:
+    """A restored engine environment points at the Python it was made from; point it at this one's."""
+    config = root / "runtime" / "strata" / ".venv" / "pyvenv.cfg"
+    base = root / "runtime" / "python"
+    if not config.is_file() or not (base / "python.exe").is_file():
+        return "unchanged"
+    lines = config.read_text(encoding="utf-8").splitlines()
+    fixed = [f"home = {base}" if line.split("=", 1)[0].strip() == "home" else line for line in lines]
+    config.write_text("\n".join(fixed) + "\n", encoding="utf-8")
+    return f"home = {base}"
 
 
 def _write_readme(path: Path) -> None:
@@ -197,7 +226,8 @@ def create_backup(root: Path, output: Path) -> dict[str, Any]:
             f"Installed Python dependencies not found: {site_packages}")
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    runtime_bytes = sum(source.stat().st_size for source, _, _ in sources)
+    runtime_bytes = sum(source.stat().st_size for source, _, _ in
+                        {(_same_file_key(s) or s): (s, r, c) for s, r, c in sources}.values())
     dependency_bytes = sum(path.stat().st_size for path in site_packages.rglob("*")
                            if path.is_file() and "__pycache__" not in path.parts
                            and path.suffix.lower() not in {".pyc", ".pyo"})
@@ -224,12 +254,24 @@ def create_backup(root: Path, output: Path) -> dict[str, Any]:
             shutil.copy2(lock, building / lock.name)
         _write_readme(building / "README-OFFLINE.txt")
         print(f"[BACKUP] Copying {len(sources)} runtime files ({runtime_bytes / 2**30:.1f} GiB)")
+        # Two weights share their second shard as one file under two names: it is
+        # copied once, and the restore links the second name again.
+        first_name: dict[tuple[int, int], dict[str, Any]] = {}
         for index, (source, relative, component) in enumerate(sources, 1):
             size = source.stat().st_size
+            key = _same_file_key(source)
+            if key in first_name:
+                first = first_name[key]
+                print(f"  [{index}/{len(sources)}] {relative} (the same file as {first['path']})")
+                records.append({"path": relative.as_posix(), "size": size, "sha256": first["sha256"],
+                                "component": component, "link_to": first["path"]})
+                continue
             print(f"  [{index}/{len(sources)}] {relative} ({size / 2**20:.1f} MiB)")
             digest = _copy_with_hash(source, building / relative)
             records.append({"path": relative.as_posix(), "size": size,
                             "sha256": digest, "component": component})
+            if key:
+                first_name[key] = records[-1]
 
         print("[BACKUP] Copying installed Python dependencies from .venv ...")
         dependency_target = building / DEPENDENCY_ARCHIVE
@@ -284,7 +326,7 @@ def verify_backup(backup: Path) -> dict[str, Any]:
     files = manifest["files"]
     for index, item in enumerate(files, 1):
         relative = _safe_relative(str(item["path"]))
-        path = backup / relative
+        path = backup / _safe_relative(str(item.get("link_to") or item["path"]))
         print(f"  [{index}/{len(files)}] verify {relative}")
         if not path.is_file():
             errors.append(f"missing: {relative}")
@@ -315,7 +357,7 @@ def restore_backup(root: Path, backup: Path,
         if not relative.parts or relative.parts[0] != "payload":
             continue
         payload_rel = Path(*relative.parts[1:])
-        source = backup / relative
+        source = backup / _safe_relative(str(item.get("link_to") or item["path"]))
         target = root / payload_rel
         expected_size = int(item["size"])
         expected_hash = str(item["sha256"])
@@ -326,6 +368,17 @@ def restore_backup(root: Path, backup: Path,
             skipped.append(str(payload_rel))
             continue
         print(f"  restore {payload_rel} ({expected_size / 2**20:.1f} MiB)")
+        if item.get("link_to"):
+            twin = _payload_target(root, str(item["link_to"]))
+            if twin.is_file() and twin.stat().st_size == expected_size:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.unlink(missing_ok=True)
+                try:
+                    os.link(twin, target)
+                    restored.append(str(payload_rel))
+                    continue
+                except OSError as exc:
+                    print(f"  (no hard link for {payload_rel}: {exc}; copying)")
         digest = _copy_with_hash(source, target)
         if digest != expected_hash:
             target.unlink(missing_ok=True)
@@ -334,8 +387,10 @@ def restore_backup(root: Path, backup: Path,
     dependency_state = "not-requested"
     if components is None or "python-dependencies" in components:
         dependency_state = _restore_dependencies(root, backup, manifest)
+    engine = _fix_strata_environment(root) if any(
+        str(path).replace("\\", "/").startswith("runtime/strata/") for path in restored) else "not-restored"
     result = {"ok": True, "restored": restored, "skipped": skipped,
-              "dependencies": dependency_state,
+              "dependencies": dependency_state, "strata_environment": engine,
               "app_version": manifest.get("app_version")}
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return result
@@ -485,10 +540,19 @@ def refresh_backup(root: Path, backup: Path) -> dict[str, Any]:
     # Runtime payload a new version may have introduced - 1.12.0 added dictation.
     # Files already recorded at the same size are left alone: re-reading the whole
     # model payload to learn that nothing moved would cost half an hour.
+    first_name: dict[tuple[int, int], str] = {}
     for source, relative, component in _runtime_sources(root):
         key = relative.as_posix()
         recorded = records.get(key)
-        target = backup / relative
+        same = _same_file_key(source)
+        if same in first_name:
+            twin = records[first_name[same]]
+            records[key] = {"path": key, "size": source.stat().st_size, "sha256": twin["sha256"],
+                            "component": component, "link_to": twin["path"]}
+            continue
+        if same:
+            first_name[same] = key
+        target = backup / _safe_relative(str((recorded or {}).get("link_to") or key))
         if recorded and target.is_file() \
                 and recorded.get("size") == source.stat().st_size \
                 and target.stat().st_size == source.stat().st_size:
@@ -574,7 +638,7 @@ def _main() -> int:
     restore.add_argument("--root", default=str(Path(__file__).resolve().parent.parent))
     restore.add_argument("--components", default=None,
                          help="comma-separated components "
-                              "(models,llama,whisper,webview2,settings,python-dependencies)")
+                              "(models,llama,strata,whisper,openart,webview2,settings,python-dependencies)")
     info = sub.add_parser("info")
     info.add_argument("--backup", required=True)
     refresh = sub.add_parser("refresh")

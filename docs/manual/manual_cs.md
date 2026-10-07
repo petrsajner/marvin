@@ -30,7 +30,7 @@ Výběr projektu dá modelu přístup k danému adresáři prostřednictvím ná
 | GPU | NVIDIA RTX 5090 s 32 GB VRAM |
 | Ovladač | Aktuální NVIDIA ovladač kompatibilní s přibaleným CUDA buildem |
 | Systémová RAM | Dost pro Windows, mapování modelu, projekty a nástroje; komfortní je 64 GB a více |
-| Volné místo | Podle vybraných modelů; Flash-Next samostatně potřebuje přibližně 90,9 GB |
+| Volné místo | Podle vybraných modelů; Flash-Next IQ3_S potřebuje asi 92 GB (84,5 GB vah a zhruba 7 GB, které si připraví) |
 | Python | Full: vlastní Python 3.12 přibalený. Minimal: 64bitový Python 3.12 instalovaný samostatně |
 | Desktopové okno | WebView2 se připraví automaticky; Full obsahuje offline runtime |
 | Prohlížečové nástroje | Microsoft Edge, běžně součást Windows 11 |
@@ -57,13 +57,15 @@ Výchozí instalační adresář je:
 %LOCALAPPDATA%\QwenHarness
 ```
 
-Objem stahování závisí na zvolených modelech. Přerušené stahování lze obnovit opětovným spuštěním **Instalace prostředí a modelů** z nabídky Start. Volitelný Flash-Next se stahuje až při výběru v aplikaci.
+Objem stahování závisí na zvolených modelech. Přerušené stahování lze obnovit opětovným spuštěním **Instalace prostředí a modelů** z nabídky Start. Volitelný Flash-Next se stahuje až při výběru v aplikaci nebo v seznamu modelů instalátoru.
 
 ## Qwen3.8-Flash-Next
 
-V nastavení modelu vyberte **Qwen 3.8 Flash-Next · Q3**. Marvin před stahováním zkontroluje paměť počítače, stáhne a ověří všechny části modelu včetně podpory obrázků a připraví spuštění. Během přenosu ukazuje procenta a objem dat; přenos lze zastavit a později obnovit. Ovládání chatu, příloh a nástrojů zůstává stejné.
+V nastavení modelu vyberte **Qwen 3.8 Flash-Next · IQ3_S**, případně **Qwen 3.8 Flash-Next · IQ2_XS** s menšími vahami, které na počítačích se 48 nebo 32 GB RAM odpovídají rychleji. Při prvním výběru si Marvin připraví vše, co model potřebuje: jeho jádro, váhy (stáhne je a ověří včetně podpory obrázků), soubory, přes které váhy čte, a pomocnou vrstvu pro rychlejší odpovědi o velikosti asi 5 GB. Každá fáze ukazuje svůj průběh; přenos lze zastavit a později obnovit. Na testovacím počítači trvala celá první příprava asi 20 minut, většinu z toho stahování pomocné vrstvy; další starty trvají 30 sekund až minutu a půl.
 
-Tento model používá Q8 cache a alespoň 128k kontext. Počet jader a rozdělení dat mezi systémovou a grafickou paměť aplikace volí sama. Pokud větší zvolený kontext nemá dost paměti, použije nižší profil, nejméně 128k, a zobrazí skutečnou velikost. Menší GPU přesouvá více vah do systémové RAM; Windows může během startu paměť uvolnit. Dlouhý nový dokument se může zpracovávat několik minut; navazující otázky využívají již zpracovaný kontext.
+Ovládání chatu, příloh a nástrojů je stejné jako u ostatních modelů a na Flash-Next i zpět můžete přepnout uprostřed chatu: konverzace, její soubory i dřívější odpovědi zůstávají.
+
+Flash-Next drží většinu vah v systémové RAM a nejpoužívanější části na grafické kartě. Běží na kartách NVIDIA se 16 GB a více, na počítačích s 32 GB RAM a více a s ovladačem NVIDIA 580 nebo novějším. Marvin vybere profil změřený pro vaši kartu a vaši RAM; oba nabízejí kontext 256k a 128k. Dlouhý nový dokument přečte zhruba za minutu; navazující otázky využívají již přečtený kontext.
 
 ## První spuštění
 
@@ -273,7 +275,7 @@ Když běží spekulativní profil, záhlaví zobrazuje odznak **MTP** vedle ná
 Q5 používejte pro náročný vývoj, architekturu a finální kvalitu. Q4 je vhodný pro vyšší rychlost nebo kontext 256k. Ornith je extrémně rychlý, ale při reálném vývoji může být slabší než dense Qwen.
 
 
-Nemotron je pouze textový. Qwen, Ornith a Flash-Next mají vlastní podporu obrazových vstupů. Nabídka modelů ukazuje dostupnost souborů; u Flash-Next musí být kompletní všechny shardy i projektor. Podle karty jsou u Qwenu dostupné také kompaktní profily. Tabulka není příslibem, že každá kombinace poběží na každém počítači; přesný výběr najdete u zvoleného modelu v nastavení.
+Nemotron je pouze textový. Qwen, Ornith a Flash-Next mají vlastní podporu obrazových vstupů. Nabídka modelů ukazuje dostupnost souborů; Flash-Next potřebuje své shardy, projektor a připravené soubory a chybějící si Marvin připraví při jeho výběru. Podle karty jsou u Qwenu dostupné také kompaktní profily. Tabulka není příslibem, že každá kombinace poběží na každém počítači; přesný výběr najdete u zvoleného modelu v nastavení.
 
 ## Limit paměti GPU a automatická obnova
 
@@ -285,19 +287,27 @@ Pokud skutečná chyba alokace nebo trvající kritický nedostatek fyzické RAM
 
 ## Flash-Next: nastavení a reálné čekání
 
-Flash-Next stáhne přibližně **90,9 GB** ve čtyřech souborech. Po prvním stažení se používá místní kopie. Změna KV profilu model znovu nestahuje. Během přípravy uvidíte zvlášť stahování, kontrolu souborů a načítání; přenos ukazuje procenta a objem dat.
+**IQ3_S** stáhne 84,5 GB ve třech souborech. **IQ2_XS** stáhne 69 GB, z toho 29,7 GB (druhý shard a projektor obrázků) jsou tytéž soubory jako u IQ3_S, takže vedle IQ3_S přidá asi 39 GB. První příprava přidá zhruba 7 GB souborů modelu a 0,7 GB jádra. Další starty používají místní kopie; změna kontextu nic z toho neopakuje.
 
-Flash-Next nabízí dvě nejvyšší dostupné volby z **256k, 192k a 128k**, s vahami Q3 a KV Q8. Počet vláken CPU a rozložení vah volí Marvin automaticky. Minimum je 128k. Plánování používá instalovanou RAM a naměřené alokace; nízká počáteční volná RAM sama o sobě start nezablokuje, protože Windows umí paměť uvolnit. O funkčnosti rozhoduje i skutečný průběh načítání a trvající kritický nedostatek fyzické paměti.
+Načtení trvá asi 30 sekund s 64 GB RAM a na menších počítačích, které část vah čtou z SSD, až kolem minuty a půl. Zatímco model plní systémovou RAM, může počítač chvíli reagovat pomaleji.
 
-Ověřené nastavení 256k na RTX 5090 / 64 GB RAM / Core Ultra 7 265K dosáhlo při krátké odpovědi asi **24,5 tokenu/s**. Načtení **253 883 vstupních tokenů** trvalo přibližně **44 minut**; navazující odpověď s využitím cache **1,73 sekundy**. Model při dlouhém kontextu zabral ve špičce asi **29,25 GiB GPU + 41,39 GiB rezidentní RAM**. Generování se zaplněným kontextem kleslo přibližně na 16 tokenů/s. První čtení velkého vstupu zůstává pomalé; navazující dotazy jsou výrazně rychlejší.
+Obě varianty vah používají Q8 cache s profily 256k a 128k. Marvin vybírá podle karty (32, 24 nebo 16 GB) a RAM (64, 48 nebo 32 GB; více než 64 GB používá profily pro 64 GB). Změřeno v říjnu 2026 na RTX 5090 se simulovanými menšími kartami a RAM; *odpověď* je krátká odpověď bez thinking, *dlouhý vstup* první odpověď na vstup, který zaplní 256k:
 
-Měření z 15. září zahrnuje 55 spuštění, nástroje, vision u podporovaných modelů, Stop a různorodé dlouhé vstupy. Pro Flash-Next 256k vychází odhad při 24GB GPU na asi **48,7 GiB rezidentní RAM modelu**, při 16GB GPU na **55,9-57,3 GiB**. Nejde o požadavek na počáteční volnou RAM. Rozložení pro 16GB GPU s 64 GB RAM dosáhlo při zahřívání 256k kritického nedostatku fyzické paměti, proto se tato kombinace na 256k nenabízí. Volby 192k/128k závisejí na skutečném startu; nejde o potvrzení funkčnosti na fyzických menších kartách.
+| IQ3_S | karta 32 GB | karta 24 GB | karta 16 GB |
+|---|---|---|---|
+| 64 GB RAM | 110 tokenů/s, dlouhý vstup 43 s | 92 tokenů/s, 43 s | 73 tokenů/s, 49 s |
+| 48 GB RAM | 72 tokenů/s, 56 s | 41 tokenů/s, 71 s | 25 tokenů/s, 4,3 min |
+| 32 GB RAM | 45 tokenů/s, 2,9 min | 24 tokenů/s, 4,7 min | 13 tokenů/s, 10 min |
+
+IQ2_XS odpovídá rychlostí 107–136 tokenů/s s 64 nebo 48 GB RAM na všech kartách a s 32 GB RAM rychlostí 119 / 71 / 32 tokenů/s na kartě 32 / 24 / 16 GB. Navazující dotaz z cache se všude vrátí zhruba za sekundu. Pro srovnání: předchozí verze Flash-Next odpovídala asi 25 tokeny/s a na stejně dlouhý vstup potřebovala na nejsilnějším počítači asi 44 minut.
+
+Když během úlohy dojde paměť, Marvin spustí stejný model znovu na 128k se stejným nastavením a pokračuje; výsledky dokončených nástrojů zůstanou v historii. Se 48 GB RAM a 16GB kartou může velmi dlouhý vstup přesáhnout paměť i na 128k; pak vyberte menší model a použijte **Pokračovat**.
 
 Profily používají tradiční označení 128k/192k/256k pro 131 072 / 196 608 / 262 144 tokenů. Číselný ukazatel může tutéž kapacitu zaokrouhlit například na 262k.
 
 ## Přesnost KV
 
-Kvantizace vah a KV cache jsou dvě různé věci: **Q3** u Flash-Next popisuje váhy modelu, **Q8** jeho průběžnou paměť kontextu. F16 používá více paměti pro KV, Q8 ji šetří. Výslednou velikost okna určuje konkrétní profil a dostupná paměť. Změna KV restartuje server, nikoli chat.
+Kvantizace vah a KV cache jsou dvě různé věci: **IQ3_S** u Flash-Next popisuje váhy modelu, **Q8** jeho průběžnou paměť kontextu. F16 používá více paměti pro KV, Q8 ji šetří. Výslednou velikost okna určuje konkrétní profil a dostupná paměť. Změna KV restartuje server, nikoli chat.
 
 ## Thinking
 
@@ -697,7 +707,8 @@ Při potvrzení `y` povolí, `n` zamítne a `a` povolí zbývající WRITE akce 
 | `runtime\llama` | CUDA binárky `llama.cpp` |
 | `runtime\workspace-settings.json` | Aktuální nastavení webového pracovního okna a poslední úspěšný model |
 | `runtime\application.sqlite3` | Fronta úloh, trvalé události a registr souborů |
-| `runtime\execution-plans` | Automaticky vypočtené nastavení běhu Flash-Next |
+| `runtime\models\strata` | Váhy Flash-Next a soubory z nich připravené |
+| `runtime\strata` | Jádro Flash-Next, připravené automaticky |
 | `sessions\<id>` | Zprávy, přílohy, task state, research, komprese a exporty |
 | `projects` | Projekty vytvořené aplikací |
 | `projects.json` | Registr projektů |
@@ -728,7 +739,7 @@ Modely, runtime i Python závislosti se kopírují přímo z aktuálního adres�
    - Pokud je Setup.exe uvnitř zálohy vedle `manifest.json`, spusťte ho přímo tam; zálohu rozpozná automaticky.
    - Položte zálohu vedle Setup.exe a přejmenujte ji přesně na `QwenHarness-Offline-Backup`; instalátor ji rozpozná automaticky.
    - Nainstalujte Marvin, v nabídce Start spusťte **Instalace z offline zálohy** a vyberte složku zálohy.
-4. Když instalátor rozpozná zálohu vedle sebe, první příprava použije místní obnovu přednostně. Úplná obnova přenese všechny modely obsažené v balíčku, včetně Flash-Next, a kontroluje jejich SHA-256. Výběr modelů v průvodci řídí případné další stahování.
+4. Když instalátor rozpozná zálohu vedle sebe, první příprava použije místní obnovu přednostně. Úplná obnova přenese všechny modely obsažené v balíčku, včetně Flash-Next a jeho jádra, a kontroluje jejich SHA-256. Výběr modelů v průvodci řídí případné další stahování.
 5. Příkaz **Instalace z offline zálohy** v nabídce Start také obnovuje místní data přednostně. Běžné nastavení bez této volby používá internet a zaregistrovanou zálohu jako náhradní zdroj. Pokud součást není ani místně, dokončení vyžaduje její získání.
 
 Tlačítkem **Použít jako zálohu** zaregistrujete složku pro případ budoucího selhání downloadu, **Ověřit SHA-256** zkontroluje každý soubor podle manifestu a **Zapomenout výběr** tuto pojistku vypne. Výběr zálohy nezakazuje přístup k internetu. Setup.exe, `manifest.json`, `README-OFFLINE.txt`, `requirements.txt`, `python-dependencies` a `payload` musí zůstat společně v jedné záložní složce.
@@ -741,12 +752,13 @@ Offline instalační záloha neobsahuje chaty, projekty, paměť ani osobní ski
 | `runtime\app.log` | Nativní aplikace a crashe |
 | `runtime\webapp.log` | Web UI a Python chyby |
 | `runtime\llama-server.log` | Model, kontext, CUDA, inference a timing |
+| `runtime\strata-server.log` | Načítání a inference Flash-Next |
 
 # 19. Řešení problémů
 
 ## Server nestartuje
 
-Otevřete **Nastavení > Model a zařízení**, přečtěte hlášení a zkuste restart. Ověřte kompletní model, kompatibilní NVIDIA ovladač a volnou paměť. Flash-Next potřebuje vedle VRAM také dost systémové RAM. Podrobnosti jsou v `runtime\llama-server.log`.
+Otevřete **Nastavení > Model a zařízení**, přečtěte hlášení a zkuste restart. Ověřte kompletní model, kompatibilní NVIDIA ovladač a volnou paměť. Flash-Next drží váhy v systémové RAM; další velké otevřené programy zmenšují, co může použít, a potřebuje ovladač NVIDIA 580 nebo novější. Podrobnosti jsou v `runtime\llama-server.log`, u Flash-Next v `runtime\strata-server.log`.
 
 ## Chybí model nebo projektor
 
@@ -762,7 +774,7 @@ Zkontrolujte kontext, použijte Q5/Q8 192k nebo Q4/Q8 256k, ručně komprimujte,
 
 ## UI vypadá zamrzle
 
-Sledujte fázi a uplynulý čas: může probíhat stahování, kontrola vah, zpracování dlouhého vstupu, thinking nebo nástroj. U Flash-Next může nový velký vstup trvat několik minut. **Zastavit úlohu** ukončí aktuální požadavek; samostatný proces na pozadí zastavte v **Průběh > Procesy**. Modelový server se zastavuje zvlášť v **Model a zařízení**.
+Sledujte fázi a uplynulý čas: může probíhat stahování, kontrola vah, zpracování dlouhého vstupu, thinking nebo nástroj. U Flash-Next může nový velký vstup trvat od desítek sekund do několika minut podle RAM a karty. **Zastavit úlohu** ukončí aktuální požadavek; samostatný proces na pozadí zastavte v **Průběh > Procesy**. Modelový server se zastavuje zvlášť v **Model a zařízení**.
 
 ## Izolovaný browser nestartuje
 
