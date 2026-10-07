@@ -194,6 +194,8 @@ class MemoryProfileTests(unittest.TestCase):
         for capacity, table in expected.items():
             actual = {}
             for key in self.cfg.data["models"]:
+                if self.cfg.backend(key) != "llama":
+                    continue        # Flash-Next's menu also depends on RAM: tests/test_strata_backend.py
                 for profile in gpu.offered_profiles(self.cfg, key, capacity - .16).values():
                     context = f"{profile['ctx_size'] // 1024}k" + ("·MTP" if profile.get("speculative") else "")
                     # Keys and values can differ, and a menu that merged them

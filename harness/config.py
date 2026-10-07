@@ -84,8 +84,6 @@ install_profiles(BUILTIN_MODELS)
 # The inference engines a model entry can name. A closed list, not a registry:
 # servermgmt branches on it at the few places that touch the server process.
 BACKENDS = ("llama", "strata")
-# Shown only with strata.enabled until Marvin prepares the engine itself (Phase 3).
-STRATA_MODELS = ("flash_next_strata", "flash_next_strata_iq2")
 # Entries replaced by another: a saved selection of the old one moves to the new
 # one where it is available. The llama.cpp Flash-Next gave way to the same model
 # on Strata once that was qualified (owner, 2026-10-07).
@@ -149,11 +147,6 @@ DEFAULTS: dict[str, Any] = {
     },
     "web": {"host": "127.0.0.1", "port": 7860},
     "hardware": {"vram_gb": "auto"},
-    # Qwen3.8-Flash-Next on the Strata engine. Off until its runtime staging and
-    # qualification are done; turning it on shows the model in the picker. It
-    # runs from paths.strata_dir and paths.strata_data_dir, which can point at a
-    # folder Strata's own setup prepared (scripts/strata_eval.py install).
-    "strata": {"enabled": False},
     "skills": {
         "directory": "skills",
         "user_directory": "user-skills",
@@ -418,7 +411,4 @@ def load_config(path: Path | None = None, *, root: Path | None = None) -> Config
     _migrate_memory_profiles(user)
     _remove_legacy_agent_limits(user)
     data = _deep_merge(DEFAULTS, user)
-    if not (data.get("strata") or {}).get("enabled"):
-        for key in STRATA_MODELS:
-            data["models"].pop(key, None)
     return Config(data, root or path.parent)

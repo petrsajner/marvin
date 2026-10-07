@@ -37,9 +37,9 @@ HYBRID = Hardware("Intel64 Family 6 Model 198", 20, 20, tuple(range(8)), tuple(r
 UNIFORM = replace(HYBRID, performance_cpus=tuple(range(16)), physical_cpus=tuple(range(16)))
 
 
-def strata_config(root: Path, *, enabled=True, extra="") -> Config:
+def strata_config(root: Path, *, extra="") -> Config:
     path = root / "config.yaml"
-    path.write_text(f"strata:\n  enabled: {'true' if enabled else 'false'}\n{extra}", encoding="utf-8")
+    path.write_text(extra, encoding="utf-8")
     return load_config(path, root=root)
 
 
@@ -58,7 +58,8 @@ class StrataInstallation:
                  strata_backend.program_dir(cfg) / spec["expert_profile"],
                  cfg.model_file(KEY), data / spec["ple_gguf"],
                  data / spec["pack"] / "native_experts.txt", data / spec["pack"] / "tokenizer" / "vocab.json",
-                 data / spec["mtp"] / "experts.bin", self.cuda_library()]
+                 data / spec["mtp"] / "experts.bin", data / spec["mtp"] / "dense.bin",
+                 data / spec["mtp"] / "dense.txt", self.cuda_library()]
         if vision:
             files.append(cfg.mmproj_file(KEY))
         for path in files:
@@ -93,20 +94,13 @@ class ConfigTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def test_strata_entry_is_hidden_until_enabled(self):
-        self.assertNotIn(KEY, load_config(self.root / "missing.yaml", root=self.root).data["models"])
-        self.assertNotIn(KEY, strata_config(self.root, enabled=False).data["models"])
-        cfg = strata_config(self.root)
+    def test_both_weights_are_built_in(self):
+        cfg = load_config(self.root / "missing.yaml", root=self.root)
         self.assertIn(KEY, cfg.data["models"])
         self.assertIn(IQ2, cfg.data["models"])
-        self.assertNotIn(IQ2, strata_config(self.root, enabled=False).data["models"])
         self.assertEqual(len(cfg.kv_cache_profiles(KEY)), 18, "nine RAM and GPU classes, two contexts each")
         self.assertEqual(cfg.kv_cache_mode(KEY), P256)
         self.assertEqual(cfg.context_size(KEY), 262144)
-
-    def test_a_hidden_default_model_falls_back_to_an_available_one(self):
-        cfg = strata_config(self.root, enabled=False, extra=f"default_model: {KEY}\n")
-        self.assertIn(cfg.model_key(), cfg.data["models"])
 
     def test_backend_is_a_closed_choice(self):
         cfg = strata_config(self.root)
@@ -370,9 +364,9 @@ class ServerConfigTests(unittest.TestCase):
         message = str(raised.exception)
         self.assertIn("the engine: ", message)
         self.assertIn("the MTP draft layer", message)
-        self.assertIn("paths.strata_dir", message)
         self.assertNotIn("the prepared weights index", message)
-        self.assertTrue(message.startswith("Qwen 3.8 Flash-Next · IQ3_S cannot start: its runtime files"))
+        self.assertTrue(message.startswith("Qwen 3.8 Flash-Next · IQ3_S cannot start: some of its files are missing"))
+        self.assertIn("Selecting the model again", message)
 
 
 class FakeServer:
@@ -491,10 +485,29 @@ class LaunchTests(unittest.TestCase):
         result = self.launch()
         self.assertEqual((result.code, result.contained), (0, []))
 
-    def test_missing_engine_is_reported_before_the_weights_download(self):
+    def test_a_missing_engine_is_prepared_before_the_weights_download(self):
+        from harness import strata_runtime
         strata_backend.engine_exe(self.cfg).unlink()
-        with self.assertRaisesRegex(RuntimeError, "the engine: "):
+        order = []
+
+        def install(cfg, **kwargs):
+            order.append("engine")
+            strata_backend.engine_exe(cfg).write_bytes(b"x")
+
+        with patch.object(strata_runtime, "install", side_effect=install), \
+             patch.object(strata_runtime, "prepare_model", side_effect=lambda cfg, key, **kw: order.append("files")):
+            result = self.launch(downloaded=False)
+        self.assertEqual(result.code, 0)
+        self.assertEqual(order, ["engine", "files"])
+        self.assertTrue(result.download.called)
+
+    def test_a_failed_engine_preparation_says_why_and_downloads_nothing(self):
+        from harness import strata_runtime
+        strata_backend.engine_exe(self.cfg).unlink()
+        with patch.object(strata_runtime, "install", side_effect=RuntimeError("The download of x does not match")), \
+             self.assertRaisesRegex(RuntimeError, "does not match"):
             self.launch(downloaded=False)
+        self.assertFalse(self.processes)
 
     def test_weights_download_into_the_strata_data_folder(self):
         result = self.launch(downloaded=False)
@@ -952,23 +965,21 @@ class SeamlessSwitchTests(unittest.TestCase):
         """The llama.cpp entry was removed once this one was qualified (owner, 2026-10-07)."""
         from harness.application import ApplicationService
         from tests import test_workspace as helpers
-        for enabled, expected in ((True, KEY), (False, None)):
-            with self.subTest(enabled=enabled), tempfile.TemporaryDirectory() as temporary:
-                cfg = strata_config(Path(temporary), enabled=enabled)
-                runtime = cfg.path("paths.runtime_dir")
-                runtime.mkdir(parents=True, exist_ok=True)
-                (runtime / "workspace-settings.json").write_text(json.dumps({
-                    "model": "flash_next_q3", "last_running_model": "flash_next_q3",
-                    "adaptive_kv_requests": {"flash_next_q3": "q8_0_192k"}}), encoding="utf-8")
-                service = ApplicationService(cfg, llm_factory=helpers.Model, manage_model=False)
-                try:
-                    self.assertEqual(service.preferences["model"], expected or cfg.model_key())
-                    self.assertNotIn("adaptive_kv_requests", service.preferences)
-                    if enabled:
-                        self.assertEqual(service.preferences["last_running_model"], KEY)
-                finally:
-                    service.close()
-                    service.models.wait(3)
+        with tempfile.TemporaryDirectory() as temporary:
+            cfg = strata_config(Path(temporary))
+            runtime = cfg.path("paths.runtime_dir")
+            runtime.mkdir(parents=True, exist_ok=True)
+            (runtime / "workspace-settings.json").write_text(json.dumps({
+                "model": "flash_next_q3", "last_running_model": "flash_next_q3",
+                "adaptive_kv_requests": {"flash_next_q3": "q8_0_192k"}}), encoding="utf-8")
+            service = ApplicationService(cfg, llm_factory=helpers.Model, manage_model=False)
+            try:
+                self.assertEqual(service.preferences["model"], KEY)
+                self.assertEqual(service.preferences["last_running_model"], KEY)
+                self.assertNotIn("adaptive_kv_requests", service.preferences)
+            finally:
+                service.close()
+                service.models.wait(3)
 
     def test_nothing_the_user_sees_names_the_engine(self):
         model = self.cfg.model(KEY)
@@ -977,7 +988,7 @@ class SeamlessSwitchTests(unittest.TestCase):
                  *(p["label"] for p in self.cfg.kv_cache_profiles(KEY).values()),
                  *(p["label_cs"] for p in self.cfg.kv_cache_profiles(KEY).values()),
                  # The setup hint after it names config keys; it lasts only while the entry is hidden.
-                 strata_backend.explain(self.cfg, KEY, ["the engine: x"]).split(" Until Marvin")[0],
+                 strata_backend.explain(self.cfg, KEY, ["the engine: x"]),
                  strata_backend.start_failure(self.cfg, {"engine_log": "", "log_offset": 0}).split(". Logs:")[0]]
         for text in shown:
             self.assertNotRegex(text, "(?i)strata|llama", text)

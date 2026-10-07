@@ -301,11 +301,9 @@ def _start_locked(cfg: Config, model_key: str | None = None,
     requested_context = ctx_size or cfg.context_size(model_key)
     (cfg.path("paths.runtime_dir") / "model-failure.json").unlink(missing_ok=True)
     if strata:
-        from harness import strata_backend
-        problems = strata_backend.runtime_problems(cfg, model_key)
-        if problems:
-            # Said before the weights download: they are of no use without the engine.
-            raise RuntimeError(strata_backend.explain(cfg, model_key, problems))
+        # The engine first: the weights are of no use without it, and it is the smaller download.
+        from harness import strata_runtime
+        strata_runtime.ensure_runtime(cfg, model_key, cancelled=cancelled, on_phase=on_phase)
     if model.get("assets") and not cfg.model_ready(model_key):
         from harness.model_files import download_pinned_model
         if on_phase:
@@ -315,6 +313,8 @@ def _start_locked(cfg: Config, model_key: str | None = None,
     if on_phase:
         on_phase("preparing")
     if strata:
+        from harness import strata_runtime
+        strata_runtime.prepare_model(cfg, model_key, cancelled=cancelled, on_phase=on_phase)
         return _start_strata(cfg, model_key, requested_context, cancelled=cancelled, on_phase=on_phase)
     from harness.runtime_update import ensure_runtime
     exe = ensure_runtime(cfg, model_key, cancelled=cancelled)

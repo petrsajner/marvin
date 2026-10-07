@@ -60,8 +60,7 @@ def profile(context, gpu_class, measured, *, precision="q8_0", value_precision=N
 SMALL_CARD_MEASUREMENT = "profiles-16gb-2026-09-19"
 
 # Strata (docs/design/2026-10-05-strata-backend.md), approved by the owner on
-# 2026-10-07 from docs/design/strata-qualification-2026-10-07.md. The model
-# entries stay behind the strata.enabled setting until Marvin prepares the engine.
+# 2026-10-07 from docs/design/strata-qualification-2026-10-07.md.
 STRATA_MEASUREMENT_ID = "strata-qualification-2026-10-07"
 
 

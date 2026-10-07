@@ -150,10 +150,8 @@ def model_problems(cfg: Config, key: str) -> list[str]:
 def explain(cfg: Config, key: str, problems: list[str]) -> str:
     """What a launch lacks, worded like any other model's missing files; the paths say the rest."""
     name = cfg.model(key).get("status_label") or cfg.model(key).get("alias") or key
-    return (f"{name} cannot start: its runtime files are not prepared on this PC. Missing: " + "; ".join(problems)
-            + ". Until Marvin prepares them itself, point paths.strata_dir and paths.strata_data_dir "
-              "in config.yaml at folders that already hold them (scripts/strata_eval.py install "
-              "puts them in %LOCALAPPDATA%\\StrataEval\\Strata and Strata-data).")
+    return (f"{name} cannot start: some of its files are missing after preparation: " + "; ".join(problems)
+            + ". Selecting the model again prepares what is missing.")
 
 
 def placement(cfg: Config, key: str) -> dict:

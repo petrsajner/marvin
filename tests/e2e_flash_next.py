@@ -40,7 +40,7 @@ GIB = 1024**3
 
 
 def make_config(args, directory: Path) -> Config:
-    (directory / "config.yaml").write_text("strata:\n  enabled: true\n", encoding="utf-8")
+    (directory / "config.yaml").write_text("", encoding="utf-8")
     cfg = load_config(directory / "config.yaml", root=directory)
     cfg.data["paths"].update(models_dir=str(args.models_dir), llama_dir=str(args.llama_dir),
                              strata_dir=str(args.strata_dir), strata_data_dir=str(args.strata_data_dir))
