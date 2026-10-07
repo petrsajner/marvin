@@ -218,12 +218,12 @@ class Sampler:
 
 def marvin_config(port: int, context: int, workdir: Path):
     from harness.config import Config, load_config
-    from harness.model_catalog import FLASH_NEXT_Q3
+    from harness.model_catalog import FLASH_NEXT_STRATA
     data = copy.deepcopy(load_config().data)
     data["server"].update(host="127.0.0.1", port=port)
     data["models"]["strata_eval"] = {
         "alias": "Qwen3.8-Flash-Next (Strata evaluation)", "family": "qwen4exp", "read_timeout": 1800,
-        "ctx_size": context, "sampling": copy.deepcopy(FLASH_NEXT_Q3["sampling"]),
+        "ctx_size": context, "sampling": copy.deepcopy(FLASH_NEXT_STRATA["sampling"]),
         "supports_reasoning_effort": True,
     }
     data["default_model"] = "strata_eval"

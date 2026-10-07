@@ -114,7 +114,7 @@ def create_app(cfg=None, *, service=None):
                     # described by its projector and its expert offload.
                     "vision": bool(model.get("vision", bool(model.get("mmproj")))),
                     "installed": cfg.model_ready(key),
-                    "uses_system_ram": bool(model.get("uses_system_ram") or model.get("adaptive_runtime") or any(
+                    "uses_system_ram": bool(model.get("uses_system_ram") or any(
                         "--n-cpu-moe" in p.get("server_args", []) for p in profiles.values())),
                     "profiles": [{"id": p, **spec, "fits_gpu_budget": True} for p, spec in profiles.items()],
                     "profile": current if current in profiles else next(iter(profiles))})
@@ -595,18 +595,11 @@ def create_app(cfg=None, *, service=None):
                 _prepare_semantic_search(cfg)
             cfg.data["_semantic_search"] = bool(payload.get(
                 "semantic_search", service.preferences.get("semantic_search", False)))
-            for key, profile in payload.get("kv_cache_modes", {}).items():
-                if (cfg.model(key).get("adaptive_runtime")
-                        and profile != service.preferences.get("kv_cache_modes", {}).get(key)):
-                    service.preferences.setdefault("adaptive_kv_requests", {})[key] = profile
             if "language" in payload:
                 from harness.i18n import set_language
                 set_language(payload["language"])
             service.preferences.update({key: value for key, value in payload.items() if key in allowed and key != "kv_cache_modes"})
             service.preferences.setdefault("kv_cache_modes", {}).update(payload.get("kv_cache_modes", {}))
-            if (preset and cfg.model(preset["model"]).get("adaptive_runtime")
-                    and preset.get("requested_profile") in cfg.kv_cache_profiles(preset["model"])):
-                service.preferences.setdefault("adaptive_kv_requests", {})[preset["model"]] = preset["requested_profile"]
             if service.manage_model and any(key in payload for key in ("model", "kv_cache_modes", "vram_gb")):
                 service.fit_hardware()
             service.save_preferences()

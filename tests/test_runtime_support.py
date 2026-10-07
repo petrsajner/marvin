@@ -2,7 +2,6 @@
 import copy
 import hashlib
 import copy
-import struct
 import threading
 import zipfile
 from types import SimpleNamespace
@@ -14,10 +13,11 @@ from unittest.mock import patch
 
 from harness.hardware import Hardware
 from harness.model_files import download_pinned_model, model_ready, local_model_dir
-from harness.runtime_plan import choose_plan, GIB
 from harness.config import Config, load_config
 from harness.model_switch import ModelSwitchController
 from harness.runtime_update import activate_runtime, extract_archive, install_runtime
+
+GIB = 1024**3
 
 
 class ModelFileTests(unittest.TestCase):
@@ -231,67 +231,10 @@ class ModelFileTests(unittest.TestCase):
                 self.assertIn(expected, collected)
 
 
-class RuntimePlanTests(unittest.TestCase):
-    def test_insufficient_hardware_is_rejected_before_the_large_download(self):
-        from harness import servermgmt
-        from harness.model_catalog import FLASH_NEXT_Q3
-        with tempfile.TemporaryDirectory() as temporary:
-            data = copy.deepcopy(load_config().data)
-            data["models"]["flash_next_q3"] = copy.deepcopy(FLASH_NEXT_Q3)
-            data["default_model"] = "flash_next_q3"
-            cfg = Config(data, Path(temporary))
-            with patch("harness.servermgmt.health", return_value=False), \
-                 patch("harness.runtime_plan.detect_hardware", return_value=self.hardware(ram=12, total_ram=16)), \
-                 patch("harness.model_files.download_pinned_model") as download:
-                with self.assertRaisesRegex(RuntimeError, "system memory"):
-                    servermgmt.start(cfg)
-                download.assert_not_called()
-
-    def test_layout_hint_is_bound_to_the_exact_download_manifest(self):
-        from harness.runtime_plan import inspect_layout
-        from harness.model_catalog import FLASH_NEXT_Q3
-        with tempfile.TemporaryDirectory() as temporary:
-            spec = copy.deepcopy(FLASH_NEXT_Q3)
-            self.assertEqual(len(inspect_layout(Path(temporary), spec)["expert_layer_bytes"]), 48)
-            spec["revision"] = "different-model-revision"
-            with self.assertRaisesRegex(RuntimeError, "complete model"):
-                inspect_layout(Path(temporary), spec)
-
+class HardwareIdentityTests(unittest.TestCase):
     def hardware(self, total=32, free=30, ram=56, total_ram=64):
         return Hardware("hybrid", 20, 20, tuple(range(8)), tuple(range(20)),
                         total_ram * GIB, ram * GIB, "GPU", "id", "driver", total * GIB, free * GIB)
-
-    def layout(self):
-        return {"common_bytes": 3 * GIB, "projector_bytes": GIB,
-                "lazy_bytes": 27 * GIB, "expert_layer_bytes": [GIB] * 48}
-
-    def test_cpu_pools_respect_hybrid_topology_without_halving_threads(self):
-        plan = choose_plan(self.hardware(), self.layout(), 131072)
-        self.assertEqual((plan.threads, plan.batch_threads), (8, 8))
-        self.assertEqual(plan.args.count("0xff"), 2)
-
-    def test_smaller_gpu_moves_more_expert_layers_to_cpu(self):
-        large = choose_plan(self.hardware(), self.layout(), 131072)
-        small = choose_plan(self.hardware(16, 14, 60), self.layout(), 131072)
-        self.assertGreater(small.cpu_expert_layers, large.cpu_expert_layers)
-        self.assertEqual(small.context, 131072)
-
-    def test_larger_context_is_reserved_before_placing_experts(self):
-        small = choose_plan(self.hardware(), self.layout(), 131072)
-        large = choose_plan(self.hardware(), self.layout(), 262144)
-        self.assertGreaterEqual(large.cpu_expert_layers, small.cpu_expert_layers)
-
-    def test_insufficient_ram_and_sub_128k_are_rejected(self):
-        with self.assertRaisesRegex(RuntimeError, "system memory"):
-            choose_plan(self.hardware(ram=12, total_ram=16), self.layout(), 131072)
-        with self.assertRaises(ValueError):
-            choose_plan(self.hardware(), self.layout(), 32768)
-
-    def test_manual_vram_cannot_invent_a_larger_card(self):
-        hw = self.hardware(16, 14, 60)
-        normal = choose_plan(hw, self.layout(), 131072)
-        overridden = choose_plan(hw, self.layout(), 131072, vram_limit=96)
-        self.assertEqual(normal.cpu_expert_layers, overridden.cpu_expert_layers)
 
     def test_available_memory_is_not_part_of_stable_hardware_identity(self):
         self.assertEqual(self.hardware(free=30).fingerprint(), self.hardware(free=20).fingerprint())
@@ -393,13 +336,16 @@ class SwitchingPreparationTests(unittest.TestCase):
 
     def test_optional_model_is_not_downloaded_by_automatic_setup(self):
         from harness.gpu import download_keys
-        from harness.model_catalog import FLASH_NEXT_Q3
+        from harness.measured_profiles import PROFILES
+        from harness.model_catalog import FLASH_NEXT_STRATA
         cfg = load_config()
-        cfg.data["models"]["flash_next_q3"] = copy.deepcopy(FLASH_NEXT_Q3)
-        self.assertNotIn("flash_next_q3", download_keys(cfg, None))
-        self.assertNotIn("flash_next_q3", download_keys(cfg, 32))
-        cfg.data["default_model"] = "flash_next_q3"
-        self.assertIn("flash_next_q3", download_keys(cfg, 32))
+        cfg.data["models"]["flash_next_strata"] = {**copy.deepcopy(FLASH_NEXT_STRATA),
+                                                   "kv_cache_profiles": copy.deepcopy(PROFILES["flash_next_strata"])}
+        with patch("harness.gpu.installed_ram_gib", return_value=63.7):
+            self.assertNotIn("flash_next_strata", download_keys(cfg, None))
+            self.assertNotIn("flash_next_strata", download_keys(cfg, 32))
+            cfg.data["default_model"] = "flash_next_strata"
+            self.assertIn("flash_next_strata", download_keys(cfg, 32))
 
     def test_stop_without_owned_pid_does_not_kill_other_servers(self):
         from harness import servermgmt
@@ -408,26 +354,6 @@ class SwitchingPreparationTests(unittest.TestCase):
             cfg.data["paths"]["runtime_dir"] = temporary
             with patch("psutil.process_iter", side_effect=AssertionError("Must not scan other processes")):
                 self.assertTrue(servermgmt.stop(cfg, quiet=True))
-
-
-class GGUFHeaderTests(unittest.TestCase):
-    def test_reads_tensor_sizes_without_loading_payload(self):
-        from harness.gguf_metadata import read_header
-        def string(value):
-            encoded = value.encode()
-            return struct.pack("<Q", len(encoded)) + encoded
-        header = b"GGUF" + struct.pack("<IQQ", 3, 2, 0)
-        for name, offset in (("first.weight", 0), ("second.weight", 64)):
-            header += string(name) + struct.pack("<I Q I Q", 1, 16, 0, offset)
-        header += b"\0" * ((-len(header)) % 32)
-        with tempfile.TemporaryDirectory() as temporary:
-            path = Path(temporary) / "sample.gguf"
-            path.write_bytes(header + b"\0" * 128)
-            parsed = read_header(path)
-            self.assertEqual([item["bytes"] for item in parsed["tensors"]], [64, 64])
-            path.write_bytes(header + b"\0" * 63)
-            with self.assertRaises(ValueError):
-                read_header(path)
 
 
 if __name__ == "__main__":

@@ -81,23 +81,6 @@ def fitting_profiles(cfg, model_key: str, vram_gb: float | None) -> dict[str, di
         profiles = {key: prof for key, prof in profiles.items() if prof.get("ram_class", machine) == machine}
     if vram_gb is None:
         return profiles
-    if cfg.model(model_key).get("adaptive_runtime"):
-        from dataclasses import replace
-        from harness.hardware import detect_hardware
-        from harness.runtime_plan import choose_plan, GIB
-        from harness.model_catalog import FLASH_NEXT_Q3
-        hw = detect_hardware()
-        # The picker must not count the currently running model as another app.
-        hw = replace(hw, vram_total=int(vram_gb * GIB), vram_available=int(vram_gb * GIB))
-        layout = cfg.model(model_key).get("layout_hint", {}).get("layout", FLASH_NEXT_Q3["layout_hint"]["layout"])
-        result = {}
-        for key, prof in profiles.items():
-            try:
-                choose_plan(hw, layout, prof["ctx_size"])
-                result[key] = prof
-            except RuntimeError:
-                pass
-        return result
     from harness.measured_profiles import gpu_class
     return {key: prof for key, prof in profiles.items()
             if (prof["gpu_class"] == gpu_class(vram_gb) if "gpu_class" in prof
@@ -105,13 +88,7 @@ def fitting_profiles(cfg, model_key: str, vram_gb: float | None) -> dict[str, di
 
 
 def offered_profiles(cfg, model_key, vram_gb):
-    profiles = fitting_profiles(cfg, model_key, vram_gb)
-    if cfg.model(model_key).get("adaptive_runtime"):
-        ceiling = cfg.data.get("_recovered_contexts", {}).get(model_key, 262144)
-        ordered = sorted(profiles, key=lambda key: profiles[key]["ctx_size"], reverse=True)
-        ordered = [key for key in ordered if profiles[key]["ctx_size"] <= ceiling]
-        return {key: profiles[key] for key in ordered[:2]}
-    return profiles
+    return fitting_profiles(cfg, model_key, vram_gb)
 
 
 def best_fit(cfg, vram_gb: float | None) -> tuple[str, str] | None:
@@ -165,7 +142,6 @@ def lower_memory_profiles(cfg, model_key=None):
     current_key = cfg.kv_cache_mode(key)
     current = profiles.get(current_key, {})
     context = cfg.context_size(key)
-    minimum = 131072 if cfg.model(key).get("adaptive_runtime") else 0
     precision = current.get("cache_type", current_key)
     group = {name: profile for name, profile in profiles.items()
              if profile.get("cache_type", name) == precision
@@ -180,7 +156,7 @@ def lower_memory_profiles(cfg, model_key=None):
         if twin:
             ladder.append(twin)
     for size in sorted({int(p.get("ctx_size", 0)) for p in group.values()
-                        if minimum <= int(p.get("ctx_size", 0)) < context}, reverse=True):
+                        if int(p.get("ctx_size", 0)) < context}, reverse=True):
         at_size = [(n, p) for n, p in group.items() if int(p.get("ctx_size", 0)) == size]
         if keep_mtp:
             ladder += [n for n, p in at_size if p.get("speculative")]

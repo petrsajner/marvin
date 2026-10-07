@@ -25,7 +25,7 @@ CASES = [
     (24, "nemotron_q4", "q8_0_256k_spill"), (24, "nemotron_q4", "q8_0_512k_spill"),
     (32, "q3", "q8_0_256k"), (32, "q4", "q8_0"), (32, "q5", "q8_0"),
     (32, "ornith_q5", "q8_0"), (32, "nemotron_q4", "q8_0_512k"),
-    (32, "nemotron_q5", "q8_0_256k"), (32, "flash_next_q3", "q8_0_256k"),
+    (32, "nemotron_q5", "q8_0_256k"),
 ]
 
 

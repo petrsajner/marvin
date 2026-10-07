@@ -73,9 +73,8 @@ BUILTIN_MODELS: dict[str, dict[str, Any]] = {'q4': {'alias': 'Qwen3.8-27B Q4_K_M
                  'sampling': {'thinking': {'temperature': 0.6, 'top_p': 0.95, 'min_p': 0.01},
                               'non_thinking': {'temperature': 0.2}}}}
 
-from harness.model_catalog import FLASH_NEXT_Q3, FLASH_NEXT_STRATA, FLASH_NEXT_STRATA_IQ2
+from harness.model_catalog import FLASH_NEXT_STRATA, FLASH_NEXT_STRATA_IQ2
 
-BUILTIN_MODELS["flash_next_q3"] = copy.deepcopy(FLASH_NEXT_Q3)
 BUILTIN_MODELS["flash_next_strata"] = copy.deepcopy(FLASH_NEXT_STRATA)
 BUILTIN_MODELS["flash_next_strata_iq2"] = copy.deepcopy(FLASH_NEXT_STRATA_IQ2)
 
@@ -87,6 +86,10 @@ install_profiles(BUILTIN_MODELS)
 BACKENDS = ("llama", "strata")
 # Shown only with strata.enabled until Marvin prepares the engine itself (Phase 3).
 STRATA_MODELS = ("flash_next_strata", "flash_next_strata_iq2")
+# Entries replaced by another: a saved selection of the old one moves to the new
+# one where it is available. The llama.cpp Flash-Next gave way to the same model
+# on Strata once that was qualified (owner, 2026-10-07).
+REPLACED_MODELS = {"flash_next_q3": "flash_next_strata"}
 
 DEFAULTS: dict[str, Any] = {
     "server": {

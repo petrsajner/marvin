@@ -288,17 +288,16 @@ def _start_locked(cfg: Config, model_key: str | None = None,
             raise RuntimeError("The previous model has not released its memory")
 
     model = cfg.model(model_key)
-    if not model.get("adaptive_runtime"):
-        from harness.gpu import effective_vram_gb, fitting_profiles, fits
-        budget = effective_vram_gb(cfg)
-        if not fits(cfg, model_key, cfg.kv_cache_mode(model_key), budget):
-            profiles = fitting_profiles(cfg, model_key, budget)
-            if not profiles:
-                raise RuntimeError(f"This model has no supported profile for the {budget:g} GiB GPU budget. Choose a smaller model.")
-            selected = max(profiles, key=lambda name: (profiles[name].get("cache_type") == "q8_0",
-                                                       int(profiles[name].get("ctx_size", 0)),
-                                                       profiles[name].get("speculative") is None))
-            cfg.set_kv_cache_mode(model_key, selected)
+    from harness.gpu import effective_vram_gb, fitting_profiles, fits
+    budget = effective_vram_gb(cfg)
+    if not fits(cfg, model_key, cfg.kv_cache_mode(model_key), budget):
+        profiles = fitting_profiles(cfg, model_key, budget)
+        if not profiles:
+            raise RuntimeError(f"This model has no supported profile for the {budget:g} GiB GPU budget. Choose a smaller model.")
+        selected = max(profiles, key=lambda name: (profiles[name].get("cache_type") == "q8_0",
+                                                   int(profiles[name].get("ctx_size", 0)),
+                                                   profiles[name].get("speculative") is None))
+        cfg.set_kv_cache_mode(model_key, selected)
     requested_context = ctx_size or cfg.context_size(model_key)
     (cfg.path("paths.runtime_dir") / "model-failure.json").unlink(missing_ok=True)
     if strata:
@@ -308,9 +307,6 @@ def _start_locked(cfg: Config, model_key: str | None = None,
             # Said before the weights download: they are of no use without the engine.
             raise RuntimeError(strata_backend.explain(cfg, model_key, problems))
     if model.get("assets") and not cfg.model_ready(model_key):
-        if model.get("adaptive_runtime"):
-            from harness.runtime_plan import plan_for
-            plan_for(cfg, model_key, requested_context)
         from harness.model_files import download_pinned_model
         if on_phase:
             on_phase("downloading")
@@ -334,10 +330,6 @@ def _start_locked(cfg: Config, model_key: str | None = None,
 
     srv = cfg.data["server"]
     ctx = requested_context
-    from harness.runtime_plan import plan_for
-    plan = plan_for(cfg, model_key, ctx)
-    if plan:
-        ctx = plan.context
     if cancelled and cancelled():
         return 1
     argv = [
@@ -367,10 +359,7 @@ def _start_locked(cfg: Config, model_key: str | None = None,
     profile_args = frozen.get("server_args", []) if frozen.get("model") == model_key else profile.get("server_args", [])
     argv += [str(x) for x in profile_args]
     active_placement = {"model": model_key, "server_args": list(profile_args)}
-    if plan:
-        argv += list(plan.args)
-        active_placement["cpu_expert_layers"] = plan.cpu_expert_layers
-    elif cfg.data.get("hardware", {}).get("vram_gb", "auto") != "auto":
+    if cfg.data.get("hardware", {}).get("vram_gb", "auto") != "auto":
         argv += ["--fit", "off"]
     if profile.get("speculative") == "mtp":
         argv += _mtp_draft_args(cfg, cancelled=cancelled, on_phase=on_phase,
@@ -379,7 +368,7 @@ def _start_locked(cfg: Config, model_key: str | None = None,
     cfg.data["_active_placement"] = active_placement
     return _launch(cfg, model_key, argv, cwd=exe.parent,
                    log_path=cfg.path("paths.runtime_dir") / "llama-server.log",
-                   ctx=ctx, plan=plan, placement=active_placement, cancelled=cancelled, on_phase=on_phase)
+                   ctx=ctx, placement=active_placement, cancelled=cancelled, on_phase=on_phase)
 
 
 def _start_strata(cfg: Config, model_key: str, ctx: int, *, cancelled=None, on_phase=None) -> int:
@@ -390,7 +379,7 @@ def _start_strata(cfg: Config, model_key: str, ctx: int, *, cancelled=None, on_p
         return 1
     cfg.data["_active_placement"] = prepared.placement
     return _launch(cfg, model_key, prepared.argv, cwd=prepared.cwd, log_path=strata_backend.server_log(cfg),
-                   ctx=ctx, plan=None, placement=prepared.placement, cancelled=cancelled, on_phase=on_phase,
+                   ctx=ctx, placement=prepared.placement, cancelled=cancelled, on_phase=on_phase,
                    strata=prepared)
 
 
@@ -438,7 +427,7 @@ def _settle_strata(cfg: Config, run: dict, *, ready: bool) -> None:
     atomic_write_text(cfg.path("paths.runtime_dir") / "model-run.json", json.dumps(run))
 
 
-def _launch(cfg: Config, model_key: str, argv: list[str], *, cwd: Path, log_path: Path, ctx: int, plan,
+def _launch(cfg: Config, model_key: str, argv: list[str], *, cwd: Path, log_path: Path, ctx: int,
             placement: dict, cancelled=None, on_phase=None, strata=None) -> int:
     """Start the server process, record it, guard host memory and wait until it is ready."""
     if on_phase:
@@ -474,7 +463,7 @@ def _launch(cfg: Config, model_key: str, argv: list[str], *, cwd: Path, log_path
     from harness.hardware import detect_hardware
     hw = detect_hardware(fresh=True)
     capacity = min(hw.vram_total, int(float(requested_budget) * 1024**3)) if requested_budget != "auto" else hw.vram_total
-    if plan or capacity:
+    if capacity:
         def watch_memory():
             low_samples = 0
             gpu_used = 0

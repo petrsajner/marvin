@@ -161,11 +161,11 @@ var
   ModelList: TNewCheckListBox;
   // Populated in FillModelTable because Pascal Script does not support typed constants;
   // mirrors config.yaml (min_vram_gb is the smallest model profile)
-  ModelKeys: array[0..6] of String;
-  ModelNames: array[0..6] of String;
-  ModelMinVram: array[0..6] of Double;
-  ModelRowKeys: array[0..6] of String;
-  ModelFiles: array[0..6] of String;
+  ModelKeys: array[0..5] of String;
+  ModelNames: array[0..5] of String;
+  ModelMinVram: array[0..5] of Double;
+  ModelRowKeys: array[0..5] of String;
+  ModelFiles: array[0..5] of String;
 
 procedure FillModelTable;
 begin
@@ -175,28 +175,24 @@ begin
   ModelKeys[3] := 'ornith_q5';
   ModelKeys[4] := 'nemotron_q4';
   ModelKeys[5] := 'nemotron_q5';
-  ModelKeys[6] := 'flash_next_q3';
   ModelNames[0] := 'Qwen3.8-27B IQ3_S  (12.0 GB download)  -  16/24 GB GPUs, Q8 64k/48k on 16 GB';
   ModelNames[1] := 'Qwen3.8-27B Q4_K_M  (16.5 GB download)  -  24 GB+ GPUs';
   ModelNames[2] := 'Qwen3.8-27B Q5_K_M  (19.8 GB download)  -  24 GB+ GPUs';
   ModelNames[3] := 'Ornith 1.5 35B-A3B Q5 Abliterated  (23.0 GB download)  -  32 GB GPUs';
   ModelNames[4] := 'Nemotron 3.5 Lightning 30B-A3B Q4_K_XL  (25.5 GB download)  -  24 GB+ GPUs';
   ModelNames[5] := 'Nemotron 3.5 Lightning 30B-A3B Q5_K_XL  (30.4 GB download)  -  24 GB+ GPUs, CPU experts on 24 GB';
-  ModelNames[6] := 'Qwen3.8-Flash-Next Q3  (90.9 GB download)  -  GPU + system RAM, automatic configuration';
   ModelMinVram[0] := 15.0;
   ModelMinVram[1] := 23.0;
   ModelMinVram[2] := 23.0;
   ModelMinVram[3] := 31.0;
   ModelMinVram[4] := 23.0;
   ModelMinVram[5] := 23.0;
-  ModelMinVram[6] := 15.0;
   ModelFiles[0] := 'Qwen3.8-27B-UD-IQ3_S.gguf';
   ModelFiles[1] := 'Qwen3.8-27B-UD-Q4_K_M.gguf';
   ModelFiles[2] := 'Qwen3.8-27B-UD-Q5_K_M.gguf';
   ModelFiles[3] := 'Ornith-1.5-35B-Abliterated-Dynamic-Q5_K_M.gguf';
   ModelFiles[4] := 'NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q4_K_XL.gguf';
   ModelFiles[5] := 'NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q5_K_XL.gguf';
-  ModelFiles[6] := 'Qwen3.8-Flash-Next\.marvin-verified.json';
 end;
 
 function DetectVRAM: Double;
@@ -224,7 +220,7 @@ begin
   Vram := DetectVRAM;
   ModelsDir := AppDir + '\runtime\models';
   HasAnyModel := False;
-  for I := 0 to 6 do
+  for I := 0 to 5 do
     if FileExists(ModelsDir + '\' + ModelFiles[I]) then HasAnyModel := True;
   // Recreate TNewCheckListBox on refresh because individual items cannot be removed
   if ModelList <> nil then
@@ -233,7 +229,7 @@ begin
   ModelList.SetBounds(ScaleX(0), ScaleY(0), ModelPage.SurfaceWidth, ScaleY(150));
   ModelList.Parent := ModelPage.Surface;
   ModelList.ShowLines := False;
-  for I := 0 to 6 do
+  for I := 0 to 5 do
   begin
     Fits := (Vram <= 0) or (ModelMinVram[I] <= Vram);
     // Fresh installs select all compatible models; upgrades select only models

@@ -99,9 +99,9 @@ class WorkspaceTests(unittest.TestCase):
         restored = Config(copy.deepcopy(self.cfg.data), self.cfg.root)
         restored.data["hardware"]["vram_gb"] = "auto"
         self.service.models.cfg = restored
-        self.service.preferences.update(model="flash_next_q3", vram_gb=16)
-        with patch.object(self.service.models, "snapshot", return_value=ModelSwitchSnapshot("failed", "flash_next_q3")):
-            self.service.model_switch_failed("flash_next_q3", "q5")
+        self.service.preferences.update(model="nemotron_q4", vram_gb=16)
+        with patch.object(self.service.models, "snapshot", return_value=ModelSwitchSnapshot("failed", "nemotron_q4")):
+            self.service.model_switch_failed("nemotron_q4", "q5")
         self.assertEqual(self.service.preferences["model"], "q5")
         self.assertEqual(self.service.preferences["vram_gb"], "auto")
 
@@ -111,7 +111,7 @@ class WorkspaceTests(unittest.TestCase):
         self.service.submit(sid, "hold-task", request_id="capacity-test")
         wait_for(lambda: bool(Model.calls))
         old_limit = self.service.agents[sid].cfg.context_size()
-        self.client.patch("/api/settings", json={"model": "flash_next_q3"}).raise_for_status()
+        self.client.patch("/api/settings", json={"model": "q4"}).raise_for_status()
         self.assertEqual(session_detail(self.service, self.service.session(sid))["context"]["limit"], old_limit)
         Model.gate.set()
         self.completed("capacity-test")
@@ -121,7 +121,7 @@ class WorkspaceTests(unittest.TestCase):
     def completed(self, key):
         wait_for(lambda: self.service.store.job(key)["status"] in ("complete", "stopped", "failed"))
 
-    def interrupted_model_job(self, sid, key, *, old_model="flash_next_q3", status="failed"):
+    def interrupted_model_job(self, sid, key, *, old_model="nemotron_q4", status="failed"):
         session = self.service.session(sid)
         session.add("user", "Continue the existing task.")
         settings = copy.deepcopy(self.service.preferences)
@@ -136,11 +136,11 @@ class WorkspaceTests(unittest.TestCase):
     def test_continue_reuses_selected_running_model_and_current_kv(self):
         from unittest.mock import patch
         for status, old, selected, profile, budget in (
-            ("failed", "flash_next_q3", "q5", "q8_0", "auto"),
-            ("stopped", "flash_next_q3", "q4", "q8_0_compact", 24),
+            ("failed", "nemotron_q4", "q5", "q8_0", "auto"),
+            ("stopped", "nemotron_q4", "q4", "q8_0_compact", 24),
             ("interrupted", "q5", "q5", "f16", "auto"),
-            ("waiting_confirmation", "flash_next_q3", "q3", "q8_0", 16),
-            ("failed", "flash_next_q3", "flash_next_q3", "q8_0_128k", "auto"),
+            ("waiting_confirmation", "nemotron_q4", "q3", "q8_0", 16),
+            ("failed", "nemotron_q4", "nemotron_q4", "q8_0_256k", "auto"),
         ):
             with self.subTest(status=status, model=selected, profile=profile):
                 sid = self.new_chat()
@@ -517,7 +517,7 @@ class WorkspaceTests(unittest.TestCase):
     def test_recovery_keeps_partial_text_and_marks_unknown_tool_outcome(self):
         sid = self.new_chat()
         session = self.service.session(sid)
-        cfg = self.service.config_for(session, {"model": "flash_next_q3"})
+        cfg = self.service.config_for(session, {"model": "nemotron_q4"})
         session.add("user", "recover-task")
         session.add("assistant", "", tool_calls=[{"id": "crash-call", "type": "function",
                     "function": {"name": "write_file", "arguments": '{"path":"already.txt","content":"done"}'}}])
@@ -525,7 +525,7 @@ class WorkspaceTests(unittest.TestCase):
         partial = {"text": "Visible partial text", "reasoning": "", "run_id": "recover"}
         (session.dir / "run-live.json").write_text(json.dumps(partial))
         job = {"id": "recover", "session_id": sid, "text": "recover-task", "attachments": [],
-               "config": cfg.data, "settings": {**copy.deepcopy(self.service.preferences), "model": "flash_next_q3"},
+               "config": cfg.data, "settings": {**copy.deepcopy(self.service.preferences), "model": "nemotron_q4"},
                "created": time.time()}
         self.service.store.save_job(job, "running")
         self.service.preferences["model"] = "q5"

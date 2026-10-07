@@ -35,8 +35,8 @@ import psutil
 from harness import servermgmt
 from harness.config import Config, load_config
 from harness.hardware import Hardware
-from harness.model_catalog import FLASH_NEXT_Q3
-from harness.runtime_plan import GIB
+
+GIB = 1024**3
 
 GOLDEN = Path(__file__).with_name("fixtures") / "llama_launch_golden.json"
 REGENERATE = os.environ.get("MARVIN_REGENERATE_GOLDEN") == "1"
@@ -142,7 +142,6 @@ class Installation:
         def no_download(*args, **kwargs):
             raise AssertionError("A verified model must not be downloaded again")
 
-        layout = copy.deepcopy(FLASH_NEXT_Q3["layout_hint"]["layout"])
         threads = SimpleNamespace(Thread=RecordingThread, Event=threading.Event, Lock=threading.Lock)
         exe = self.exe if runtime is ... else runtime
         output = io.StringIO()
@@ -162,8 +161,6 @@ class Installation:
                     patch.object(Config, "mtp_draft_ready", return_value=True),
                     patch("harness.model_files.download_pinned_model", side_effect=no_download),
                     patch("harness.runtime_update.ensure_runtime", return_value=exe),
-                    patch("harness.runtime_plan.detect_hardware", return_value=hardware),
-                    patch("harness.runtime_plan.inspect_layout", return_value=layout),
                     patch("harness.hardware.detect_hardware", return_value=hardware),
                     contextlib.redirect_stdout(output)):
                 stack.enter_context(target)
@@ -229,22 +226,14 @@ def golden_cases() -> dict:
     # A manual GPU budget turns llama's own fitting off for measured profiles.
     variant("manual-budget/q5/q8_0", "q5", "q8_0", budget(32))
     variant("manual-budget/q4/q8_0_compact_mtp", "q4", "q8_0_compact_mtp", budget(24))
-    # ...but Flash plans its own placement from the budget instead.
-    variant("manual-budget/flash_next_q3/q8_0_128k", "flash_next_q3", "q8_0_128k", budget(24))
     # A recovery keeps the failed run's placement while the context shrinks.
     variant("recovery/nemotron_q5/q8_0_256k_spill", "nemotron_q5", "q8_0_256k_spill",
             frozen("nemotron_q5", ["--fit", "off", "--n-cpu-moe", "21"]), detected=DETECTED[24])
-    variant("recovery/flash_next_q3/q8_0_192k", "flash_next_q3", "q8_0_192k",
-            frozen("flash_next_q3", [], cpu_expert_layers=36))
     # A frozen placement of another model is ignored.
     variant("recovery-other-model/q5/q8_0_128k", "q5", "q8_0_128k",
             frozen("nemotron_q5", ["--fit", "off", "--n-cpu-moe", "21"]))
     # The profile no longer fits a smaller card: the best fitting one is chosen.
     variant("budget-reselect/q5/q8_0", "q5", "q8_0", detected=DETECTED[24])
-    # A smaller real card makes Flash move more experts to the CPU.
-    variant("smaller-card/flash_next_q3/q8_0_128k", "flash_next_q3", "q8_0_128k",
-            hardware=replace(HARDWARE, vram_total=int(23.84 * GIB), vram_available=int(22 * GIB)),
-            detected=DETECTED[24])
     # The owner's extra server arguments always come last.
     variant("extra-args/q5/q8_0_mtp", "q5", "q8_0_mtp", extra_args)
     return cases
@@ -308,13 +297,6 @@ class LaunchSideEffectTests(unittest.TestCase):
         self.assertFalse((self.runtime / "model-failure.json").exists(), "a launch clears the previous failure")
         self.assertEqual(result["readiness"], [{"proc": process, "cancelled": cancelled}])
         self.assertEqual(result["guard_threads"], ["model-memory-guard"])
-
-    def test_flash_launch_records_the_planned_expert_placement(self):
-        self.cfg.set_kv_cache_mode("flash_next_q3", "q8_0_256k")
-        result = self.installation.launch("flash_next_q3")
-        self.assertEqual(result["run"]["placement"]["cpu_expert_layers"], 32)
-        plan = json.loads((self.runtime / "execution-plans" / "flash_next_q3.json").read_text(encoding="utf-8"))
-        self.assertEqual(plan["context"], 262144)
 
     def test_missing_projector_launches_text_only_with_a_warning(self):
         self.cfg.mmproj_file("q4").unlink()

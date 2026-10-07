@@ -120,8 +120,6 @@ class Probes:
         self.last = {}
 
     def call(self, messages, *, thinking=False, tools=None, max_tokens=256, seconds=90, stop=None):
-        if self.cfg.model().get("adaptive_runtime"):
-            seconds = max(seconds, 180)
         abort = stop or threading.Event()
         timer = threading.Timer(seconds, abort.set)
         timer.daemon = True
@@ -258,7 +256,7 @@ class Probes:
             lines[int(count * fraction)] = f"Special record: Project {name} has access phrase {value}."
         messages = [{"role": "system", "content": "Read the supplied records and answer only the requested question. Ignore routine records."},
                     {"role": "user", "content": "\n".join(lines) + "\nList the access phrases for Cedar, Birch and Maple. Give all three exactly."}]
-        deadline = 1800 if self.cfg.model().get("adaptive_runtime") else 590
+        deadline = 590
         r = self.call(messages, max_tokens=128, seconds=deadline)
         first = copy.deepcopy(self.last)
         require(all(x in r.content for x in ("OPAL-6291", "MICA-8537", "JADE-4176")), repr(r.content))
@@ -337,7 +335,7 @@ class Probes:
                 service.submit(session.id, "Use write_file to write exactly " + value +
                     " into proof.txt in the current project. Then call read_file to check it and report the value. "
                     "Do only this small task. Do not ask questions.", request_id=key)
-                deadline = started + (600 if self.cfg.model().get("adaptive_runtime") or thinking != "off" else 150)
+                deadline = started + (600 if thinking != "off" else 150)
                 while time.monotonic() < deadline:
                     job = service.store.job(key)
                     if job["status"] in ("complete", "failed", "stopped"):
@@ -479,8 +477,6 @@ def main():
     ap.add_argument("--port", type=int, default=8087)
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--diagnose-handoff", action="store_true")
-    ap.add_argument("--experimental-flash", action="store_true",
-                    help="Validate the pinned optional Flash-Next before adding it to the product catalog")
     ap.add_argument("--trace-load", action="store_true", help="Include detailed upstream allocation diagnostics")
     ap.add_argument("--input-tokens", type=int, help="Smaller prefill sample for hardware calibration")
     ap.add_argument("--batch-pool", choices=("auto", "all", "performance"), default="auto")
@@ -500,12 +496,6 @@ def main():
         require(cpus, "No CPU pool could be detected")
         original.data["server"].setdefault("extra_args", []).extend([
             "-tb", str(len(cpus)), "--cpu-mask-batch", mask(cpus), "--cpu-strict-batch", "1"])
-    if args.experimental_flash:
-        from harness.model_catalog import FLASH_NEXT_Q3
-        require(args.models == "flash_next_q3" and args.runtimes == "candidate",
-                "Experimental Flash validation requires --models flash_next_q3 --runtimes candidate")
-        original.data["models"]["flash_next_q3"] = copy.deepcopy(FLASH_NEXT_Q3)
-        require(original.model_ready("flash_next_q3"), "The complete Flash-Next manifest is not verified yet")
     require(not servermgmt.health(original), "Stop the user's active model before starting an isolated GPU audit")
     try:
         occupied = requests.get(f"http://127.0.0.1:{args.port}/health", timeout=1)
@@ -516,8 +506,7 @@ def main():
     report_path = args.output / "results.json"
     report = json.loads(report_path.read_text(encoding="utf-8")) if args.resume and report_path.exists() else {"cases": {}}
     report["activation_status"] = "staged_only"
-    report["scope"] = ("Isolated pinned Flash-Next validation; product catalog not activated" if args.experimental_flash
-                       else "Existing model files on this host; no model download or production-runtime update")
+    report["scope"] = "Existing model files on this host; no model download or production-runtime update"
     handoff = args.output / "completion-handoff.json"
     if handoff.exists():
         report["existing_application_handoff_finding"] = json.loads(handoff.read_text(encoding="utf-8"))

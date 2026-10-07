@@ -13,7 +13,7 @@ from harness.agent import Agent, Status, build_registry
 from harness.app_storage import EventStore
 from harness.browser import BrowserSession
 from harness.changes import atomic_write_text
-from harness.config import Config
+from harness.config import Config, REPLACED_MODELS
 from harness.llm import LLMClient
 from harness.model_switch import ModelSwitchController
 from harness.processes import ProcessManager
@@ -61,9 +61,13 @@ class ApplicationService:
             "autonomy": legacy.get("autonomy", cfg.agent.get("autonomy", "supervised")),
             "work_mode": legacy.get("work_mode", cfg.data.get("work_mode", "discussion")),
             "session_id": legacy.get("session_id"), "kv_cache_modes": legacy.get("kv_cache_modes", {}),
-            "adaptive_kv_requests": {},
             "send_mode": "steer", **read_json(self.preferences_path),
         }
+        self.preferences.pop("adaptive_kv_requests", None)
+        for field in ("model", "last_running_model"):
+            replacement = REPLACED_MODELS.get(self.preferences.get(field))
+            if replacement in cfg.data["models"]:
+                self.preferences[field] = replacement
         if self.preferences["model"] not in cfg.data["models"]:
             self.preferences["model"] = cfg.model_key()
         # Semantic search is opt-in; the runtime flag mirrors the saved preference.
@@ -305,8 +309,7 @@ class ApplicationService:
 
         Recovery may serve the request with a smaller profile; the request itself
         stays so the model can go back to it on its next start."""
-        stored = (self.preferences.get("adaptive_kv_requests", {}) if self.models.cfg.model(key).get("adaptive_runtime")
-                  else self.preferences.get("kv_cache_modes", {})).get(key)
+        stored = self.preferences.get("kv_cache_modes", {}).get(key)
         return stored if stored in self.models.cfg.kv_cache_profiles(key) else fallback
 
     def remember_running_model(self, key, profile):
@@ -328,8 +331,6 @@ class ApplicationService:
     def start_model(self, *, restart=False):
         key = self.preferences["model"]
         profile = self.preferences.get("kv_cache_modes", {}).get(key, self.cfg.kv_cache_mode(key))
-        if self.cfg.model(key).get("adaptive_runtime"):
-            profile = self.preferences.get("adaptive_kv_requests", {}).get(key, self.cfg.kv_cache_mode(key))
         if profile not in self.cfg.kv_cache_profiles(key):
             profile = self.cfg.kv_cache_mode(key)
         data = copy.deepcopy(self.cfg.data)
@@ -407,10 +408,6 @@ class ApplicationService:
         candidate = Config(copy.deepcopy(self.cfg.data), self.cfg.root)
         candidate.data.setdefault("hardware", {})["vram_gb"] = self.preferences.get("vram_gb", "auto")
         key = self.preferences["model"]
-        if candidate.model(key).get("adaptive_runtime"):
-            # Full planning happens after the old model frees its resources. Do not
-            # change model identity based solely on a VRAM-only preflight.
-            return
         candidate.data["default_model"] = key
         profile = self.preferences.get("kv_cache_modes", {}).get(key, candidate.kv_cache_mode(key))
         if profile not in candidate.kv_cache_profiles(key):
@@ -546,7 +543,7 @@ class ApplicationService:
             # the task's mode, reasoning and safety settings intact.
             current = self.config_for(self.session(session_id))
             key = current.model_key()
-            for name in ("model", "kv_cache_modes", "adaptive_kv_requests", "vram_gb"):
+            for name in ("model", "kv_cache_modes", "vram_gb"):
                 job["settings"][name] = copy.deepcopy(self.preferences[name])
             job["config"]["default_model"] = key
             job["config"]["models"][key] = copy.deepcopy(current.model(key))
@@ -720,8 +717,7 @@ class ApplicationService:
         live.update(phase="loading_model", phase_started=time.time(), text="", reasoning="", prompt_progress=None)
         # The lower rung serves the user's request; record it as such so the next
         # task does not read the demotion as a changed selection.
-        request_field = "adaptive_kv_requests" if cfg.model(key).get("adaptive_runtime") else "kv_cache_modes"
-        requested = job["settings"].get(request_field, {}).get(key, cfg.kv_cache_mode(key))
+        requested = job["settings"].get("kv_cache_modes", {}).get(key, cfg.kv_cache_mode(key))
         cfg.data.setdefault("_served_request", {})[key] = requested
         self.models.request(key, restart=True, kv_profile=profile, requested_profile=requested, config=cfg,
                             on_success=self.model_became_ready,
@@ -761,7 +757,7 @@ class ApplicationService:
             if profile in cfg.kv_cache_profiles(key):
                 cfg.set_kv_cache_mode(key, profile)
             budget = effective_vram_gb(cfg)
-            if not cfg.model(key).get("adaptive_runtime") and not fits(cfg, key, cfg.kv_cache_mode(key), budget):
+            if not fits(cfg, key, cfg.kv_cache_mode(key), budget):
                 choice = best_fit(cfg, budget)
                 if not choice:
                     raise RuntimeError("No model profile fits the current GPU memory budget")
@@ -878,8 +874,6 @@ class ApplicationService:
                 from harness import servermgmt
                 key = cfg.model_key()
                 profile = cfg.kv_cache_mode(key)
-                if cfg.model(key).get("adaptive_runtime"):
-                    profile = job["settings"].get("adaptive_kv_requests", {}).get(key, self.cfg.kv_cache_mode(key))
                 # A recovery rung below the request keeps serving it; only a
                 # changed selection makes the next task restart the model.
                 served = self.models.cfg.data.get("_served_request", {}).get(key, self.models.cfg.kv_cache_mode(key))

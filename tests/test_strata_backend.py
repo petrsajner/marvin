@@ -23,7 +23,7 @@ from unittest.mock import patch
 from harness import servermgmt, strata_backend
 from harness.config import Config, load_config
 from harness.hardware import Hardware, shared_working_set
-from harness.runtime_plan import GIB
+GIB = 1024**3
 
 KEY = "flash_next_strata"
 IQ2 = "flash_next_strata_iq2"
@@ -948,9 +948,32 @@ class SeamlessSwitchTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+    def test_a_saved_llama_flash_next_selection_moves_to_the_same_model(self):
+        """The llama.cpp entry was removed once this one was qualified (owner, 2026-10-07)."""
+        from harness.application import ApplicationService
+        from tests import test_workspace as helpers
+        for enabled, expected in ((True, KEY), (False, None)):
+            with self.subTest(enabled=enabled), tempfile.TemporaryDirectory() as temporary:
+                cfg = strata_config(Path(temporary), enabled=enabled)
+                runtime = cfg.path("paths.runtime_dir")
+                runtime.mkdir(parents=True, exist_ok=True)
+                (runtime / "workspace-settings.json").write_text(json.dumps({
+                    "model": "flash_next_q3", "last_running_model": "flash_next_q3",
+                    "adaptive_kv_requests": {"flash_next_q3": "q8_0_192k"}}), encoding="utf-8")
+                service = ApplicationService(cfg, llm_factory=helpers.Model, manage_model=False)
+                try:
+                    self.assertEqual(service.preferences["model"], expected or cfg.model_key())
+                    self.assertNotIn("adaptive_kv_requests", service.preferences)
+                    if enabled:
+                        self.assertEqual(service.preferences["last_running_model"], KEY)
+                finally:
+                    service.close()
+                    service.models.wait(3)
+
     def test_nothing_the_user_sees_names_the_engine(self):
         model = self.cfg.model(KEY)
-        shown = [model["alias"], model["status_label"],
+        iq2 = self.cfg.model(IQ2)
+        shown = [model["alias"], model["status_label"], iq2["alias"], iq2["status_label"],
                  *(p["label"] for p in self.cfg.kv_cache_profiles(KEY).values()),
                  *(p["label_cs"] for p in self.cfg.kv_cache_profiles(KEY).values()),
                  # The setup hint after it names config keys; it lasts only while the entry is hidden.

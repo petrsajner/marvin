@@ -13,7 +13,6 @@ from harness.agent import Agent, Status, StepResult
 from harness.application import ApplicationService
 from harness.config import Config, load_config
 from harness.model_switch import ModelSwitchController
-from harness.runtime_plan import choose_plan, GIB
 from harness.web_api import create_app
 from tests import test_workspace as helpers
 
@@ -41,21 +40,6 @@ class MemoryProfileTests(unittest.TestCase):
         for value in (True, False, 0, -1, float("nan"), float("inf"), "unknown", None):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 gpu.normalize_vram_setting(value)
-
-    def test_manual_cap_has_same_plan_as_a_physically_smaller_gpu(self):
-        from harness.hardware import Hardware
-        layout = {"common_bytes": 3 * GIB, "projector_bytes": GIB,
-                  "lazy_bytes": 27 * GIB, "expert_layer_bytes": [GIB] * 48}
-        big = Hardware("CPU", 8, 8, tuple(range(8)), tuple(range(8)),
-                       96 * GIB, 80 * GIB, "GPU", "id", "driver", 32 * GIB, 30 * GIB)
-        from dataclasses import replace
-        for cap in (16, 24):
-            physical = choose_plan(replace(big, vram_total=cap * GIB, vram_available=(cap - 2) * GIB), layout, 131072)
-            limited = choose_plan(big, layout, 131072, vram_limit=cap)
-            self.assertEqual(physical.cpu_expert_layers, limited.cpu_expert_layers)
-            self.assertEqual(physical.estimated_gpu_bytes, limited.estimated_gpu_bytes)
-            self.assertEqual(limited.vram_budget_bytes, cap * GIB)
-            self.assertEqual(limited.required_available_ram_bytes, 0)
 
     def test_old_installed_config_gets_corrected_profiles_without_file_rewrite(self):
         path = self.root / "config.yaml"
@@ -121,7 +105,7 @@ class MemoryProfileTests(unittest.TestCase):
 
     def test_restart_seeds_rollback_with_last_successful_budget(self):
         self.app.close()
-        self.app.preferences.update(model="flash_next_q3", vram_gb=16,
+        self.app.preferences.update(model="q5", vram_gb=16,
             last_running_model="q4", last_running_kv="q8_0_compact", last_running_vram_gb=24)
         self.app.save_preferences()
         with patch.object(Config, "model_ready", return_value=True):
@@ -141,7 +125,7 @@ class MemoryProfileTests(unittest.TestCase):
         self.assertEqual(self.app.models.snapshot().restored_model, "q4")
 
     def test_pressure_recovery_reduces_context_and_does_not_repeat_tools(self):
-        self.app.preferences.update(model="flash_next_q3")
+        self.app.preferences.update(model="q4")
         session = self.app.new_session(work_mode="discussion")
         session.add("assistant", "", tool_calls=[{"id": "done", "type": "function",
                     "function": {"name": "write_file", "arguments": "{}"}}])
@@ -156,26 +140,26 @@ class MemoryProfileTests(unittest.TestCase):
         steps = []
         def step(agent, **kwargs):
             steps.append(agent.cfg.context_size())
-            if len(steps) <= 2:
+            if len(steps) <= 1:
                 path = self.cfg.path("paths.runtime_dir") / "model-failure.json"
-                path.write_text(json.dumps({"code": "ram_pressure", "model": "flash_next_q3", "time": time.time()}))
+                path.write_text(json.dumps({"code": "ram_pressure", "model": "q4", "time": time.time()}))
                 return StepResult(Status.ERROR, text="Connection reset")
             return StepResult(Status.FINAL, text="Recovered")
         try:
             with patch.object(Agent, "step", autospec=True, side_effect=step), \
                  patch.object(servermgmt, "health", return_value=True), \
-                 patch.object(servermgmt, "running_model", return_value="flash_next_q3"):
+                 patch.object(servermgmt, "running_model", return_value="q4"):
                 self.app.submit(session.id, "Continue the work", request_id="pressure")
                 helpers.wait_for(lambda: self.app.store.job("pressure")["status"] == "complete" and self.app.active is None)
-            self.assertEqual(steps, [262144, 196608, 131072])
-            self.assertEqual(calls, [196608, 131072])
+            self.assertEqual(steps, [262144, 196608])
+            self.assertEqual(calls, [196608])
             self.assertEqual(len([m for m in session.messages if m.get("tool_call_id") == "done"]), 1)
-            self.assertEqual(self.app.preferences["last_running_kv"], "q8_0_128k")
+            self.assertEqual(self.app.preferences["last_running_kv"], "q8_0_192k")
         finally:
             self.app.manage_model = False
 
     def test_startup_pressure_retries_only_a_smaller_supported_context(self):
-        self.cfg.data["default_model"] = "flash_next_q3"
+        self.cfg.data["default_model"] = "q4"
         contexts = []
         def start(cfg, key, **kwargs):
             contexts.append(cfg.context_size())
@@ -185,7 +169,7 @@ class MemoryProfileTests(unittest.TestCase):
                 raise RuntimeError("Pressure")
             return 0
         with patch.object(servermgmt, "health", return_value=False), patch.object(servermgmt, "start", side_effect=start):
-            self.assertTrue(servermgmt.ensure(self.cfg, "flash_next_q3"))
+            self.assertTrue(servermgmt.ensure(self.cfg, "q4"))
         self.assertEqual(contexts, [262144, 196608])
 
     def test_approved_menu_is_exact_for_each_card_class(self):
@@ -210,8 +194,6 @@ class MemoryProfileTests(unittest.TestCase):
         for capacity, table in expected.items():
             actual = {}
             for key in self.cfg.data["models"]:
-                if self.cfg.model(key).get("adaptive_runtime"):
-                    continue
                 for profile in gpu.offered_profiles(self.cfg, key, capacity - .16).values():
                     context = f"{profile['ctx_size'] // 1024}k" + ("·MTP" if profile.get("speculative") else "")
                     # Keys and values can differ, and a menu that merged them
@@ -346,26 +328,6 @@ class MemoryProfileTests(unittest.TestCase):
         freeze_placement(self.cfg)
         self.cfg.set_kv_cache_mode("nemotron_q5", "q8_0_256k_spill")
         self.assertIn("21", self.cfg.data["_recovery_placement"]["server_args"])
-
-    def test_flash_reclaims_ram_and_freezes_experts_during_recovery(self):
-        from dataclasses import replace
-        from harness.hardware import Hardware
-        from harness.model_catalog import FLASH_NEXT_Q3
-        layout = FLASH_NEXT_Q3["layout_hint"]["layout"]
-        hw = Hardware("hybrid", 20, 20, tuple(range(8)), tuple(range(20)),
-                      64 * GIB, 2 * GIB, "GPU", "id", "driver", int(31.84 * GIB), int(29.4 * GIB))
-        large = choose_plan(hw, layout, 262144)
-        small = choose_plan(hw, layout, 196608, cpu_expert_layers=large.cpu_expert_layers)
-        self.assertEqual(large.cpu_expert_layers, 32)
-        self.assertEqual(small.cpu_expert_layers, 32)
-        self.assertAlmostEqual(large.estimated_gpu_bytes / GIB, 29.250, places=3)
-        self.assertAlmostEqual(large.estimated_host_bytes / GIB, 41.394, places=3)
-        self.assertLess(small.estimated_gpu_bytes, large.estimated_gpu_bytes)
-        self.assertIn("256", large.args)
-        with self.assertRaises(RuntimeError):
-            choose_plan(replace(hw, ram_total=16 * GIB), layout, 131072)
-        with self.assertRaisesRegex(RuntimeError, "qualification"):
-            choose_plan(replace(hw, vram_total=16 * GIB, vram_available=14 * GIB), layout, 262144)
 
     def test_allocator_detection_ignores_old_launch_logs(self):
         directory = self.cfg.path("paths.runtime_dir")

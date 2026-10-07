@@ -89,7 +89,7 @@ Every existing llama.cpp model must keep working unchanged.
 
 ## Status
 
-### Phase 0: ready, not run yet
+### Phase 0: done (6 October 2026)
 
 Run with Marvin's `.venv` Python in `E:\QWEN local` (the home PC), with
 Marvin's model stopped:
@@ -124,7 +124,7 @@ scripted `MockEngine`:
 
 `tests/test_server_launch.py` pins the llama path:
 
-- the exact argv of all 42 built-in llama profiles plus 9 variants (manual
+- the exact argv of all built-in llama profiles plus variants (42 and 9; 39 and 6 since the llama.cpp Flash-Next left on 7 October) (manual
   budget, frozen recovery placements, budget reselection, smaller card, extra
   arguments) in `tests/fixtures/llama_launch_golden.json`;
 - launch side effects, early exits, failed readiness, identity, stop,
@@ -188,33 +188,25 @@ on real pressure). That needs Phase 0 data and then the owner's PC.
 
 ## Next work
 
-### Qualification
+### Qualification: done, menu approved (7 October 2026)
 
-The approved measurement plan is
-[2026-10-06-strata-qualification-plan.md](2026-10-06-strata-qualification-plan.md):
-IQ3_S and IQ2_XS, GPU classes 32/24/16 (VRAM ballast) and RAM classes
-64/48/32 (RAM ballast), the five September checks in every case.
+The record is [strata-qualification-2026-10-07.md](strata-qualification-2026-10-07.md)
+with the JSON and CSV under `measurements/`. The owner approved its menu, and it
+is installed (`bccdfda`):
 
-**State on 6 October, 23:10 (before the owner's restart for the larger page file):**
+- `flash_next_strata` (IQ3_S, default) and `flash_next_strata_iq2` (IQ2_XS,
+  optional), both behind `strata.enabled` until Phase 3;
+- a 256k and a 128k profile per RAM class (64/48/32) and GPU class (32/24/16):
+  every expert in RAM on 64 GB (KV in RAM on a 16 GB card), resident below; a
+  fixed `expert_cache` on the smaller cards; the picker matches the RAM class;
+- the two entries share Strata's data folder with their own receipts; a file
+  another entry verified is hard-linked instead of downloaded;
+- the RAM guard counts the GGUF pages Strata maps as available (`d393736`).
 
-- Phase 0 passed for IQ3_S at 256k and 128k.
-- Done: every IQ3_S case on the 32 GB card, and the first two IQ2_XS cases.
-  The results are in `%LOCALAPPDATA%\StrataEval\qualify\2026-10-06\results.json`;
-  for the Claude app that path is under
-  `Packages\Claude_pzs8sxrjxfjjc\LocalCache\Local`.
-- Next: `python scripts/strata_qualify.py run --verify --resume` measures the
-  rest, including the 24/16 GB cards with the VRAM ballast. The page file is now
-  a fixed 64–96 GB.
-- The engine-reserve runs of the smaller cards are kept under `superseded`. The
-  calibrated reserve held 16 GB cards to 14.15 GiB, but not 24 GB cards.
-
-### Before Phase 3: Phase 0 results
-
-- Set the profiles' allocation figures and `engine_args` (for example
-  `--kv-resident 32768`) from the measurements; record them under
-  `docs/design/measurements/`.
-- Choose normal or resident experts (`strata.resident_experts`).
-- Check tool-call reliability and the effort position at the end.
+The llama.cpp `flash_next_q3` is removed with the adaptive planner that served
+only it (`runtime_plan.py`, `gguf_metadata.py`, the `adaptive_runtime` branches,
+its installer row and golden records). A saved selection of it moves to
+`flash_next_strata` where that entry is available.
 
 ### Phase 3: runtime and model preparation (design sections 2.7–2.9)
 
@@ -229,12 +221,18 @@ user sees only the usual progress:
   each resumable, hash-checked and reported as "preparing";
 - then show the entry (drop the `strata.enabled` gate) and remove the setup
   hint from `strata_backend.explain`;
-- offline backup and installer include `runtime/strata` when installed.
+- offline backup and installer include `runtime/strata` when installed; the
+  backup must keep the hard-linked shard as one file, and the installer's model
+  list gets the Flash-Next rows back (IQ3_S, IQ2_XS) with their RAM needs;
+- the user manuals (EN and CS), the installation guides and the README still
+  describe the removed llama.cpp Flash-Next (Q3, 90.9 GB, automatic planning)
+  and are rewritten for IQ3_S/IQ2_XS when the entry becomes visible.
 
 ### Phase 4
 
-Qualification on the owner's PC, manuals (EN and CS), release notes, then the
-Strata entry replaces `flash_next_q3`; later, smaller-machine profiles.
+Integration tests in Marvin with the real engine (switching to and from
+Flash-Next in one chat, recovery under real pressure, prefix reuse, the e2e
+smoke and coding workflows), release notes, release.
 
 ## Testing in the cloud without a GPU
 

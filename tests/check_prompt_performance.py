@@ -22,7 +22,7 @@ from harness.tools.web import WebFetchTool
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--model', default='flash_next_q3')
+    parser.add_argument('--model', default='q5')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--source-file', type=Path)
     parser.add_argument('--source-only', action='store_true')
@@ -52,9 +52,6 @@ def main():
             raise RuntimeError('Audit model did not start')
         llm = LLMClient(cfg)
         report['context'] = cfg.context_size()
-        plan = output / 'server/execution-plans' / f'{args.model}.json'
-        if plan.exists():
-            report['runtime_plan'] = json.loads(plan.read_text(encoding='utf-8'))
 
         def invoke(messages, max_tokens, thinking=None):
             started = time.perf_counter()
