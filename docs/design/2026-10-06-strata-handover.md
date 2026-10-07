@@ -222,7 +222,10 @@ Marvin's models and the prepared Strata, on its own port and runtime folder:
   62 s, like Q5 (6 tools, 39 s). With thinking off it twice kept checking its
   plan because the "Git diff reviewed" item cannot be ticked in a folder that is
   not a git repository: 22 tools once, 200 another time; the exact-repeat loop
-  warning never fired, as the calls cycled through three tools.
+  warning never fired, as the calls cycled through three tools. Fixed for every
+  model (`b3a751e`): a repeated cycle of two to four steps gets the advisory
+  warning, and outside Git the change journal is the diff review. The same task
+  then took 8 tools in 62 s.
 - **pressure** (passed): 48 GB of RAM, 16 GB card, 256k; another process took
   the free RAM, the engine ran out of memory reading a 120k-token input, Marvin
   restarted at 128k with the same expert cache (1054) and finished the task.
