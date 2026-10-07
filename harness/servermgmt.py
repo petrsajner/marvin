@@ -27,6 +27,12 @@ MEMORY_MARKERS = ("out of memory", "cudaerrormemoryallocation", "failed to alloc
                   "cannot allocate memory", "std::bad_alloc")
 # The emergency guard ends a server after ten seconds below this much available RAM.
 GUARD_RAM_BYTES = 512 * 1024**2
+GUARD_SECONDS = 10
+# A Strata server keeps most experts in pageable RAM: when RAM runs short, Windows
+# pages cold ones out, which took about eight seconds on the owner's desktop at
+# 256k (2026-10-08). While commit room remains for that, the guard waits a minute.
+GUARD_PAGING_SECONDS = 60
+GUARD_COMMIT_BYTES = 2 * 1024**3
 
 
 def pid_file(cfg: Config) -> Path:
@@ -401,6 +407,18 @@ def guard_available(proc, *, strata: bool) -> int:
     return available
 
 
+def guard_patience(*, strata: bool) -> int:
+    """Seconds of too little available RAM before the guard ends the server.
+
+    A Strata server gets a minute while Windows can still page its cold experts out;
+    once commit runs out, or for llama.cpp, the usual ten seconds."""
+    if not strata:
+        return GUARD_SECONDS
+    from harness.hardware import commit_headroom
+    headroom = commit_headroom()
+    return GUARD_SECONDS if headroom is not None and headroom < GUARD_COMMIT_BYTES else GUARD_PAGING_SECONDS
+
+
 def _end_tree(proc) -> None:
     """End a process's children; the Strata server runs its engine and image encoder as children."""
     try:
@@ -473,8 +491,9 @@ def _launch(cfg: Config, model_key: str, argv: list[str], *, cwd: Path, log_path
                 # to reclaim pages; never fail merely because commit/pagefile grew.
                 low_samples = low_samples + 1 if available < GUARD_RAM_BYTES else 0
                 stop_loading = not loaded.is_set() and cancelled and cancelled()
-                if low_samples >= 10 or stop_loading:
-                    if low_samples >= 10:
+                exhausted = low_samples >= GUARD_SECONDS and low_samples >= guard_patience(strata=bool(strata))
+                if exhausted or stop_loading:
+                    if exhausted:
                         code = "ram_pressure"
                         memory_failure.append("The model needs more system RAM for the current memory profile." if code == "ram_pressure"
                                               else "The selected GPU memory budget is not sufficient for this profile and other running programs.")

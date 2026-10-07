@@ -275,6 +275,15 @@ Draft notes: `docs/distribution/RELEASE-NOTES-1.19.0.md`. The owner tests the
 installed build before the release; the offline backup 1.18.2 is refreshed to
 1.19.0 after it (dropping the old llama.cpp Flash-Next weights).
 
+**First field test (8 October):** on the owner's desktop IQ3_S at 256k left
+1-2 GiB of RAM free after loading and 136 MiB of VRAM; a dip under 512 MB for
+over 10 s while Windows paged out cold experts made the guard restart the model
+at 128k, which does not even lower RAM use (the KV cache is in VRAM). Fixed:
+profiles where the engine fills the card keep a 1100 MiB VRAM reserve (the
+engine's own advice), and for a Strata server the guard waits 60 s while commit
+room remains (10 s once it runs out, and always for llama.cpp). The same
+four-step research task then kept at least 0.99 GiB free and did not restart.
+
 ### Phase 4
 
 Integration tests in Marvin with the real engine (switching to and from

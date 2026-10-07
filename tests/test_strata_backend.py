@@ -143,6 +143,8 @@ class ConfigTests(unittest.TestCase):
                 self.assertLessEqual(profile["min_vram_gb"], {32: 31.0, 24: 22.0, 16: 14.4}[profile["gpu_class"]], name)
                 self.assertNotIn("server_args", profile)
                 self.assertEqual("expert_cache" in profile, profile["gpu_class"] < 32, name)
+                # Where the engine fills the card, it keeps the reserve it asked for.
+                self.assertEqual(profile.get("vram_reserve_mib"), 1100 if profile["gpu_class"] == 32 else None, name)
 
     def test_the_picker_offers_the_profiles_of_this_ram_and_gpu_class(self):
         cfg = strata_config(self.root)
@@ -269,7 +271,7 @@ class ServerConfigTests(unittest.TestCase):
                      "--expert-profile", f"{program}/data/expert-profile.bin",
                      "--expert-cache", "auto", "--prefill", "auto", "--spec", "4", "--spec-min-p", "0.5",
                      "--mtp", f"{data}/mtp/rt", "--max-context", "262144", "--kv", "int8",
-                     "--vision", "--vram-reserve-mib", "700", "--pool-workers", "13"],
+                     "--vision", "--vram-reserve-mib", "1100", "--pool-workers", "13"],
             "cwd": program,
             "tokenizer": f"{data}/packs/iq3_s/tokenizer",
             "model_name": "qwen3.8-flash-next-iq3_s",
@@ -314,6 +316,7 @@ class ServerConfigTests(unittest.TestCase):
         self.cfg.set_kv_cache_mode(KEY, "int8_128k_r64g24")
         where = strata_backend.placement(self.cfg, KEY)
         self.assertEqual(where["expert_cache"], 4882)
+        self.assertEqual(where["vram_reserve_mib"], 700, "the reserve the cache was calibrated with")
         args = strata_backend.engine_args(self.cfg, KEY, 131072, where)
         self.assertEqual(args[args.index("--expert-cache") + 1], "4882")
         # A recovery still keeps what the failed run logged.
@@ -473,7 +476,7 @@ class LaunchTests(unittest.TestCase):
         self.assertEqual(servermgmt.pid_file(self.cfg).read_text(encoding="utf-8"), f"{KEY}:{PID}")
         run = self.run_record()
         self.assertEqual((run["backend"], run["model"], run["context"]), ("strata", KEY, 262144))
-        self.assertEqual(run["placement"], {"model": KEY, "expert_cache": "auto", "vram_reserve_mib": 700,
+        self.assertEqual(run["placement"], {"model": KEY, "expert_cache": "auto", "vram_reserve_mib": 1100,
                                             "expert_cache_slots": 8641})
         self.assertEqual(self.cfg.data["_active_placement"], run["placement"])
         self.assertIn("ready_engine_log_offset", run)
@@ -544,7 +547,7 @@ class LaunchTests(unittest.TestCase):
         self.assertEqual(first[first.index("--expert-cache") + 1], "auto")
         self.assertEqual(second[second.index("--max-context") + 1], "131072")
         self.assertEqual(second[second.index("--expert-cache") + 1], "8641")
-        self.assertEqual(second[second.index("--vram-reserve-mib") + 1], "700")
+        self.assertEqual(second[second.index("--vram-reserve-mib") + 1], "1100")
         self.assertEqual(self.cfg.kv_cache_mode(KEY), P128)
         self.assertEqual(self.cfg.data["_recovered_contexts"], {KEY: 131072})
 
@@ -753,6 +756,18 @@ class MemoryGuardTests(unittest.TestCase):
         value, shared = self.available(300 * 2**20, 19 * 2**30, strata=False)
         self.assertEqual(value, 300 * 2**20)
         shared.assert_not_called()
+
+    def patience(self, headroom, *, strata=True):
+        with patch("harness.hardware.commit_headroom", return_value=headroom):
+            return servermgmt.guard_patience(strata=strata)
+
+    def test_a_strata_server_gets_a_minute_while_windows_can_page(self):
+        self.assertEqual(self.patience(40 * 2**30), servermgmt.GUARD_PAGING_SECONDS)
+        self.assertEqual(self.patience(None), servermgmt.GUARD_PAGING_SECONDS, "unknown commit: give it the minute")
+
+    def test_exhausted_commit_and_llama_keep_ten_seconds(self):
+        self.assertEqual(self.patience(1 * 2**30), servermgmt.GUARD_SECONDS)
+        self.assertEqual(self.patience(40 * 2**30, strata=False), servermgmt.GUARD_SECONDS)
 
     def test_working_sets_are_read_only_when_memory_runs_short(self):
         value, shared = self.available(8 * 2**30, 19 * 2**30, strata=True)

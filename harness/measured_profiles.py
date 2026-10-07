@@ -64,6 +64,9 @@ SMALL_CARD_MEASUREMENT = "profiles-16gb-2026-09-19"
 STRATA_MEASUREMENT_ID = "strata-qualification-2026-10-07"
 
 
+AUTO_CACHE_VRAM_RESERVE_MIB = 1100
+
+
 def strata_profile(context, gpu_class, ram_class, measured, *, mode="normal", kv_resident=False,
                    expert_cache=None, measurement=STRATA_MEASUREMENT_ID):
     """One Strata placement: int8 KV with MTP, for one GPU class and one RAM class.
@@ -85,6 +88,11 @@ def strata_profile(context, gpu_class, ram_class, measured, *, mode="normal", kv
             "engine_args": engine_args}
     if expert_cache:
         spec["expert_cache"] = expert_cache
+    else:
+        # The engine fills the free VRAM; at 256k with images it left 136 MiB on the
+        # owner's desktop and asked for this reserve itself, so that a program taking
+        # some VRAM does not push the model's allocations into system RAM (2026-10-08).
+        spec["vram_reserve_mib"] = AUTO_CACHE_VRAM_RESERVE_MIB
     return spec
 
 

@@ -162,11 +162,11 @@ def placement(cfg: Config, key: str) -> dict:
     memory from another, so "fill the free VRAM" is not a size a measurement can
     pin; a fixed cache is."""
     frozen = cfg.data.get("_recovery_placement", {})
-    reserve = int(settings(cfg, key).get("vram_reserve_mib", 700))
+    profile = cfg.kv_cache_profiles(key).get(cfg.kv_cache_mode(key), {})
+    reserve = int(profile.get("vram_reserve_mib") or settings(cfg, key).get("vram_reserve_mib", 700))
     if frozen.get("model") == key:
         cache = frozen.get("expert_cache_slots") or frozen.get("expert_cache") or "auto"
         return {"model": key, "expert_cache": cache, "vram_reserve_mib": int(frozen.get("vram_reserve_mib", reserve))}
-    profile = cfg.kv_cache_profiles(key).get(cfg.kv_cache_mode(key), {})
     return {"model": key, "expert_cache": profile.get("expert_cache") or "auto", "vram_reserve_mib": reserve}
 
 

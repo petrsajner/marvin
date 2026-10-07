@@ -110,6 +110,28 @@ class _MemoryCounters(ctypes.Structure):
             "PrivateUsage", "PrivateWorkingSetSize")] + [("SharedCommitUsage", ctypes.c_ulonglong)]
 
 
+class _PerformanceInformation(ctypes.Structure):
+    """PERFORMANCE_INFORMATION (psapi)."""
+    _fields_ = [("cb", ctypes.c_ulong)] + [(name, ctypes.c_size_t) for name in (
+        "CommitTotal", "CommitLimit", "CommitPeak", "PhysicalTotal", "PhysicalAvailable", "SystemCache",
+        "KernelTotal", "KernelPaged", "KernelNonpaged", "PageSize")] + [
+        (name, ctypes.c_ulong) for name in ("HandleCount", "ProcessCount", "ThreadCount")]
+
+
+def commit_headroom() -> int | None:
+    """Bytes Windows can still commit before its current commit limit (RAM plus page file), or None.
+
+    While there is room, Windows can page memory out to make RAM available; when
+    it is gone, allocations fail."""
+    if os.name != "nt":
+        return None
+    info = _PerformanceInformation(cb=ctypes.sizeof(_PerformanceInformation))
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    if not kernel32.K32GetPerformanceInfo(ctypes.byref(info), info.cb):
+        return None
+    return max(0, info.CommitLimit - info.CommitTotal) * info.PageSize
+
+
 def shared_working_set(pids) -> int:
     """Bytes of these processes' working sets that are not private to them.
 
