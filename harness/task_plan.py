@@ -139,10 +139,20 @@ class TaskPlanStore:
         data["updated"] = time.time()
         self._write(data)
 
+    def git_workspace(self) -> bool:
+        """Whether the chat's folder is in a Git repository. Without one, the task's own
+        change journal (list_task_changes) is the diff to review (owner, 2026-10-07)."""
+        workspace = (getattr(self.session, "meta", None) or {}).get("workspace")
+        if not workspace:
+            return True
+        path = Path(workspace)
+        return any((folder / ".git").exists() for folder in (path, *path.parents))
+
     def observe_tool(self, name: str, args: dict[str, Any] | None, result: str,
                      processes=None) -> None:
         args = args or {}
-        if name == "git_diff" and "[exit code: 0]" in result:
+        if (name == "git_diff" and "[exit code: 0]" in result) or (
+                name == "list_task_changes" and not str(result).startswith("ERROR") and not self.git_workspace()):
             data = self.load()
             data["diff_reviewed"] = True
             data["updated"] = time.time()
@@ -193,7 +203,9 @@ class TaskPlanStore:
         if not any(item.get("status") == "passed" for item in data.get("validations") or []):
             issues.append("no successful validation is recorded")
         if not data.get("diff_reviewed"):
-            issues.append("the final Git diff has not been reviewed")
+            issues.append("the final Git diff has not been reviewed" if self.git_workspace() else
+                          "the task's changes have not been reviewed (list_task_changes; this folder is not "
+                          "a Git repository)")
         return issues
 
     def mark_review_nudged(self) -> None:
@@ -221,7 +233,11 @@ class TaskPlanStore:
             last = validations[-1]
             lines.append(
                 f"Latest validation: [{last.get('status')}] {last.get('label')}")
-        lines.append(f"Git diff reviewed: {'yes' if data.get('diff_reviewed') else 'no'}")
+        reviewed = "yes" if data.get("diff_reviewed") else "no"
+        if self.git_workspace():
+            lines.append(f"Git diff reviewed: {reviewed}")
+        else:
+            lines.append(f"Changes reviewed with list_task_changes (not a Git repository): {reviewed}")
         return "\n".join(lines)
 
     def _write(self, data: dict[str, Any]) -> None:

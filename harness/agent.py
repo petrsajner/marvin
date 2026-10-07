@@ -118,6 +118,21 @@ WRITING_SUMMARY_NOTE = (
 _PROTOCOL_MARKS = ("[TASK PROTOCOL", "[WRITING PROTOCOL", "[PROGRESS UPDATE",
                    "[FINAL SUMMARY", "[WRITING SUMMARY")
 TOOL_STEPS_BEFORE_UPDATE = 4   # Request an update after this many tool steps without user-facing text.
+# A cycle of two to four different tool steps seen this many times in a row earns
+# the same advisory loop warning as one step repeated (owner, 2026-10-07: an agent
+# cycled through three plan checks 190 times and the exact-repeat check never fired).
+LOOP_CYCLE_REPEATS = 3
+
+
+def repeated_cycle(history: list[str]) -> int:
+    """The length of a cycle of two to four different steps that ends `history` LOOP_CYCLE_REPEATS times, else 0."""
+    for size in (2, 3, 4):
+        span = size * LOOP_CYCLE_REPEATS
+        tail = history[-span:]
+        cycle = tail[:size]
+        if len(tail) == span and len(set(cycle)) > 1 and all(step == cycle[i % size] for i, step in enumerate(tail)):
+            return size
+    return 0
 MIN_TOOLS_FOR_SUMMARY = 3      # Tasks using at least this many tools require a structured summary.
 COMPRESS_AT = 0.85             # Compress automatically at 85 percent of the context limit.
 KEEP_FRACTION = 0.20           # Share of the limit kept as live recent work after a
@@ -152,7 +167,8 @@ DOCUMENT_OPERATION_RE = re.compile(
 COMPLETION_REVIEW_NOTE = (
     "[COMPLETION READINESS REVIEW - guidance, not a hard gate] The task changed project files, "
     "but the operational record still shows: {issues}. Before finishing, decide what is "
-    "proportionate: complete/update the task plan, run a relevant check, inspect git_diff, or "
+    "proportionate: complete/update the task plan, run a relevant check, inspect the diff (git_diff, "
+    "or list_task_changes outside a Git repository), or "
     "briefly explain why an item is not useful for this task. Preserve the user's requested "
     "scope and implementation form."
 )
@@ -227,6 +243,7 @@ class Agent:
         self._tool_steps_since_update = 0
         self._summary_requested = False
         self._tool_call_history: list[str] = []
+        self._cycle_warned_at = -1
         restored = self.session.load_task_state()
         if restored.get("status") in ("running", "waiting_confirmation"):
             self._steps = int(restored.get("steps", 0))
@@ -443,6 +460,7 @@ class Agent:
         self._overflow_retried = False
         self._malformed_tool_calls = 0
         self._tool_call_history = []
+        self._cycle_warned_at = -1
         self.safety.new_task()
         self.session.add("user", text, images=images)
         self.ctx.changes.begin_task(text)
@@ -471,6 +489,7 @@ class Agent:
         self._overflow_retried = False
         self._malformed_tool_calls = 0
         self._tool_call_history = []
+        self._cycle_warned_at = -1
         self.safety.new_task()
         self.ctx.changes.begin_task(label)
         self.ctx.task_plan.begin(label)
@@ -839,11 +858,22 @@ class Agent:
             self._tool_call_history.append(call_sig)
 
             loop_warning = None
-            if len(self._tool_call_history) >= 2 and self._tool_call_history[-1] == self._tool_call_history[-2]:
+            history = self._tool_call_history
+            cycle = repeated_cycle(history)
+            if len(history) >= 2 and history[-1] == history[-2]:
                 loop_warning = (
                     "[LOOP WARNING] You just repeated the exact same tool call as in the previous step. "
                     "Compare its result with the previous result. Polling an active process may be useful; "
                     "if nothing is progressing, consider a different approach and explain the situation."
+                )
+            elif cycle and len(history) - self._cycle_warned_at >= cycle * LOOP_CYCLE_REPEATS:
+                # Once per full set of repeats, not on every step of the same cycle.
+                self._cycle_warned_at = len(history)
+                names = ", ".join(step.split(":", 1)[0] for step in history[-cycle:])
+                loop_warning = (
+                    f"[LOOP WARNING] Your last {cycle * LOOP_CYCLE_REPEATS} tool steps repeat the same cycle of "
+                    f"{cycle} ({names}). Check whether the cycle is making progress; if it is not, take a "
+                    "different approach, or finish and explain what is blocking you."
                 )
 
             risky = []
