@@ -133,7 +133,7 @@ def repeated_cycle(history: list[str]) -> int:
         if len(tail) == span and len(set(cycle)) > 1 and all(step == cycle[i % size] for i, step in enumerate(tail)):
             return size
     return 0
-MIN_TOOLS_FOR_SUMMARY = 3      # Tasks using at least this many tools require a structured summary.
+MIN_TOOLS_FOR_SUMMARY = 3      # Tasks that change files with at least this many tools require a structured summary.
 COMPRESS_AT = 0.85             # Compress automatically at 85 percent of the context limit.
 KEEP_FRACTION = 0.20           # Share of the limit kept as live recent work after a
                                # compression. Owner choice 2026-09-23: freeing roughly
@@ -918,7 +918,12 @@ class Agent:
         # 5) Final response and structured-summary enforcement.
         if self.work_mode == "research":
             run = self.ctx.research.current()
-            if run and run.get("status") == "collecting" and run.get("sources"):
+            if run and run.get("status") == "collecting" and run.get("sources") \
+                    and _looks_structured(res.content or ""):
+                # The model wrote its own report: it is the one answer and the run's
+                # synthesis, instead of a second report from the ledger (owner, 2026-10-08).
+                self.ctx.research.complete(res.content)
+            elif run and run.get("status") == "collecting" and run.get("sources"):
                 if (res.content or "").strip():
                     self.session.add("assistant", res.content, reasoning=res.reasoning)
                 self.emit("info", t("Preparing the final synthesis from all loaded sources..."))
@@ -944,9 +949,7 @@ class Agent:
                 and self.work_mode == "development"
                 and self.ctx.task_plan
                 and not self.ctx.task_plan.review_nudged()):
-            summary = self.ctx.changes.summary() if self.ctx.changes else {"files": []}
-            has_changes = any(item.get("changed") for item in summary.get("files", []))
-            readiness = self.ctx.task_plan.readiness(has_changes)
+            readiness = self.ctx.task_plan.readiness(self._task_changed_files())
             if readiness:
                 if (res.content or "").strip():
                     self.session.add("assistant", res.content, reasoning=res.reasoning)
@@ -955,10 +958,13 @@ class Agent:
                     "user", COMPLETION_REVIEW_NOTE.format(issues="; ".join(readiness)))
                 self._save_task_state("running")
                 return StepResult(Status.CONTINUE, text=res.content, reasoning=res.reasoning)
+        # A summary only where the task changed files: a search or a read already
+        # answered, and asking again repeated the answer (owner, 2026-10-08).
         if (self.tools_enabled
                 and self._tools_used_this_task >= MIN_TOOLS_FOR_SUMMARY
                 and not self._summary_requested
-                and not _looks_structured(res.content or "")):
+                and not _looks_structured(res.content or "")
+                and self._task_changed_files()):
             self._summary_requested = True
             self.session.add("assistant", res.content, reasoning=res.reasoning)
             note = WRITING_SUMMARY_NOTE if self.work_mode == "writing" else SUMMARY_NOTE
@@ -973,6 +979,10 @@ class Agent:
                          changes=changes, checks=checks or None)
         self._save_task_state("complete", result=content)
         return StepResult(Status.FINAL, text=content, reasoning=res.reasoning)
+
+    def _task_changed_files(self) -> bool:
+        summary = self.ctx.changes.summary() if self.ctx.changes else {"files": []}
+        return any(item.get("changed") for item in summary.get("files", []))
 
     @property
     def has_resumable_task(self) -> bool:

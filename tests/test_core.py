@@ -1493,7 +1493,7 @@ def test_research_ledger_and_synthesis() -> None:
             def stream(self, messages, **kwargs):
                 if kwargs.get("thinking") is False:
                     return self.ask(messages, **kwargs)
-                return AssistantResult(content="Working draft before synthesis")
+                return AssistantResult(content=getattr(self, "final_report", "Working draft before synthesis"))
 
         fake = ResearchLLM()
         class EmptyPlannerLLM(ResearchLLM):
@@ -1543,6 +1543,22 @@ def test_research_ledger_and_synthesis() -> None:
               and any(str(message.get("content", "")).startswith("[RESEARCH PLAN")
                       for message in integrated_session.messages),
               "Research planning precedes searching and is saved in the ledger and context")
+
+        report = ("## Findings\n\nA says yes [S1]; B says no [S2]. " + "Detail. " * 120)
+        own_llm = ResearchLLM()
+        own_llm.final_report = report
+        own_session = Session(cfg, session_id="research-own-report", system_prompt="SYS", work_mode="research")
+        own = Agent(cfg, own_llm, own_session, build_registry("chat", "research"), SafetyPolicy("auto"),
+                    mode="chat", work_mode="research")
+        own.new_task("Integrated research question")
+        own.ctx.research.record_source("https://example.test/a", "A", "Ano [S1]")
+        own.ctx.research.record_source("https://example.test/b", "B", "Ne [S2]")
+        own_result = own.step()
+        check(own_result.status is Status.FINAL and own_result.text == report
+              and own.ctx.research.current()["status"] == "complete"
+              and own.ctx.research.current()["synthesis"] == report
+              and sum(1 for m in own_session.messages if m.get("role") == "assistant") == 1,
+              "A model that writes its own research report gives one answer, kept as the synthesis")
 
         run_id = integrated_run["id"]
         agent.new_task("Save the previous response as a PDF file")
@@ -2048,11 +2064,11 @@ def test_communication_protocol() -> None:
     try:
         cfg.agent["workspace"] = str(tmp)
 
-        def make_agent(script):
+        def make_agent(script, work_mode=None):
             session = Session(cfg, session_id=f"proto-{uuid.uuid4().hex[:6]}")
             llm = LLMStub(script)
             agent = Agent(cfg, llm, session, build_registry("agent"),
-                          SafetyPolicy("auto"), mode="agent")
+                          SafetyPolicy("auto"), mode="agent", work_mode=work_mode)
             return agent, session
 
         # 1) Preserve internal context messages to keep the cached prefix stable.
@@ -2077,24 +2093,31 @@ def test_communication_protocol() -> None:
         prog = [m for m in session.messages if "[PROGRESS UPDATE" in str(m.get("content"))]
         check(len(prog) >= 1, f"PROGRESS nudge after 4 steps (count: {len(prog)})")
 
-        # 3) Require a structured summary after a tool-driven task.
+        # 3) Require a structured summary after a task that changed files.
         script = [
-            AssistantResult(tool_calls=[_tc("list_dir")]),
+            AssistantResult(tool_calls=[_tc("write_file", '{"path": "summary-a.txt", "content": "a"}')]),
             AssistantResult(tool_calls=[_tc("list_dir"), _tc("list_dir")]),
-            AssistantResult(content="just a short answer"),   # a nontrivial task needs a summary
+            AssistantResult(content="just a short answer"),   # a task that changed files needs a summary
             AssistantResult(content="✅ Done: nothing\n- **x**: y"),  # structured
         ]
-        agent, session = make_agent(script)
+        agent, session = make_agent(script, work_mode="computer")   # no development plan review in between
         agent.new_task("summary test")
         r1 = agent.step(approve=True)
         r2 = agent.step(approve=True)
         r3 = agent.step(approve=True)
-        check(r3.status is Status.CONTINUE, "A short response after tools requests a final summary")
+        check(r3.status is Status.CONTINUE, "A short response after changing files requests a final summary")
         notes = [m for m in session.messages if "[FINAL SUMMARY" in str(m.get("content"))]
         check(len(notes) == 1, "The summary request was inserted")
         r4 = agent.step(approve=True)
         check(r4.status is Status.FINAL and "✅" in r4.text, "The second pass returns FINAL with a summary")
         check(agent.llm.calls == 4, "No unnecessary model call is made")
+        read_only = [AssistantResult(tool_calls=[_tc("list_dir")]) for _ in range(3)]
+        agent, session = make_agent(read_only + [AssistantResult(content="just a short answer")], work_mode="computer")
+        agent.new_task("look around")
+        results = [agent.step(approve=True) for _ in range(4)]
+        check(results[-1].status is Status.FINAL and agent.llm.calls == 4
+              and not any("[FINAL SUMMARY" in str(m.get("content")) for m in session.messages),
+              "A task that only read answers once, without a second summary")
 
         # 4) Discussion without tools does not need the development protocol.
         session = Session(cfg, session_id="chat-proto")
