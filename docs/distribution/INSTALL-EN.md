@@ -6,7 +6,7 @@ These links follow the latest release. Public assets keep the names `Marvin-Setu
 ## Minimal and Full
 
 - `Marvin-Setup-1.19.0-Minimal.exe`: smaller installer. Requires separate 64-bit Python 3.12 with the Python Launcher (`py`); prepares packages and llama.cpp/CUDA during setup.
-- `Marvin-Setup-1.19.0-Full.exe`: includes private Python 3.12, locked packages, and validated llama.cpp/CUDA b10935. No system Python is required. The EXE itself does not include model weights.
+- `Marvin-Setup-1.19.0-Full.exe`: includes private Python 3.12, locked packages, and validated llama.cpp/CUDA b10935 and Flash-Next's model engine with its packages, so Flash-Next is prepared without downloading them. No system Python is required. The EXE itself does not include model weights.
 - `Marvin-Offline-Backup-1.19.0`: complete local bundle with Full Setup, all included models and projectors including Flash-Next and its model engine, runtime, dependency snapshot, and checksum manifest.
 
 Both variants require supported 64-bit Windows and a user-installed NVIDIA driver. WebView2 for the desktop window is detected and prepared automatically. Minimal downloads it if needed; Full includes the complete runtime for offline installation. No Microsoft website or separate WebView2 installation is required. Microsoft Edge is still required for the optional browser tools. A separate CUDA Toolkit or Node.js is not required.

@@ -266,14 +266,26 @@ it the draft layer's 5 GB download. Nothing was missing afterwards.
 
 ### Release 1.19.0 (rebuilt 8 October 2026 with the field-test fixes, one answer per task and the 48/96 GB profiles; waiting for the owner's test)
 
-`dist/Marvin-Setup-1.19.0-Minimal.exe` (54,127,281 bytes, SHA-256
-`0b8ba72936b7d6b609091e5df0caf046a624439d0b946b05550ecfbbc32f27da`) and
-`dist/Marvin-Setup-1.19.0-Full.exe` (914,594,660 bytes,
-`117638802b91284b61a9bffa8d560449289ca284e7c7e2f96833a5f67ba0074a`), built by
+`dist/Marvin-Setup-1.19.0-Minimal.exe` (54,135,437 bytes, SHA-256
+`12a5e3a42f51a27685c8fd7075883230f0293b8b54818fd09257c129db6e329b`) and
+`dist/Marvin-Setup-1.19.0-Full.exe` (1,515,021,413 bytes,
+`2aff41dd509f6fce78e7add62e03134624e13349ccd41649acf9f6f5b9c5cdd3`), built by
 `installer/release.bat` with all tests and the Full runtime check passing.
-Draft notes: `docs/distribution/RELEASE-NOTES-1.19.0.md`. The owner tests the
-installed build before the release; the offline backup 1.18.2 is refreshed to
-1.19.0 after it (dropping the old llama.cpp Flash-Next weights).
+The Full installer also carries `runtime/strata-offline` (Strata's source,
+engine and gguf-py archives and the 16 wheels of its lock file, 579 MB), so
+Flash-Next's engine is prepared without the internet; only the weights and the
+draft layer are downloaded. Draft notes: `docs/distribution/RELEASE-NOTES-1.19.0.md`.
+The owner tested the installed build on 8 October ("works").
+
+**Offline backup 1.19.0:** `Marvin-Offline-Backup-1.18.2` was refreshed in
+place and renamed (`offline_backup.py refresh --runtime-root
+%LOCALAPPDATA%\QwenHarness --exclude-models strata/models/IQ2_XS,... --quarantine
+...`). It carries the 1.19.0 Full installer, the Python environment, llama.cpp,
+`runtime/strata` (the prepared engine and its venv), Flash-Next IQ3_S (two
+shards and projector), its pack and the built draft layer `mtp/rt`; the
+draft layer's download intermediates and IQ2_XS stay out. The six files of the
+old llama.cpp Flash-Next were moved to `E:\_SMAZAT_Marvin\offline-backup-1.18.2-stale`
+(85 GB) for the owner to delete. 2,948 files, 217.8 GB of payload.
 
 **First field test (8 October):** on the owner's desktop IQ3_S at 256k left
 1-2 GiB of RAM free after loading and 136 MiB of VRAM; a dip under 512 MB for

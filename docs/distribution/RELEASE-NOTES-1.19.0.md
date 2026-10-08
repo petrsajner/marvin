@@ -58,5 +58,7 @@ once more on its first start (about 0.7 GB) and reuses the weights you have.
 - **Memory protection that reads Windows correctly.** Marvin's emergency memory
   guard now counts model files that Windows can drop at any moment as free, so it
   no longer stops a model that is reading part of its weights from the SSD.
-- The installer lists both Flash-Next sizes (never checked automatically), and
-  the offline backup carries Flash-Next's engine and stores the shared file once.
+- The installer lists both Flash-Next sizes (never checked automatically). The
+  Full installer carries Flash-Next's model engine and its packages, so only the
+  weights are downloaded; the offline backup carries IQ3_S ready to run and
+  stores the shared file once.
