@@ -63,3 +63,12 @@ llama.cpp Flash-Next files were moved aside for the owner to delete.
 
 The public description is `RELEASE-NOTES-1.19.0.md`. Its intelligence table
 quotes the Artificial Analysis Intelligence Index as of October 2026.
+
+## GitHub publication verification
+
+Published on 8 October 2026 (02:28 UTC) as the latest release:
+[Marvin 1.19.0](https://github.com/petrsajner/marvin/releases/tag/v1.19.0).
+The release tag points at `0c4f9a6`; the application build remains `eaf9b32`.
+All six uploaded assets are in state `uploaded`, and their sizes and GitHub
+SHA-256 digests match `release-1.19.0.json`. Complete anonymous downloads
+were not repeated for this release.
