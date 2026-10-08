@@ -45,6 +45,9 @@ GGUF_PY = {"url": "https://github.com/ggml-org/llama.cpp/archive/3cf03257f219afb
            "name": "llama.cpp-gguf-py.zip", "subtree": "gguf-py/",
            "content": "96c1f2d0a346feba623eeb26b3d4e5a290d28aa4850dad121208517b0861c42f"}
 LOCK = ROOT / "requirements-strata-py312.lock"
+# The Full installer's copy of the downloads and the packages as wheels
+# (scripts/build_full_payload.py), so the engine is prepared without the internet.
+BUNDLED = ROOT / "runtime" / "strata-offline"
 MARKER = ".marvin-strata.json"
 DRAFT_VOCAB = "draft_vocab.bin"      # Strata setup's default subset for the draft head
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0
@@ -77,6 +80,9 @@ def _fetch(spec: dict, cache: Path, *, cancelled=None, progress=print) -> Path:
     path = cache / spec["name"]
     if path.is_file() and _check(path, spec):
         return path
+    bundled = BUNDLED / spec["name"]
+    if bundled.is_file() and _check(bundled, spec):
+        return bundled
     progress(f"Downloading {spec['url']}")
     partial = path.with_name(path.name + ".part")
     with requests.get(spec["url"], stream=True, timeout=(15, 60)) as response, partial.open("wb") as output:
@@ -192,8 +198,10 @@ def install(cfg: Config, *, cancelled=None, progress=print, on_phase=None) -> Pa
         venv_python = stage / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
         _run([_base_python(), "-m", "venv", stage / ".venv"], cwd=stage, cancelled=cancelled, progress=progress,
              what="Creating the engine's Python environment")
+        wheels = BUNDLED / "wheels"
+        offline = ["--no-index", "--find-links", wheels] if any(wheels.glob("*.whl")) else []
         _run([venv_python, "-m", "pip", "install", "--require-hashes", "--no-deps", "--disable-pip-version-check",
-              "--no-input", "-r", LOCK], cwd=stage, cancelled=cancelled, progress=progress,
+              "--no-input", *offline, "-r", LOCK], cwd=stage, cancelled=cancelled, progress=progress,
              what="Installing the engine's Python packages")
         build = json.loads((stage / "engine" / "BUILD.json").read_text(encoding="utf-8"))
         if build.get("version") != VERSION:

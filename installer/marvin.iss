@@ -104,6 +104,7 @@ Source: "..\runtime\webview2\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; Dest
 Source: "..\build\full-payload-{#MyAppVersion}\python\*"; DestDir: "{app}\runtime\python"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\build\full-payload-{#MyAppVersion}\packages\*"; DestDir: "{app}\runtime\python-packages"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\build\full-payload-{#MyAppVersion}\llama\*"; DestDir: "{app}\runtime\llama"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\build\full-payload-{#MyAppVersion}\strata-offline\*"; DestDir: "{app}\runtime\strata-offline"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\build\full-payload-{#MyAppVersion}\manifest.json"; DestDir: "{app}\runtime"; DestName: "full-manifest.json"; Flags: ignoreversion
 #endif
 ; Main application (PyInstaller: executable and _internal)

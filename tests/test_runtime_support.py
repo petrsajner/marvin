@@ -279,6 +279,54 @@ class ModelFileTests(unittest.TestCase):
             self.assertTrue(result["strata_environment"].startswith("home = "))
 
 
+class BackupRefreshTests(unittest.TestCase):
+    def test_refresh_takes_the_installation_and_sets_stale_payload_aside(self):
+        """1.19.0 (owner, 8 October): models and runtimes from the installed copy, the application from the
+        repository; the removed llama.cpp Flash-Next moves aside; draft-layer intermediates and excluded
+        weights stay out."""
+        from scripts.offline_backup import create_backup, refresh_backup, verify_backup
+        with tempfile.TemporaryDirectory() as temporary:
+            outer = Path(temporary)
+            repo, installed = outer / "repo", outer / "installed"
+            for root in (repo, installed):
+                (root / ".venv/Lib/site-packages/example").mkdir(parents=True)
+                (root / ".venv/Lib/site-packages/example/__init__.py").write_text("VALUE = 1\n")
+                (root / "requirements.txt").write_text("example==1.0\n")
+                (root / "runtime/llama").mkdir(parents=True)
+                (root / "runtime/llama/llama-server.exe").write_bytes(b"LLAMA")
+                (root / "runtime/models").mkdir(parents=True)
+                (root / "runtime/models/q5.gguf").write_bytes(b"Q5")
+            (repo / "runtime/models/Qwen3.8-Flash-Next").mkdir()
+            (repo / "runtime/models/Qwen3.8-Flash-Next/old.gguf").write_bytes(b"OLD FLASH")
+            (repo / "version.txt").write_text("1.18.2\n")
+            backup = outer / "backup"
+            create_backup(repo, backup)
+            (repo / "version.txt").write_text("1.19.0\n")
+            (repo / "dist").mkdir()
+            (repo / "dist/Marvin-Setup-1.19.0-Full.exe").write_bytes(b"SETUP")
+            data = installed / "runtime/models/strata"
+            for relative, content in (("models/IQ3_S/shard-1.gguf", b"IQ3"), ("models/IQ2_XS/shard-1.gguf", b"IQ2"),
+                                      ("packs/iq3_s/native_experts.txt", b"P"), ("mtp/rt/experts.bin", b"RT"),
+                                      ("mtp/tensors/mtp.fc.bin", b"BF16"), ("mtp/mtp-q2_0.gguf", b"PACKED")):
+                (data / relative).parent.mkdir(parents=True, exist_ok=True)
+                (data / relative).write_bytes(content)
+            (installed / "runtime/strata/engine").mkdir(parents=True)
+            (installed / "runtime/strata/engine/strata.exe").write_bytes(b"ENGINE")
+            quarantine = outer / "set-aside"
+            manifest = refresh_backup(repo, backup, runtime_root=installed,
+                                      exclude=("strata/models/IQ2_XS",), quarantine=quarantine)
+            paths = {item["path"] for item in manifest["files"]}
+            self.assertIn("payload/runtime/models/strata/models/IQ3_S/shard-1.gguf", paths)
+            self.assertIn("payload/runtime/models/strata/mtp/rt/experts.bin", paths)
+            self.assertIn("payload/runtime/strata/engine/strata.exe", paths)
+            self.assertFalse(any("IQ2_XS" in p or "/tensors/" in p or p.endswith("mtp-q2_0.gguf") for p in paths))
+            self.assertNotIn("payload/runtime/models/Qwen3.8-Flash-Next/old.gguf", paths)
+            self.assertEqual((quarantine / "payload/runtime/models/Qwen3.8-Flash-Next/old.gguf").read_bytes(),
+                             b"OLD FLASH", "set aside, not deleted")
+            self.assertEqual(manifest["app_version"], "1.19.0")
+            self.assertTrue(verify_backup(Path(manifest.get("path", backup)))["ok"])
+
+
 class HardwareIdentityTests(unittest.TestCase):
     def hardware(self, total=32, free=30, ram=56, total_ram=64):
         return Hardware("hybrid", 20, 20, tuple(range(8)), tuple(range(20)),

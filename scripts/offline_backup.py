@@ -74,14 +74,32 @@ def _version(root: Path) -> str:
     return "unknown"
 
 
-def _runtime_sources(root: Path) -> list[tuple[Path, Path, str]]:
+# Flash-Next's draft layer is used from mtp/rt; the downloaded BF16 tensors and the
+# packed GGUF it was built from (about 5.7 GB) are only intermediates.
+MTP_INTERMEDIATES = ("tensors", "mtp-q2_0.gguf", "mtp-q2_0.gguf.report.json", "mtp-inventory.json",
+                     "mtp-inventory.md", "mtp-manifest.json")
+
+
+def _skipped_model_file(relative: Path, exclude: tuple[str, ...]) -> bool:
+    parts = relative.parts
+    if "mtp" in parts:
+        after = parts[parts.index("mtp") + 1:]
+        if after and (after[0] in MTP_INTERMEDIATES or after[0].startswith(("rt-incomplete-", "rt.partial"))):
+            return True
+    text = relative.as_posix()
+    return any(text == item or text.startswith(item.rstrip("/") + "/") for item in exclude)
+
+
+def _runtime_sources(root: Path, exclude: tuple[str, ...] = ()) -> list[tuple[Path, Path, str]]:
+    """What a backup carries from an installation; `exclude` names paths under runtime/models to leave out."""
     runtime = root / "runtime"
     sources: list[tuple[Path, Path, str]] = []
     models = runtime / "models"
     if models.is_dir():
         for source in sorted(models.rglob("*")):
             if (source.is_file() and ".cache" not in source.parts
-                    and not source.name.endswith((".partial", ".incomplete", ".part", ".lock"))):
+                    and not source.name.endswith((".partial", ".incomplete", ".part", ".lock"))
+                    and not _skipped_model_file(source.relative_to(models), exclude)):
                 rel = Path("payload") / "runtime" / "models" / source.relative_to(models)
                 sources.append((source, rel, "models"))
     llama = runtime / "llama"
@@ -497,7 +515,11 @@ APPLICATION_FILES = (
 )
 
 
-def refresh_backup(root: Path, backup: Path) -> dict[str, Any]:
+RUNTIME_COMPONENTS = {"models", "llama", "strata", "whisper", "openart", "webview2", "settings"}
+
+
+def refresh_backup(root: Path, backup: Path, *, runtime_root: Path | None = None,
+                   exclude: tuple[str, ...] = (), quarantine: Path | None = None) -> dict[str, Any]:
     """Bring an existing offline backup up to the application's current version.
 
     Replaces only what a version bump actually changes and says which files those
@@ -505,6 +527,10 @@ def refresh_backup(root: Path, backup: Path) -> dict[str, Any]:
     archive is rebuilt only when requirements or the lock really moved; leaving a
     stale archive beside new requirements would make the backup inconsistent."""
     root, backup = root.resolve(), backup.resolve()
+    # The application (version, installer, manuals, requirements) comes from `root`;
+    # models, inference programs and the Python environment from `runtime_root`,
+    # for example an installed copy that holds the downloaded models.
+    runtime_root = (runtime_root or root).resolve()
     manifest = load_manifest(backup)
     version = _version(root)
     records = {item["path"]: item for item in manifest["files"]}
@@ -541,7 +567,8 @@ def refresh_backup(root: Path, backup: Path) -> dict[str, Any]:
     # Files already recorded at the same size are left alone: re-reading the whole
     # model payload to learn that nothing moved would cost half an hour.
     first_name: dict[tuple[int, int], str] = {}
-    for source, relative, component in _runtime_sources(root):
+    current = _runtime_sources(runtime_root, exclude)
+    for source, relative, component in current:
         key = relative.as_posix()
         recorded = records.get(key)
         same = _same_file_key(source)
@@ -559,13 +586,26 @@ def refresh_backup(root: Path, backup: Path) -> dict[str, Any]:
             continue
         put(key, source, component)
 
+    if quarantine is not None:
+        # Payload the installation no longer has (an entry that was removed): moved aside, not deleted.
+        present = {relative.as_posix() for _, relative, _ in current}
+        for key, record in list(records.items()):
+            if record.get("component") in RUNTIME_COMPONENTS and key not in present:
+                records.pop(key)
+                target = backup / _safe_relative(key)
+                if target.is_file() and not record.get("link_to"):
+                    moved = quarantine / _safe_relative(key)
+                    moved.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(target), str(moved))
+                changed.append("set aside " + key)
+
     requirements = root / "requirements.txt"
     lock = root / "requirements-windows-py312.lock"
     requirements_digest = sha256_file(requirements)
     lock_digest = sha256_file(lock) if lock.is_file() else None
     if (manifest.get("requirements_sha256") != requirements_digest
             or manifest.get("lock_sha256") != lock_digest):
-        site_packages = root / ".venv" / "Lib" / "site-packages"
+        site_packages = runtime_root / ".venv" / "Lib" / "site-packages"
         if not site_packages.is_dir():
             raise FileNotFoundError(f"Installed Python dependencies not found: {site_packages}")
         print("[REFRESH] Dependencies moved - rebuilding the archive ...")
@@ -644,6 +684,10 @@ def _main() -> int:
     refresh = sub.add_parser("refresh")
     refresh.add_argument("--backup", required=True)
     refresh.add_argument("--root", default=str(Path(__file__).resolve().parent.parent))
+    refresh.add_argument("--runtime-root", help="installation to take models, runtimes and packages from")
+    refresh.add_argument("--exclude-models", default="",
+                         help="comma-separated paths under runtime/models to leave out")
+    refresh.add_argument("--quarantine", help="folder to move payload the installation no longer has into")
     attach = sub.add_parser("attach-installer")
     attach.add_argument("--backup", required=True)
     attach.add_argument("--installer", required=True)
@@ -660,7 +704,10 @@ def _main() -> int:
         elif args.command == "info":
             print(json.dumps(backup_info(Path(args.backup)), ensure_ascii=False, indent=2))
         elif args.command == "refresh":
-            refresh_backup(Path(args.root), Path(args.backup))
+            refresh_backup(Path(args.root), Path(args.backup),
+                           runtime_root=Path(args.runtime_root) if args.runtime_root else None,
+                           exclude=tuple(x.strip() for x in args.exclude_models.split(",") if x.strip()),
+                           quarantine=Path(args.quarantine) if args.quarantine else None)
         elif args.command == "attach-installer":
             attach_installer(Path(args.backup), Path(args.installer))
         return 0

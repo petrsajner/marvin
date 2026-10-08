@@ -109,6 +109,20 @@ class InstallTests(unittest.TestCase):
         self.assertFalse(list((self.cfg.path("paths.runtime_dir") / "strata-candidates").iterdir()))
         self.assertTrue(strata_runtime.runtime_current(self.cfg, KEY))
 
+    def test_the_full_installers_copy_needs_no_internet(self):
+        bundled = self.cfg.root / "runtime" / "strata-offline"
+        (bundled / "wheels").mkdir(parents=True)
+        for spec in (strata_runtime.SOURCE, strata_runtime.ENGINE, strata_runtime.GGUF_PY):
+            (self.runtime.cache / spec["name"]).rename(bundled / spec["name"])
+        (bundled / "wheels" / "numpy-2.5.3-cp312-cp312-win_amd64.whl").write_bytes(b"wheel")
+        with patch.object(strata_runtime, "BUNDLED", bundled), \
+             patch("requests.get", side_effect=AssertionError("no download")):
+            self.install()
+        pip = next(c for c in self.runtime.commands if "pip" in c)
+        self.assertEqual(pip[pip.index("--find-links") + 1], str(bundled / "wheels"))
+        self.assertIn("--no-index", pip)
+        self.assertTrue(strata_runtime.runtime_current(self.cfg, KEY))
+
     def test_a_failed_step_keeps_the_previous_engine(self):
         self.install()
         (strata_backend.program_dir(self.cfg) / "keep.txt").write_text("previous")
