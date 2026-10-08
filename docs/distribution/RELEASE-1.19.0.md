@@ -61,7 +61,7 @@ venv, Flash-Next IQ3_S with its pack and draft layer, and the other models.
 IQ2_XS and the draft layer's download intermediates stay out. The old
 llama.cpp Flash-Next files were moved aside for the owner to delete.
 
-The public description is `RELEASE-NOTES-1.19.0.md`. Its intelligence table
+The public description is `RELEASE-NOTES-1.19.0.md`. Its intelligence chart
 quotes the Artificial Analysis Intelligence Index as of October 2026.
 
 ## GitHub publication verification

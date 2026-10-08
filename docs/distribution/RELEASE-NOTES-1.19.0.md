@@ -45,33 +45,37 @@ card's profiles (estimated, not measured).
 
 ## How smart is it
 
-Artificial Analysis Intelligence Index, October 2026, higher is better. The two
-models in bold run on your own PC in Marvin.
-
-| Model | Index | | In Marvin |
-|---|---:|---|:---:|
-| Claude Opus 5.5 | 58 | ██████████████▌ | |
-| Claude Sonnet 5.5 | 56 | ██████████████ | |
-| Gemini 4 Argon ¹ | 53 | █████████████▎ | |
-| GPT-6.1 Sol | 52 | █████████████ | |
-| Grok 4.7 | 46 | ███████████▌ | |
-| Qwen 3.8 Max | 45 | ███████████▎ | |
-| GLM-5.3 | 45 | ███████████▎ | |
-| Claude Haiku 5.5 | 43 | ██████████▊ | |
-| GLM-5.3-Flash | 42 | ██████████▌ | |
-| Gemini 3.8 Flash | 41 | ██████████▎ | |
-| **Qwen 3.8 Flash-Next** | **40** | ██████████ | **yes** |
-| DeepSeek V4.1 Flash | 39 | █████████▊ | |
-| GPT-6 Luna | 38 | █████████▌ | |
-| **Qwen 3.8 27B** | **34** | ████████▌ | **yes** |
-| MiniMax-M3 | 29 | ███████▎ | |
-| Nemotron 3 Ultra | 23 | █████▊ | |
+![Artificial Analysis Intelligence Index: Qwen 3.8 Flash-Next 40 and Qwen 3.8 27B 34, the two models that run in Marvin, beside Claude, Gemini, GPT, Grok, Qwen Max, GLM, DeepSeek, MiniMax and Nemotron](https://raw.githubusercontent.com/petrsajner/marvin/7bf22daa466b293802d1d3391defc939aeac5d2f/docs/images/Marvin-Intelligence-1.19.0.png)
 
 Flash-Next on your own PC scores level with Gemini 3.8 Flash, just below Claude
 Haiku 5.5 and above DeepSeek V4.1 Flash and GPT-6 Luna. The scores are measured
 on the original models; Marvin runs them with quantized local weights, which can
-score somewhat lower. ¹ Not publicly available. Source:
-[artificialanalysis.ai](https://artificialanalysis.ai).
+score somewhat lower. Source: Artificial Analysis Intelligence Index, October
+2026 ([artificialanalysis.ai](https://artificialanalysis.ai)).
+
+<details>
+<summary>The same scores as a table</summary>
+
+| Model | Index | In Marvin |
+|---|---:|:---:|
+| Claude Opus 5.5 | 58 | |
+| Claude Sonnet 5.5 | 56 | |
+| Gemini 4 Argon (not publicly available) | 53 | |
+| GPT-6.1 Sol | 52 | |
+| Grok 4.7 | 46 | |
+| Qwen 3.8 Max | 45 | |
+| GLM-5.3 | 45 | |
+| Claude Haiku 5.5 | 43 | |
+| GLM-5.3-Flash | 42 | |
+| Gemini 3.8 Flash | 41 | |
+| **Qwen 3.8 Flash-Next** | **40** | **yes** |
+| DeepSeek V4.1 Flash | 39 | |
+| GPT-6 Luna | 38 | |
+| **Qwen 3.8 27B** | **34** | **yes** |
+| MiniMax-M3 | 29 | |
+| Nemotron 3 Ultra | 23 | |
+
+</details>
 
 ## Switch, and carry on
 
