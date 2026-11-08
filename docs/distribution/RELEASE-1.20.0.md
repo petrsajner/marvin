@@ -101,3 +101,16 @@ all 2,948 recorded files (217.8 GiB). The 1.19.0 offline backup does not
 exist separately any more: it became this folder.
 
 The public description is `RELEASE-NOTES-1.20.0.md`.
+
+The installers and staged folders of 1.18.2 and 1.19.0 were deleted from
+`dist/`; their releases stay on GitHub.
+
+## GitHub publication verification
+
+Published on 8 November 2026 (08:22 UTC) as the latest release:
+[Marvin 1.20.0](https://github.com/petrsajner/marvin/releases/tag/v1.20.0).
+The release tag points at `e769722`; the application build remains `834ef3b`.
+All six uploaded assets are in state `uploaded`, and their sizes and GitHub
+SHA-256 digests match `release-1.20.0.json`.
+`releases/latest/download/SHA256SUMS.txt` serves the 1.20.0 checksums.
+Complete anonymous downloads of the installers were not repeated.
