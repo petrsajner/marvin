@@ -18,6 +18,7 @@ MAX_CHARS = 300
 
 _BLOCK_RE = re.compile(r"[ \t]*<next_step>(.*?)(?:</next_step>|\Z)[ \t]*\n?", re.S | re.I)
 _NONE_RE = re.compile(r"^(?:none|n/?a|-+|\.+)$", re.I)
+_QUOTES = "\"'`“”„«»"
 # The task protocol's "📋 Next steps" section, in whatever language the heading uses.
 _NEXT_HEADING_RE = re.compile(r"^[ \t>#*_]*📋[^\n:]*:?[ \t*_]*(?P<inline>[^\n]*)$", re.M)
 _BULLET_RE = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+(?P<text>.+?)\s*$")
@@ -25,8 +26,11 @@ _BULLET_RE = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+(?P<text>.+?)\s*$")
 
 def clean_suggestion(text: str) -> str:
     """One line of plain text, or '' when the model offered nothing usable."""
-    value = " ".join(str(text or "").split())
-    value = value.strip().strip("\"'`“”„«»").strip()
+    value = " ".join(str(text or "").split()).strip()
+    # Quotes wrapped around the whole suggestion go; a quoted part inside it stays whole.
+    if len(value) >= 2 and value[0] in _QUOTES and value[-1] in _QUOTES \
+            and not any(mark in value[1:-1] for mark in _QUOTES):
+        value = value[1:-1].strip()
     # Emphasis and code marks go; underscores stay, they belong to names like __init__.py.
     value = re.sub(r"[*`]+", "", value).strip()
     if not value or _NONE_RE.match(value):
