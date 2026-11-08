@@ -24,8 +24,8 @@
   suggestion is ready the moment a task finishes. It is written the way you
   would type it, in your language.
 - **Hidden from the conversation.** You never see the suggestion inside a
-  reply, neither while it is being written nor afterwards; it only appears in
-  the empty message field.
+  reply or in the model's thinking, neither while it is being written nor
+  afterwards; it only appears in the empty message field.
 - **When the model offers none, the task's own state fills in.** In order:
   - a check that failed;
   - an unfinished step of the task plan;

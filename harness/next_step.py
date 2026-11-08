@@ -27,7 +27,8 @@ def clean_suggestion(text: str) -> str:
     """One line of plain text, or '' when the model offered nothing usable."""
     value = " ".join(str(text or "").split())
     value = value.strip().strip("\"'`“”„«»").strip()
-    value = re.sub(r"[*_`]+", "", value).strip()
+    # Emphasis and code marks go; underscores stay, they belong to names like __init__.py.
+    value = re.sub(r"[*`]+", "", value).strip()
     if not value or _NONE_RE.match(value):
         return ""
     if len(value) > MAX_CHARS:

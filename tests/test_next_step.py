@@ -35,6 +35,8 @@ class SplitNextStepTests(unittest.TestCase):
 
     def test_quotes_markup_and_length_are_cleaned(self):
         self.assertEqual(clean_suggestion('"**Run** the app"'), "Run the app")
+        self.assertEqual(clean_suggestion("Add `tests/__init__.py` for test_calc"),
+                         "Add tests/__init__.py for test_calc")
         long = clean_suggestion("word " * 200)
         self.assertLessEqual(len(long), 301)
         self.assertTrue(long.endswith("…"))
@@ -123,12 +125,17 @@ class AgentNextStepTests(unittest.TestCase):
         test = self
 
         class Model:
-            def stream(self, messages, on_text=None, **kwargs):
+            def stream(self, messages, on_text=None, on_reasoning=None, **kwargs):
                 result, chunks = test.replies.pop(0)
+                for chunk in test.thoughts.pop(0) if test.thoughts else []:
+                    if on_reasoning:
+                        on_reasoning(chunk)
                 for chunk in chunks:
                     if on_text:
                         on_text(chunk)
                 return result
+
+        self.thoughts = []
 
         self.session = Session(cfg, system_prompt=system_prompt("agent"), workspace=str(root))
         self.agent = Agent(cfg, Model(), self.session, build_registry("agent"), SafetyPolicy("auto"),
@@ -202,6 +209,35 @@ class AgentNextStepTests(unittest.TestCase):
         self.assertEqual(final["content"], "Started.")
         self.assertIsNone(self.session.meta.get("next_step"))
         self.assertFalse([kind for kind, _ in self.events if kind == "next_step"])
+
+    def test_a_tag_drafted_in_the_reasoning_is_hidden_and_is_not_the_suggestion(self):
+        from harness.llm import AssistantResult
+        self.agent.new_task("Check the notes")
+        thinking = "Plan the reply.\n<next_step>User may ask for more</next_step>\nDone thinking."
+        self.thoughts.append(["Plan the reply.\n<next", "_step>User may ask for more</next_step>\nDone thinking."])
+        self.replies.append((AssistantResult(content="The notes are fine.", reasoning=thinking),
+                             ["The notes are fine."]))
+        self.agent.step()
+        shown = "".join(payload for kind, payload in self.events if kind == "reasoning")
+        self.assertNotIn("next_step", shown)
+        self.assertNotIn("User may ask", shown)
+        self.assertTrue(shown.startswith("Plan the reply.") and shown.endswith("Done thinking."), shown)
+        final = [m for m in self.session.messages if m.get("role") == "assistant"][-1]
+        self.assertNotIn("next_step", final.get("reasoning", ""))
+        self.assertNotEqual((self.session.meta.get("next_step") or {}).get("text"), "User may ask for more")
+
+    def test_the_task_protocol_asks_for_the_next_step_line_after_its_own_ending(self):
+        from harness.prompts import NEXT_STEP_CLOSING
+
+        def protocol_notes():
+            return [str(m["content"]) for m in self.session.messages
+                    if str(m.get("content", "")).startswith("[TASK PROTOCOL")]
+
+        self.agent.new_task("Change the notes")
+        self.assertTrue(protocol_notes()[-1].endswith(NEXT_STEP_CLOSING))
+        self.agent.cfg.data["next_step_suggestions"] = False
+        self.agent.new_task("Change them again")
+        self.assertNotIn(NEXT_STEP_CLOSING, protocol_notes()[-1])
 
     def test_turning_suggestions_off_clears_the_one_already_shown(self):
         self.agent.new_task("First")

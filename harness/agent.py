@@ -31,7 +31,7 @@ from harness.processes import ProcessManager
 from harness.repo_index import RepoIndex
 from harness.research import (GenerationStopped, ResearchLedger, plan_research,
                               synthesize_research)
-from harness.prompts import next_step_enabled, system_prompt
+from harness.prompts import NEXT_STEP_CLOSING, next_step_enabled, system_prompt
 from harness.safety import Risk, SafetyPolicy
 from harness.session import Session
 from harness.task_plan import TaskPlanStore
@@ -477,8 +477,7 @@ class Agent:
         # Inject persistent memory into the system prompt at task start.
         self.refresh_system_prompt()
         if self.tools_enabled:
-            note = WRITING_PROTOCOL_NOTE if self.work_mode == "writing" else TASK_PROTOCOL_NOTE
-            self.session.add("user", note)
+            self.session.add("user", self._protocol_note())
         if self.session.meta.get("plan_first"):
             self.session.add("user", PLAN_FIRST_NOTE)
 
@@ -502,8 +501,7 @@ class Agent:
         self._save_task_state("running", label=label)
         self.refresh_system_prompt()
         if self.tools_enabled:
-            note = WRITING_PROTOCOL_NOTE if self.work_mode == "writing" else TASK_PROTOCOL_NOTE
-            self.session.add("user", note)
+            self.session.add("user", self._protocol_note())
         if self.session.meta.get("plan_first"):
             self.session.add("user", PLAN_FIRST_NOTE)
 
@@ -516,8 +514,7 @@ class Agent:
         self._save_task_state("running")
         self.refresh_system_prompt()
         if self.tools_enabled:
-            note = WRITING_PROTOCOL_NOTE if self.work_mode == "writing" else TASK_PROTOCOL_NOTE
-            self.session.add("user", note)
+            self.session.add("user", self._protocol_note())
 
     def _observe_context_paths(self, args: dict | None) -> None:
         if not args:
@@ -795,18 +792,25 @@ class Agent:
         # 3) Model call; discussion mode also has memory tools.
         tools = self.registry.schemas() if self.registry.names() else None
         visible = NextStepStreamFilter()
+        # Some models draft the tag in their reasoning first; the reasoning panel hides it too.
+        thought = NextStepStreamFilter()
 
         def show_text(text: str) -> None:
             shown = visible.feed(text)
             if shown:
                 self.emit("text", shown)
 
+        def show_reasoning(text: str) -> None:
+            shown = thought.feed(text)
+            if shown:
+                self.emit("reasoning", shown)
+
         try:
             res = self.llm.stream(
                 self._request_messages(),
                 tools=tools,
                 on_text=show_text,
-                on_reasoning=lambda t: self.emit("reasoning", t),
+                on_reasoning=show_reasoning,
                 on_tool_delta=lambda name, args: self.emit("tool_delta", (name, args)),
                 on_prompt_progress=lambda progress: self.emit("prompt_progress", progress),
                 should_stop=self.abort_flag.is_set,
@@ -837,11 +841,16 @@ class Agent:
 
         self._steps += 1
         self._malformed_tool_calls = 0
+        tail = thought.flush()
+        if tail:
+            self.emit("reasoning", tail)
         tail = visible.flush()
         if tail:
             self.emit("text", tail)
         # The model's running guess at the user's next instruction travels at the
         # end of its replies; keep the latest one and show the reply without it.
+        # A draft in the reasoning is only hidden: the reply's own tag is the guess.
+        res.reasoning, _ = split_next_step(res.reasoning)
         res.content, hint = split_next_step(res.content)
         if hint:
             self._next_step_hint = hint
@@ -989,7 +998,7 @@ class Agent:
             self._summary_requested = True
             self.session.add("assistant", res.content, reasoning=res.reasoning)
             note = WRITING_SUMMARY_NOTE if self.work_mode == "writing" else SUMMARY_NOTE
-            self.session.add("user", note)
+            self.session.add("user", self._with_next_step(note))
             self._save_task_state("running")
             return StepResult(Status.CONTINUE, text=res.content, reasoning=res.reasoning)
         content, changes = (self.ctx.changes.change_card(res.content)
@@ -1005,6 +1014,15 @@ class Agent:
     def _task_changed_files(self) -> bool:
         summary = self.ctx.changes.summary() if self.ctx.changes else {"files": []}
         return any(item.get("changed") for item in summary.get("files", []))
+
+    def _with_next_step(self, note: str) -> str:
+        """A note that says how the reply ends also names the next-step line; models
+        otherwise end with the note's own last section and drop the suggestion."""
+        return f"{note} {NEXT_STEP_CLOSING}" if next_step_enabled(self.cfg) else note
+
+    def _protocol_note(self) -> str:
+        note = WRITING_PROTOCOL_NOTE if self.work_mode == "writing" else TASK_PROTOCOL_NOTE
+        return self._with_next_step(note)
 
     def _publish_next_step(self, text: str, source: str) -> None:
         """Keep the composer's suggestion with the chat and tell the interface."""

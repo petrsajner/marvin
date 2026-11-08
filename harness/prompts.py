@@ -120,13 +120,23 @@ Action rules:
 NEXT_STEP = """## NEXT-STEP SUGGESTION
 Throughout the conversation keep a running understanding of what the user is working toward,
 what has been solved, what is still open, and what they will most naturally ask you to do next.
-End every reply to the user, including short progress updates, with that next step on its own
-last line:
-<next_step>the instruction the user would most likely give you next, written as they would type
-it to you, in their language, at most 25 words</next_step>
+End every reply to the user, including short progress updates and replies after tool use, with
+that next step on its own last line, after everything else (a CHANGES list included):
+<next_step>the instruction the user would most likely give you next</next_step>
+Write it as the user's own next message to you: a direct request of at most 25 words, in the
+language the user writes in (not the language of these instructions). For example, in an English
+conversation: <next_step>Add a test for dividing zero by zero</next_step>
+Never describe the user ("The user may ask..."), never speak as yourself ("I will commit...") and
+never write your own request to the user (such as asking them for details).
 Refine it as the work moves on; the reply that finishes a task carries the most useful one.
 The interface hides the tag and offers its text to the user as an optional suggestion, so never
-refer to it. Leave it out only when no sensible next step exists."""
+refer to it. When no sensible next step exists, leave the tag out entirely instead of saying so
+inside it."""
+
+# Internal notes that define how a reply ends (the task protocol, the summary request)
+# carry this too: without it, models end with the note's own last section.
+NEXT_STEP_CLOSING = ("After that, close the reply with the <next_step> line from your instructions "
+                     "as its very last line.")
 
 NEXT_STEP_DEVELOPMENT = """In development work, prefer concrete steps that follow from the work's state: verify or
 run what was built, fix what is still failing, continue with the next planned change, or commit
