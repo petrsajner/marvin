@@ -463,6 +463,7 @@ class ApplicationService:
         data["thinking"] = preferences["thinking"] != "off"
         data["reasoning_effort"] = preferences["thinking"] if data["thinking"] else "xhigh"
         data["work_mode"] = session.meta.get("work_mode") or preferences["work_mode"]
+        data["next_step_suggestions"] = preferences.get("next_step_suggestions", True) is not False
         data["agent"]["workspace"] = session.meta.get("workspace")
         data["agent"]["autonomy"] = preferences["autonomy"]
         data["agent"]["mode"] = WORK_MODES[data["work_mode"]].agent_mode

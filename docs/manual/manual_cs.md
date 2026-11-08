@@ -178,7 +178,7 @@ Enter a Ctrl+Enter odešlou zprávu, Shift+Enter vloží nový řádek. Composer
 
 ### Navržený další krok
 
-Během konverzace si model průběžně skládá představu, o co vás pravděpodobně požádáte dál: k čemu směřujete, co se vyřešilo a co zůstává otevřené. Když chat nepracuje a pole pro zprávu je prázdné, ukáže se v něm tato představa šedým textem. Klikněte do pole a stiskněte šipku doprava (→): z návrhu se stane skutečný text, který můžete upravit, nebo rovnou odeslat. Cokoli jiného, co napíšete, návrh nahradí. Když model žádný návrh nedá, dokončená úloha nabídne, co podle jejího stavu zůstává otevřené: neprošlou kontrolu, nedokončený krok plánu nebo první z dalších kroků v závěrečném shrnutí. Návrh je součástí běžných odpovědí modelu, takže nestojí žádný dotaz navíc a nic nezpomaluje.
+Během konverzace si model průběžně skládá představu, o co vás pravděpodobně požádáte dál: k čemu směřujete, co se vyřešilo a co zůstává otevřené. Když chat nepracuje a pole pro zprávu je prázdné, ukáže se v něm tato představa šedým textem. Klikněte do pole a stiskněte šipku doprava (→) nebo Tab: z návrhu se stane skutečný text, který můžete upravit, nebo rovnou odeslat. Cokoli jiného, co napíšete, návrh nahradí. Když model žádný návrh nedá, dokončená úloha nabídne, co podle jejího stavu zůstává otevřené: neprošlou kontrolu, nedokončený krok plánu nebo první z dalších kroků v závěrečném shrnutí. Návrh je součástí běžných odpovědí modelu, takže nestojí žádný dotaz navíc a nic nezpomaluje. Vypnete ho v **Nastavení > Chování > Navrhovat další krok**; model ho pak přestane skládat a existující konverzace při dalším požadavku jednou znovu přečte svůj prompt.
 
 ## Diktování
 

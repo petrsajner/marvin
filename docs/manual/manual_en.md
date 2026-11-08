@@ -189,7 +189,7 @@ Enter and Ctrl+Enter send; Shift+Enter inserts a new line. The composer clears a
 
 ### Suggested next step
 
-While a conversation goes on, the model keeps forming its idea of what you will most likely ask next: what you are working toward, what has been solved and what is still open. When the chat is idle and the composer is empty, that idea appears in it as grey text. Click in the composer and press the right arrow (→) to turn it into real text, then edit it or send it as it is. Typing anything else replaces it. When the model offers no idea, a finished task suggests what its own state shows is still open: a failing check, an unfinished step of the task plan, or the first of the summary's next steps. The suggestion is part of the model's ordinary replies, so it costs no extra request and does not slow anything down.
+While a conversation goes on, the model keeps forming its idea of what you will most likely ask next: what you are working toward, what has been solved and what is still open. When the chat is idle and the composer is empty, that idea appears in it as grey text. Click in the composer and press the right arrow (→) or Tab to turn it into real text, then edit it or send it as it is. Typing anything else replaces it. When the model offers no idea, a finished task suggests what its own state shows is still open: a failing check, an unfinished step of the task plan, or the first of the summary's next steps. The suggestion is part of the model's ordinary replies, so it costs no extra request and does not slow anything down. **Settings > Behavior > Suggest the next step** turns it off; the model then stops forming it, and an existing conversation reads its prompt once more on its next request.
 
 ## Dictation
 

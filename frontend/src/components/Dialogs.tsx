@@ -724,6 +724,32 @@ export function DialogView(props: any) {
                 <p>
                   {tr("Drafts and received messages are saved automatically.")}
                 </p>
+                <h3>{tr("Suggestions")}</h3>
+                <div className="row">
+                  <button
+                    className={
+                      app.preferences.next_step_suggestions !== false
+                        ? "positive"
+                        : "outline"
+                    }
+                    onClick={() =>
+                      call(() =>
+                        settings({
+                          next_step_suggestions:
+                            app.preferences.next_step_suggestions === false,
+                        }),
+                      )
+                    }
+                  >
+                    <Lightbulb />
+                    {tr("Suggest the next step")}
+                  </button>
+                </div>
+                <p>
+                  {tr(
+                    "While a chat is idle, the empty message field offers the model's idea of your next request. Press → or Tab to use it.",
+                  )}
+                </p>
                 <h3>{tr("Dictation")}</h3>
                 <div className="row">
                   <button

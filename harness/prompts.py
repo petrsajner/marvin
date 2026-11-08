@@ -132,6 +132,11 @@ NEXT_STEP_DEVELOPMENT = """In development work, prefer concrete steps that follo
 run what was built, fix what is still failing, continue with the next planned change, or commit
 finished work."""
 
+def next_step_enabled(cfg) -> bool:
+    """Whether the user wants next-step suggestions (Settings > Behavior; on by default)."""
+    return cfg.data.get("next_step_suggestions", True) is not False
+
+
 WORK_MODE_PROMPTS = {
     "discussion": DISCUSSION,
     "research": RESEARCH,
@@ -203,7 +208,8 @@ complete solution over a fast scaffold."""
                  f"Relative paths in tools resolve against it. "
                  f"The user keeps project sources and documents there - read them with tools "
                  f"instead of asking the user to paste content.")
-    base += "\n\n" + NEXT_STEP
-    if work_mode == "development" or (work_mode is None and mode == "agent"):
-        base += "\n" + NEXT_STEP_DEVELOPMENT
+    if next_step_enabled(cfg):
+        base += "\n\n" + NEXT_STEP
+        if work_mode == "development" or (work_mode is None and mode == "agent"):
+            base += "\n" + NEXT_STEP_DEVELOPMENT
     return base

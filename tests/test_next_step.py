@@ -98,6 +98,13 @@ class PromptTests(unittest.TestCase):
             self.assertIn("<next_step>", prompt, work_mode)
             self.assertEqual(NEXT_STEP_DEVELOPMENT in prompt, work_mode == "development", work_mode)
 
+    def test_turning_suggestions_off_removes_the_request_from_every_prompt(self):
+        from harness.prompts import build_system_prompt
+        cfg = load_config(Path(tempfile.gettempdir()) / "marvin-missing.yaml")
+        cfg.data["next_step_suggestions"] = False
+        for mode, work_mode in (("chat", "discussion"), ("agent", "development")):
+            self.assertNotIn("<next_step>", build_system_prompt(mode, cfg, None, work_mode), work_mode)
+
 
 class AgentNextStepTests(unittest.TestCase):
     def setUp(self):
@@ -184,6 +191,48 @@ class AgentNextStepTests(unittest.TestCase):
         self.agent.new_task("Second task")
         self.assertIsNone(self.session.meta.get("next_step"))
         self.assertEqual([payload for kind, payload in self.events if kind == "next_step"][-1], None)
+
+    def test_with_suggestions_off_the_tag_is_still_hidden_but_nothing_is_offered(self):
+        self.agent.cfg.data["next_step_suggestions"] = False
+        self.agent.new_task("Do two steps")
+        self.agent.ctx.task_plan.set_plan("Two steps", ["Write the parser", "Add the API"])
+        self.reply("Started.\n<next_step>Add the API</next_step>")
+        self.agent.step()
+        final = [m for m in self.session.messages if m.get("role") == "assistant"][-1]
+        self.assertEqual(final["content"], "Started.")
+        self.assertIsNone(self.session.meta.get("next_step"))
+        self.assertFalse([kind for kind, _ in self.events if kind == "next_step"])
+
+    def test_turning_suggestions_off_clears_the_one_already_shown(self):
+        self.agent.new_task("First")
+        self.reply("Done.\n<next_step>Second task</next_step>")
+        self.agent.step()
+        self.agent.cfg.data["next_step_suggestions"] = False
+        self.agent._publish_next_step("Another", "model")
+        self.assertIsNone(self.session.meta.get("next_step"))
+
+
+class SettingTests(unittest.TestCase):
+    def test_the_setting_is_stored_validated_and_reaches_the_task_configuration(self):
+        import copy
+        from fastapi.testclient import TestClient
+        from harness.application import ApplicationService
+        from harness.config import Config
+        from harness.web_api import create_app
+        with tempfile.TemporaryDirectory() as directory:
+            data = copy.deepcopy(load_config().data)
+            data["agent"]["workspace"] = None
+            cfg = Config(data, Path(directory))
+            service = ApplicationService(cfg, llm_factory=lambda cfg: None, manage_model=False)
+            with TestClient(create_app(cfg, service=service)) as client:
+                session = service.session(client.post("/api/sessions", json={}).json()["session_id"])
+                self.assertTrue(service.config_for(session).data["next_step_suggestions"])
+                client.patch("/api/settings", json={"next_step_suggestions": False}).raise_for_status()
+                self.assertIs(service.preferences["next_step_suggestions"], False)
+                self.assertFalse(service.config_for(session).data["next_step_suggestions"])
+                self.assertGreaterEqual(
+                    client.patch("/api/settings", json={"next_step_suggestions": "no"}).status_code, 400)
+                self.assertIs(service.preferences["next_step_suggestions"], False)
 
 
 if __name__ == "__main__":

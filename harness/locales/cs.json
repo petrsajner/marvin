@@ -931,9 +931,12 @@
     "Not available for this cache profile.": "Pro tento profil mezipaměti není k dispozici.",
     "Speculative decoding was turned off after a graphics-memory event.": "Spekulativní dekódování bylo po události s grafickou pamětí vypnuto.",
     "Turn MTP back on": "Znovu zapnout MTP",
-    "Press → to use the suggestion": "Šipkou → návrh převezmete",
     "Fix the failing check: {what}": "Oprav neprošlou kontrolu: {what}",
-    "Continue with: {step}": "Pokračuj krokem: {step}"
+    "Continue with: {step}": "Pokračuj krokem: {step}",
+    "Press → or Tab to use the suggestion": "Šipkou → nebo Tabem návrh převezmete",
+    "Suggestions": "Návrhy",
+    "Suggest the next step": "Navrhovat další krok",
+    "While a chat is idle, the empty message field offers the model's idea of your next request. Press → or Tab to use it.": "Když chat nepracuje, prázdné pole pro zprávu nabídne představu modelu o vašem dalším požadavku. Šipkou → nebo Tabem ji převezmete."
   },
   "legacy_profile_labels": {
     "16 bit - přesnější, kontext 128k": "16-bit - more precise, context 128k",

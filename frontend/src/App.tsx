@@ -666,7 +666,10 @@ export function App() {
   // The next step the model has been forming while the chat went on: grey in
   // the empty composer, and real text once the right arrow takes it.
   const suggestion =
-    !active && !queued.length && !text
+    app?.preferences?.next_step_suggestions !== false &&
+    !active &&
+    !queued.length &&
+    !text
       ? String(chat?.meta?.next_step?.text || "")
       : "";
   const takeSuggestion = () => {
@@ -1290,7 +1293,7 @@ export function App() {
                     onChange={(e) => setText(e.target.value)}
                     onKeyDown={(e) => {
                       if (
-                        e.key === "ArrowRight" &&
+                        (e.key === "ArrowRight" || e.key === "Tab") &&
                         suggestion &&
                         !e.nativeEvent.isComposing &&
                         !e.shiftKey &&
@@ -1313,7 +1316,9 @@ export function App() {
                     }}
                     className={suggestion ? "suggesting" : undefined}
                     title={
-                      suggestion ? tr("Press → to use the suggestion") : undefined
+                      suggestion
+                        ? tr("Press → or Tab to use the suggestion")
+                        : undefined
                     }
                     placeholder={
                       suggestion ||

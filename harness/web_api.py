@@ -585,10 +585,13 @@ def create_app(cfg=None, *, service=None):
                 payload["projects_root"] = service.apply_projects_root(payload["projects_root"])
             allowed = {"model", "thinking", "language", "theme", "density", "autonomy", "send_mode",
                        "kv_cache_modes", "vram_gb", "semantic_search", "projects_root",
-                       "voice_input", "voice_language", "voice_device", "settings_mode"}
+                       "voice_input", "voice_language", "voice_device", "settings_mode",
+                       "next_step_suggestions"}
             if payload.get("voice_input"):
                 # Fetch the pinned program and models once, in the background.
                 service.prepare_voice_input()
+            if "next_step_suggestions" in payload and not isinstance(payload["next_step_suggestions"], bool):
+                raise ValueError("Next-step suggestions must be enabled or disabled")
             if "semantic_search" in payload and not isinstance(payload["semantic_search"], bool):
                 raise ValueError("Semantic search must be enabled or disabled")
             if payload.get("semantic_search"):

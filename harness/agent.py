@@ -31,7 +31,7 @@ from harness.processes import ProcessManager
 from harness.repo_index import RepoIndex
 from harness.research import (GenerationStopped, ResearchLedger, plan_research,
                               synthesize_research)
-from harness.prompts import system_prompt
+from harness.prompts import next_step_enabled, system_prompt
 from harness.safety import Risk, SafetyPolicy
 from harness.session import Session
 from harness.task_plan import TaskPlanStore
@@ -1011,6 +1011,10 @@ class Agent:
         current = self.session.meta.get("next_step") or {}
         if (current.get("text") or "") == text:
             return
+        if text and not next_step_enabled(self.cfg):
+            text = ""
+            if not current.get("text"):
+                return
         record = {"text": text, "source": source, "updated": time.time(),
                   "run_id": getattr(self.session, "run_id", None)} if text else None
         self.session.meta["next_step"] = record
@@ -1020,7 +1024,7 @@ class Agent:
     def _settle_next_step(self, final_hint: str, content: str, checks: list[dict]) -> None:
         """The suggestion a finished task leaves: the final reply's own guess first,
         then what the task's state shows is still open, then the latest earlier guess."""
-        if final_hint:
+        if final_hint or not next_step_enabled(self.cfg):
             return
         plan = self.ctx.task_plan.load() if self.tools_enabled and self.ctx.task_plan else {}
         derived = derive_next_step(plan, checks, content)
