@@ -930,7 +930,10 @@
     "2–3× faster answers": "2–3× rychlejší odpovědi",
     "Not available for this cache profile.": "Pro tento profil mezipaměti není k dispozici.",
     "Speculative decoding was turned off after a graphics-memory event.": "Spekulativní dekódování bylo po události s grafickou pamětí vypnuto.",
-    "Turn MTP back on": "Znovu zapnout MTP"
+    "Turn MTP back on": "Znovu zapnout MTP",
+    "Press → to use the suggestion": "Šipkou → návrh převezmete",
+    "Fix the failing check: {what}": "Oprav neprošlou kontrolu: {what}",
+    "Continue with: {step}": "Pokračuj krokem: {step}"
   },
   "legacy_profile_labels": {
     "16 bit - přesnější, kontext 128k": "16-bit - more precise, context 128k",

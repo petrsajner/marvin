@@ -18,6 +18,7 @@ import enum
 import json
 import re
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Generator
@@ -25,6 +26,7 @@ from typing import Any, Callable, Generator
 from harness.config import Config
 from harness.changes import ChangeJournal
 from harness.llm import LLMClient, parse_tool_arguments
+from harness.next_step import NextStepStreamFilter, derive_next_step, split_next_step
 from harness.processes import ProcessManager
 from harness.repo_index import RepoIndex
 from harness.research import (GenerationStopped, ResearchLedger, plan_research,
@@ -244,6 +246,7 @@ class Agent:
         self._summary_requested = False
         self._tool_call_history: list[str] = []
         self._cycle_warned_at = -1
+        self._next_step_hint = ""             # The model's latest guess in this task.
         restored = self.session.load_task_state()
         if restored.get("status") in ("running", "waiting_confirmation"):
             self._steps = int(restored.get("steps", 0))
@@ -461,7 +464,9 @@ class Agent:
         self._malformed_tool_calls = 0
         self._tool_call_history = []
         self._cycle_warned_at = -1
+        self._next_step_hint = ""
         self.safety.new_task()
+        self._publish_next_step("", "")
         self.session.add("user", text, images=images)
         self.ctx.changes.begin_task(text)
         self.ctx.task_plan.begin(text)
@@ -789,11 +794,18 @@ class Agent:
 
         # 3) Model call; discussion mode also has memory tools.
         tools = self.registry.schemas() if self.registry.names() else None
+        visible = NextStepStreamFilter()
+
+        def show_text(text: str) -> None:
+            shown = visible.feed(text)
+            if shown:
+                self.emit("text", shown)
+
         try:
             res = self.llm.stream(
                 self._request_messages(),
                 tools=tools,
-                on_text=lambda t: self.emit("text", t),
+                on_text=show_text,
                 on_reasoning=lambda t: self.emit("reasoning", t),
                 on_tool_delta=lambda name, args: self.emit("tool_delta", (name, args)),
                 on_prompt_progress=lambda progress: self.emit("prompt_progress", progress),
@@ -825,6 +837,15 @@ class Agent:
 
         self._steps += 1
         self._malformed_tool_calls = 0
+        tail = visible.flush()
+        if tail:
+            self.emit("text", tail)
+        # The model's running guess at the user's next instruction travels at the
+        # end of its replies; keep the latest one and show the reply without it.
+        res.content, hint = split_next_step(res.content)
+        if hint:
+            self._next_step_hint = hint
+            self._publish_next_step(hint, "model")
 
         if getattr(res, "usage", None):
             self.session.meta["last_usage"] = res.usage
@@ -977,12 +998,36 @@ class Agent:
         content, checks = split_test_report(content)
         self.session.add("assistant", content, reasoning=res.reasoning,
                          changes=changes, checks=checks or None)
+        self._settle_next_step(hint, content, checks)
         self._save_task_state("complete", result=content)
         return StepResult(Status.FINAL, text=content, reasoning=res.reasoning)
 
     def _task_changed_files(self) -> bool:
         summary = self.ctx.changes.summary() if self.ctx.changes else {"files": []}
         return any(item.get("changed") for item in summary.get("files", []))
+
+    def _publish_next_step(self, text: str, source: str) -> None:
+        """Keep the composer's suggestion with the chat and tell the interface."""
+        current = self.session.meta.get("next_step") or {}
+        if (current.get("text") or "") == text:
+            return
+        record = {"text": text, "source": source, "updated": time.time(),
+                  "run_id": getattr(self.session, "run_id", None)} if text else None
+        self.session.meta["next_step"] = record
+        self.session._save_meta()
+        self.emit("next_step", record)
+
+    def _settle_next_step(self, final_hint: str, content: str, checks: list[dict]) -> None:
+        """The suggestion a finished task leaves: the final reply's own guess first,
+        then what the task's state shows is still open, then the latest earlier guess."""
+        if final_hint:
+            return
+        plan = self.ctx.task_plan.load() if self.tools_enabled and self.ctx.task_plan else {}
+        derived = derive_next_step(plan, checks, content)
+        if derived:
+            self._publish_next_step(derived, "task")
+        elif self._next_step_hint:
+            self._publish_next_step(self._next_step_hint, "model")
 
     @property
     def has_resumable_task(self) -> bool:

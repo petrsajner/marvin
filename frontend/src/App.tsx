@@ -336,6 +336,10 @@ export function App() {
           old ? { ...old, messages: mergeMessages(old.messages, [p]) } : old,
         );
       if (row.kind === "navigate" && current) setSid(p.session_id);
+      if (row.kind === "next_step" && current)
+        setChat((old) =>
+          old ? { ...old, meta: { ...old.meta, next_step: p.next_step } } : old,
+        );
       if (
         [
           "submission",
@@ -576,6 +580,9 @@ export function App() {
       if (sidRef.current === current) {
         setText("");
         setAttachments([]);
+        setChat((old) =>
+          old ? { ...old, meta: { ...old.meta, next_step: null } } : old,
+        );
       }
       await api("/api/sessions/" + current + "/actions/draft", "POST", {
         text: "",
@@ -656,6 +663,19 @@ export function App() {
     (j: Job) =>
       j.session_id === sid && ["queued", "steering"].includes(j.status),
   );
+  // The next step the model has been forming while the chat went on: grey in
+  // the empty composer, and real text once the right arrow takes it.
+  const suggestion =
+    !active && !queued.length && !text
+      ? String(chat?.meta?.next_step?.text || "")
+      : "";
+  const takeSuggestion = () => {
+    setText(suggestion);
+    requestAnimationFrame(() => {
+      const box = textRef.current;
+      if (box) box.setSelectionRange(suggestion.length, suggestion.length);
+    });
+  };
   const interrupted = (chat?.jobs || [])
     .filter((j) =>
       ["interrupted", "stopped", "failed", "waiting_confirmation"].includes(
@@ -1270,6 +1290,19 @@ export function App() {
                     onChange={(e) => setText(e.target.value)}
                     onKeyDown={(e) => {
                       if (
+                        e.key === "ArrowRight" &&
+                        suggestion &&
+                        !e.nativeEvent.isComposing &&
+                        !e.shiftKey &&
+                        !e.ctrlKey &&
+                        !e.altKey &&
+                        !e.metaKey
+                      ) {
+                        e.preventDefault();
+                        takeSuggestion();
+                        return;
+                      }
+                      if (
                         e.key === "Enter" &&
                         !e.shiftKey &&
                         !e.nativeEvent.isComposing
@@ -1278,10 +1311,15 @@ export function App() {
                         submit();
                       }
                     }}
+                    className={suggestion ? "suggesting" : undefined}
+                    title={
+                      suggestion ? tr("Press → to use the suggestion") : undefined
+                    }
                     placeholder={
-                      active
+                      suggestion ||
+                      (active
                         ? tr("Add a clarification…")
-                        : tr("Type a message…")
+                        : tr("Type a message…"))
                     }
                   />
                   {text.startsWith("/") && !text.includes("\n") && (

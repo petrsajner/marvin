@@ -812,6 +812,8 @@ class ApplicationService:
                 live["arguments"] = {k: str(v)[:500] for k, v in (payload[1] or {}).items() if k not in ("content", "data")}
             elif kind == "usage":
                 self.store.emit(sid, "usage", payload)
+            elif kind == "next_step":
+                self.store.emit(sid, "next_step", {"next_step": payload})
             elif kind == "tool_result":
                 self.store.emit(sid, "tool_completed", {"name": payload[0]})
             elif kind == "info":
