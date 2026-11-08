@@ -39,7 +39,7 @@ class SplitNextStepTests(unittest.TestCase):
                          "Add tests/__init__.py for test_calc")
         self.assertEqual(clean_suggestion('Commit with the message "fix division"'),
                          'Commit with the message "fix division"')
-        self.assertEqual(clean_suggestion("„Přidej test“"), "Přidej test")
+        self.assertEqual(clean_suggestion("„Add a test“"), "Add a test")
         long = clean_suggestion("word " * 200)
         self.assertLessEqual(len(long), 301)
         self.assertTrue(long.endswith("…"))
