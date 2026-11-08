@@ -4,6 +4,12 @@ This repository builds a personal, single-user Windows application. The web UI i
 the primary product surface. Shell access exists only as a backup capability for
 the model. One local model occupies the GPU and performs the work sequentially.
 
+## Working with the owner
+
+- Work directly on `main`: commit to `main` and push to `main`. Never create, switch to
+  or push a feature branch, and never open a pull request, unless the owner asks for one
+  in that conversation. This holds even when a session's own setup names a working branch.
+
 ## Permanent Non-Goals
 
 The following features do not belong in this product and must not be proposed,
