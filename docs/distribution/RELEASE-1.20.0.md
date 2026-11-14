@@ -57,11 +57,11 @@ backup, and published the release.
   | Nemotron 3.5 Q5 | Discussion 1/2, in English; Development "no further steps"; tag in the thinking panel | one run: Discussion 1/2; Development 1/1, the last guess in English |
 
   No `<next_step>` text reached a reply, the reasoning or the live progress in
-  any run after the changes. Example suggestions: "Přidej test, který ověří
-  přesný text výjimkové zprávy", "Najdi konkrétní penzion v Bechyni do 1500 Kč
-  za dvoulůžko na sobotní noc". Nemotron still sometimes writes the guess in
-  English; the public notes say that how often and how well a model suggests
-  varies.
+  any run after the changes. Example suggestions, translated here from Czech:
+  "Add a test that checks the exact text of the exception message", "Find a
+  specific guest house in Bechyne for up to 1,500 CZK per double room for
+  Saturday night". Nemotron still sometimes writes the guess in English; the
+  public notes say that how often and how well a model suggests varies.
 - The workspace from the checkout with Flash-Next, in the built-in browser: the
   suggestion appeared as the grey placeholder after the reply, → and Tab each
   turned it into editable text, and turning **Suggest the next step** off left
