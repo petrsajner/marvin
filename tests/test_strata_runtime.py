@@ -5,6 +5,7 @@ import io
 import json
 import os
 from pathlib import Path
+import tarfile
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -23,23 +24,38 @@ def zip_bytes(files: dict[str, bytes]) -> bytes:
     return buffer.getvalue()
 
 
-SOURCE = {"Strata-0.1.39/serve/server.py": b"server", "Strata-0.1.39/tools/iq_pack.py": b"pack",
-          "Strata-0.1.39/tools/mtp_fetch.py": b"fetch", "Strata-0.1.39/data/expert-profile.bin": b"profile",
-          "Strata-0.1.39/data/draft_vocab.bin": b"vocab", "Strata-0.1.39/LICENSE": b"MIT"}
+def tar_gz_bytes(files: dict[str, bytes]) -> bytes:
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        for name, data in files.items():
+            info = tarfile.TarInfo(name=name)
+            info.size = len(data)
+            archive.addfile(info, io.BytesIO(data))
+    return buffer.getvalue()
+
+
+SOURCE = {"Strata-0.2.17/terminal/serve/server.py": b"server",
+          "Strata-0.2.17/terminal/strata.py": b"cli",
+          "Strata-0.2.17/terminal/tools/iq_pack.py": b"pack",
+          "Strata-0.2.17/terminal/tools/mtp_fetch.py": b"fetch",
+          "Strata-0.2.17/terminal/data/expert-profile.bin": b"profile",
+          "Strata-0.2.17/terminal/data/draft_vocab.bin": b"vocab",
+          "Strata-0.2.17/LICENSE": b"MIT"}
 GGUF_PY = {"llama.cpp-abc/gguf-py/gguf/__init__.py": b"gguf", "llama.cpp-abc/ggml/CMakeLists.txt": b"not needed"}
 
 
 class Runtime:
     """A Marvin root whose archive cache already holds the pinned downloads, and fake tools."""
 
-    def __init__(self, *, version=strata_runtime.VERSION):
+    def __init__(self, *, version=strata_runtime.ENGINE_VERSION):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.cfg = strata_config(self.root)
         self.cache = self.cfg.path("paths.runtime_dir") / "runtime-archives" / f"strata-{strata_runtime.VERSION}"
         self.cache.mkdir(parents=True)
-        engine = zip_bytes({"strata.exe": b"engine", "strata-vision.exe": b"vision",
-                            "BUILD.json": json.dumps({"version": version}).encode()})
+        engine = tar_gz_bytes({"strata.exe": b"engine", "strata-vision.exe": b"vision",
+                               "cublas64_13.dll": b"cublas", "cublasLt64_13.dll": b"cublasLt",
+                               "BUILD.json": json.dumps({"version": version}).encode()})
         self.specs = {}
         for name, files, spec in (("source", SOURCE, strata_runtime.SOURCE), ("gguf_py", GGUF_PY, strata_runtime.GGUF_PY)):
             data = zip_bytes(files)
@@ -61,9 +77,6 @@ class Runtime:
         elif "pip" in argv:
             if self.pip_fails:
                 raise RuntimeError(f"{what} failed (exit code 1): no matching hash")
-            dll = Path(argv[0]).parent.parent / "Lib/site-packages/nvidia/cu13/bin/x86_64/cublas64_13.dll"
-            dll.parent.mkdir(parents=True)
-            dll.write_bytes(b"cublas")
 
     def patches(self):
         return [patch.object(strata_runtime, "SOURCE", self.specs["source"]),
@@ -139,12 +152,12 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(len(previous), 1)
 
     def test_an_engine_of_another_version_is_refused_with_its_version(self):
-        other = Runtime(version="0.1.38")
+        other = Runtime(version="0.1.62")
         self.addCleanup(other.close)
         patch.stopall()
         for p in other.patches():
             p.start()
-        with self.assertRaisesRegex(RuntimeError, "reports version 0.1.38"):
+        with self.assertRaisesRegex(RuntimeError, "reports version 0.1.62"):
             strata_runtime.install(other.cfg, progress=lambda *_: None)
         self.assertFalse(strata_backend.program_dir(other.cfg).exists())
 
@@ -205,6 +218,11 @@ class PrepareModelTests(unittest.TestCase):
     def run_tool(self, argv, *, cwd, env=None, cancelled=None, progress=print, what):
         argv = [str(a) for a in argv]
         self.commands.append((Path(argv[1]).name, argv, env))
+        if argv[1].endswith("strata.py") and argv[2:4] == ["drafting", "fetch"]:
+            target = self.data / self.spec["dflash2"]
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b"dflash2")
+            return
         out = Path(argv[argv.index("--out") + 1])
         if argv[1].endswith("iq_pack.py"):
             (out / "tokenizer").mkdir(parents=True, exist_ok=True)
@@ -222,6 +240,18 @@ class PrepareModelTests(unittest.TestCase):
     def test_a_complete_folder_is_left_alone(self):
         self.prepare()
         self.assertEqual([c[0] for c in self.commands], [])
+
+    def test_dflash2_is_fetched_when_strata_cli_is_present(self):
+        (strata_backend.program_dir(self.cfg) / "strata.py").write_bytes(b"cli")
+        rt = self.data / self.spec["mtp"]
+        (rt / "dense.bin").unlink()
+        self.prepare()
+        self.assertEqual([c[0] for c in self.commands], ["strata.py"])
+        self.assertIn("dflash2", self.commands[0][1])
+        self.assertTrue((self.data / self.spec["dflash2"]).is_file())
+        self.commands.clear()
+        self.prepare()
+        self.assertEqual(self.commands, [], "a second preparation keeps the fetched DFlash2 pack")
 
     def test_the_pack_is_written_with_the_pinned_gguf_reader(self):
         (self.data / self.spec["pack"] / "native_experts.txt").unlink()

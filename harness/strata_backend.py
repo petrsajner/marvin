@@ -88,7 +88,7 @@ def settings(cfg: Config, key: str) -> dict:
 
 
 def lib_dirs(cfg: Config) -> list[str]:
-    """Folders with the CUDA libraries the prebuilt engine loads: its BUILD.json's, else the venv's NVIDIA wheels."""
+    """Folders with the CUDA libraries the prebuilt engine loads: its BUILD.json's, engine/, else the venv's NVIDIA wheels."""
     engine = engine_exe(cfg).parent
     try:
         meta = json.loads((engine / "BUILD.json").read_text(encoding="utf-8"))
@@ -97,8 +97,10 @@ def lib_dirs(cfg: Config) -> list[str]:
             return [str(Path(d) if Path(d).is_absolute() else engine / d) for d in listed]
     except (OSError, ValueError, TypeError, AttributeError):
         pass
-    venv = program_dir(cfg) / ".venv"
     pattern = "cublas64_13.dll" if WINDOWS else "libcublas.so.13*"
+    if any(engine.glob(pattern)):
+        return [str(engine)]
+    venv = program_dir(cfg) / ".venv"
     dirs: list[str] = []
     for site in (venv / "Lib" / "site-packages", *sorted((venv / "lib").glob("python3*/site-packages"))):
         nvidia = site / "nvidia"
@@ -137,13 +139,23 @@ def runtime_problems(cfg: Config, key: str) -> list[str]:
     return [f"{label}: {path}" for label, path in needed if not path.exists()]
 
 
+def dflash2_pack(cfg: Config, key: str) -> Path | None:
+    """Path to the tuned DFlash2 drafter pack if configured and present on disk."""
+    rel = settings(cfg, key).get("dflash2")
+    if not rel:
+        return None
+    path = data_dir(cfg) / rel
+    return path if path.is_file() else None
+
+
 def model_problems(cfg: Config, key: str) -> list[str]:
     """What the Strata data folder lacks for a launch, once the weights are verified."""
     s, data = settings(cfg, key), data_dir(cfg)
     needed = [("the model weights", cfg.model_file(key)), ("the n-gram table", data / s["ple_gguf"]),
               ("the prepared weights index", data / s["pack"] / "native_experts.txt"),
-              ("the pack's tokenizer", data / s["pack"] / "tokenizer" / "vocab.json"),
-              ("the MTP draft layer", data / s["mtp"] / "experts.bin")]
+              ("the pack's tokenizer", data / s["pack"] / "tokenizer" / "vocab.json")]
+    if dflash2_pack(cfg, key) is None:
+        needed.append(("the MTP draft layer", data / s["mtp"] / "experts.bin"))
     return [f"{label}: {path}" for label, path in needed if not path.exists()]
 
 
@@ -177,12 +189,23 @@ def engine_args(cfg: Config, key: str, context: int, where: dict, hardware=None)
             "--ple-gguf", str(data / s["ple_gguf"]),
             "--expert-profile", str(program_dir(cfg) / s.get("expert_profile", "data/expert-profile.bin")),
             "--expert-cache", str(where.get("expert_cache", "auto")),
-            "--prefill", "auto",
-            "--spec", str(s.get("spec", 4)),
-            "--spec-min-p", str(s.get("spec_min_p", 0.5)),
-            "--mtp", str(data / s["mtp"]),
-            "--max-context", str(int(context)),
-            "--kv", str(s.get("kv", "int8"))]
+            "--prefill", "auto"]
+    df2 = dflash2_pack(cfg, key)
+    if df2 is not None:
+        args += ["--draft", "dflash2",
+                 "--draft-model", str(df2),
+                 "--draft-fallback", "none"]
+        vocab = program_dir(cfg) / s.get("draft_vocab", "data/draft_vocab.bin")
+        if vocab.is_file():
+            args += ["--mtp-draft-vocab", str(vocab)]
+        args += ["--spec", str(s.get("dflash2_spec", 6)),
+                 "--draft-conf", str(s.get("dflash2_conf", 0.5))]
+    else:
+        args += ["--spec", str(s.get("spec", 4)),
+                 "--spec-min-p", str(s.get("spec_min_p", 0.5)),
+                 "--mtp", str(data / s["mtp"])]
+    args += ["--max-context", str(int(context)),
+             "--kv", str(s.get("kv", "int8"))]
     if s.get("resident_experts"):
         args.append("--resident-experts")
     profile = cfg.kv_cache_profiles(key).get(cfg.kv_cache_mode(key), {})
@@ -208,6 +231,10 @@ def build_config(cfg: Config, key: str, context: int, where: dict, hardware=None
               "lib_dirs": lib_dirs(cfg),
               "port": int(cfg.data["server"]["port"]),
               "open_browser": False}
+    df2 = dflash2_pack(cfg, key)
+    if df2 is not None:
+        config["drafting"] = "dflash2"
+        config["user_args"] = ["--draft-model", str(df2)]
     if s.get("effort_position"):
         config["effort_position"] = s["effort_position"]
     if uses_vision(cfg, key):

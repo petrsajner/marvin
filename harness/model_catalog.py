@@ -41,12 +41,16 @@ FLASH_NEXT_STRATA = {
         "non_thinking": {"temperature": 0.7, "top_p": 0.8, "top_k": 20, "min_p": 0.0, "presence_penalty": 1.5},
     },
     "strata": {
-        "version": "0.1.39",
+        "version": "0.2.17",
         "model_name": "qwen3.8-flash-next-iq3_s",
         # The n-gram (PLE) table, read lazily from the SSD.
         "ple_gguf": "models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf",
         "pack": "packs/iq3_s",
         "mtp": "mtp/rt",
+        "dflash2": "dflash2/qwen3.8-flash-next-dflash2.strata1.q4_0-selq4.pack",
+        "draft_vocab": "data/draft_vocab.bin",
+        "dflash2_spec": 6,
+        "dflash2_conf": 0.5,
         "expert_profile": "data/expert-profile.bin",   # relative to paths.strata_dir
         "kv": "int8",
         "spec": 4,

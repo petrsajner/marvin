@@ -12,13 +12,13 @@ import tempfile
 import time
 import zipfile
 
-RELEASE = "b10935"
-BUILD = 10935
+RELEASE = "b12359"
+BUILD = 12359
 ASSETS = (
-    ("llama-b10935-bin-win-cuda-13.3-x64.zip", "llama.zip",
-     "9ece1d33916caefe2ed1f74092dabe05cf955b112f9afdabc2de5c5e2b7285ad"),
-    ("cudart-llama-bin-win-cuda-13.3-x64.zip", "cudart.zip",
-     "1462a050eb4c684921ba51dcc4cc488a036674c3e73e9945ee705b854808d03e"),
+    ("llama-b12359-bin-win-cuda-13.5-x64.zip", "llama.zip",
+     "1de9ca1ff408d6e348ea0007c6880ad2393311a02e7799bcde26dc16daef03dd"),
+    ("cudart-llama-bin-win-cuda-13.5-x64.zip", "cudart.zip",
+     "c2bf4cc202bfbaaa7a0b75f5082457c3811326947bb216059b72839d844e9cba"),
 )
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 _versions = {}
@@ -98,7 +98,7 @@ def install_runtime(target: Path, runtime_root: Path, *, cancelled=None, progres
         if cancelled and cancelled():
             raise InterruptedError("Runtime preparation cancelled")
         path = cache / cached_name
-        existing = runtime_root / "candidates" / "llama-b10935-cuda13.3" / cached_name
+        existing = runtime_root / "candidates" / f"llama-{RELEASE}-cuda13.5" / cached_name
         if not path.exists() and existing.is_file() and sha256(existing) == expected:
             shutil.copy2(existing, path)
         if not path.is_file() or sha256(path) != expected:

@@ -336,8 +336,38 @@ class ServerConfigTests(unittest.TestCase):
 
     def test_build_manifest_libraries_take_precedence(self):
         engine = strata_backend.engine_exe(self.cfg).parent
-        (engine / "BUILD.json").write_text(json.dumps({"version": "0.1.39", "lib_dirs": ["rocm/bin", "C:/abs"]}))
+        (engine / "BUILD.json").write_text(json.dumps({"version": "0.1.63", "lib_dirs": ["rocm/bin", "C:/abs"]}))
         self.assertEqual(strata_backend.lib_dirs(self.cfg), [str(engine / "rocm/bin"), str(Path("C:/abs"))])
+
+    def test_bundled_cublas_in_engine_dir_is_detected(self):
+        self.installation.cuda_library().unlink()
+        engine = strata_backend.engine_exe(self.cfg).parent
+        dll = engine / ("cublas64_13.dll" if strata_backend.WINDOWS else "libcublas.so.13")
+        dll.write_bytes(b"cublas")
+        self.assertEqual(strata_backend.lib_dirs(self.cfg), [str(engine)])
+
+    def test_dflash2_pack_switches_engine_args_and_config_and_drops_mtp_requirement(self):
+        spec = strata_backend.settings(self.cfg, KEY)
+        df2 = strata_backend.data_dir(self.cfg) / spec["dflash2"]
+        df2.parent.mkdir(parents=True, exist_ok=True)
+        df2.write_bytes(b"dflash2")
+        vocab = strata_backend.program_dir(self.cfg) / spec["draft_vocab"]
+        vocab.parent.mkdir(parents=True, exist_ok=True)
+        vocab.write_bytes(b"vocab")
+        (strata_backend.data_dir(self.cfg) / spec["mtp"] / "experts.bin").unlink()
+        self.assertEqual(strata_backend.model_problems(self.cfg, KEY), [])
+        where = strata_backend.placement(self.cfg, KEY)
+        config = strata_backend.build_config(self.cfg, KEY, 262144, where, HYBRID)
+        args = config["args"]
+        self.assertEqual(args[args.index("--draft") + 1], "dflash2")
+        self.assertEqual(args[args.index("--draft-model") + 1], str(df2))
+        self.assertEqual(args[args.index("--draft-fallback") + 1], "none")
+        self.assertEqual(args[args.index("--mtp-draft-vocab") + 1], str(vocab))
+        self.assertEqual(args[args.index("--spec") + 1], "6")
+        self.assertEqual(args[args.index("--draft-conf") + 1], "0.5")
+        self.assertNotIn("--mtp", args)
+        self.assertEqual(config["drafting"], "dflash2")
+        self.assertEqual(config["user_args"], ["--draft-model", str(df2)])
 
     def test_pool_workers_follow_strata_setup(self):
         self.assertEqual(strata_backend.pool_workers(HYBRID), 13)          # 8 P + 12 E

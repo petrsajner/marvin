@@ -24,6 +24,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tarfile
 import time
 import zipfile
 
@@ -31,15 +32,16 @@ from harness import strata_backend
 from harness.config import ROOT, Config
 from harness.runtime_update import activate_runtime, extract_archive, sha256
 
-VERSION = "0.1.39"
-# The v0.1.39 tag moved from 6f32ec0 to this commit with the same files; GitHub's
+VERSION = "0.2.17"
+ENGINE_VERSION = "0.1.63"
+# Strata v0.2.17 moved the terminal server/tools/data under terminal/; GitHub's
 # generated archives are checked by their content, the release asset by its bytes.
-SOURCE = {"url": "https://github.com/Niko1221/Strata/archive/a1641e9f77aacad4d201b53c8a7ae8fa21059ebb.zip",
-          "name": "strata-source.zip",
-          "content": "b55a5b23165d770bcc52ec2d64c1c0765a57478c9b0ecf261872b942bdbfb3fb"}
-ENGINE = {"url": f"https://github.com/Niko1221/Strata/releases/download/v{VERSION}/strata-windows-x64.zip",
-          "name": "strata-windows-x64.zip",
-          "sha256": "a862bcfa2330cd1c23f9b5d6e49f4027da8f8313842bd62e858ec6cd4533813a"}
+SOURCE = {"url": "https://github.com/Niko1221/Strata/archive/12d491da4a6904eb49aaa6f2f63ec4b1a17582e3.zip",
+          "name": "strata-source.zip", "subtree": "terminal/", "strip_subtree": True,
+          "content": "9db78acc13864588cb295a929e891b47533a5accb75944e71b5266df6a4ff32a"}
+ENGINE = {"url": f"https://github.com/Niko1221/Strata/releases/download/v{VERSION}/strata-engine-{ENGINE_VERSION}-windows-x86_64-cuda-cuda13.tar.gz",
+          "name": f"strata-engine-{ENGINE_VERSION}-windows-x86_64-cuda-cuda13.tar.gz",
+          "sha256": "fc9864851a3f76855f25ba5f5ff1eb42d46c3c6ed45c22534dc9910f20d9dc0f"}
 # The packer reads the GGUF with llama.cpp's gguf-py at the commit Strata's setup pins.
 GGUF_PY = {"url": "https://github.com/ggml-org/llama.cpp/archive/3cf03257f219afbe7334045ff7c6a06ac68c627d.zip",
            "name": "llama.cpp-gguf-py.zip", "subtree": "gguf-py/",
@@ -98,7 +100,7 @@ def _fetch(spec: dict, cache: Path, *, cancelled=None, progress=print) -> Path:
     return path
 
 
-def _extract_stripped(archive_path: Path, target: Path, subtree: str = "") -> None:
+def _extract_stripped(archive_path: Path, target: Path, subtree: str = "", *, strip_subtree: bool = False) -> None:
     """Extract the archive's single top folder (or only `subtree` of it) into `target`."""
     with zipfile.ZipFile(archive_path) as archive:
         tops = {info.filename.split("/", 1)[0] for info in archive.infolist() if "/" in info.filename}
@@ -107,6 +109,10 @@ def _extract_stripped(archive_path: Path, target: Path, subtree: str = "") -> No
             name = info.filename.split("/", 1)[1] if single else info.filename
             if not name or (subtree and not name.startswith(subtree)):
                 continue
+            if subtree and strip_subtree:
+                name = name[len(subtree):]
+                if not name:
+                    continue
             destination = (target / name).resolve()
             if not destination.is_relative_to(target.resolve()):
                 raise ValueError(f"Unexpected path in {archive_path.name}: {info.filename}")
@@ -116,6 +122,32 @@ def _extract_stripped(archive_path: Path, target: Path, subtree: str = "") -> No
             destination.parent.mkdir(parents=True, exist_ok=True)
             with archive.open(info) as source, destination.open("wb") as output:
                 shutil.copyfileobj(source, output)
+
+
+def _extract_engine(archive_path: Path, target: Path) -> None:
+    """Extract the prebuilt engine archive (.tar.gz or .zip), rejecting unsafe paths and links."""
+    target = target.resolve()
+    if archive_path.name.endswith((".tar.gz", ".tgz")):
+        with tarfile.open(archive_path, "r:gz") as archive:
+            members = archive.getmembers()
+            for member in members:
+                if member.issym() or member.islnk() or member.isdev():
+                    raise ValueError(f"Unsafe link/device in {archive_path.name}: {member.name}")
+                destination = (target / member.name).resolve()
+                if not destination.is_relative_to(target):
+                    raise ValueError(f"Unsafe path in {archive_path.name}: {member.name}")
+            for member in members:
+                destination = (target / member.name).resolve()
+                if member.isdir():
+                    destination.mkdir(parents=True, exist_ok=True)
+                elif member.isfile():
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    src = archive.extractfile(member)
+                    if src is not None:
+                        with src, destination.open("wb") as out:
+                            shutil.copyfileobj(src, out)
+    else:
+        extract_archive(archive_path, target)
 
 
 def _base_python() -> Path:
@@ -191,10 +223,11 @@ def install(cfg: Config, *, cancelled=None, progress=print, on_phase=None) -> Pa
     stage.mkdir(parents=True)
     try:
         progress(f"Preparing the model engine {VERSION}")
-        _extract_stripped(archives["source"], stage)
+        _extract_stripped(archives["source"], stage, SOURCE.get("subtree", ""),
+                          strip_subtree=bool(SOURCE.get("strip_subtree")))
         _extract_stripped(archives["gguf_py"], stage / "third_party" / "llama.cpp", GGUF_PY["subtree"])
         (stage / "engine").mkdir(exist_ok=True)
-        extract_archive(archives["engine"], stage / "engine")
+        _extract_engine(archives["engine"], stage / "engine")
         venv_python = stage / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
         _run([_base_python(), "-m", "venv", stage / ".venv"], cwd=stage, cancelled=cancelled, progress=progress,
              what="Creating the engine's Python environment")
@@ -204,15 +237,17 @@ def install(cfg: Config, *, cancelled=None, progress=print, on_phase=None) -> Pa
               "--no-input", *offline, "-r", LOCK], cwd=stage, cancelled=cancelled, progress=progress,
              what="Installing the engine's Python packages")
         build = json.loads((stage / "engine" / "BUILD.json").read_text(encoding="utf-8"))
-        if build.get("version") != VERSION:
-            raise RuntimeError(f"The downloaded engine reports version {build.get('version')}, not {VERSION}.")
-        if not any((stage / ".venv").rglob("cublas64_13.dll")):
+        if build.get("version") != ENGINE_VERSION:
+            raise RuntimeError(f"The downloaded engine reports version {build.get('version')}, not {ENGINE_VERSION}.")
+        has_cublas = any((stage / "engine").rglob("cublas64_13.dll")) or any((stage / ".venv").rglob("cublas64_13.dll"))
+        if not has_cublas:
             raise RuntimeError("The engine's CUDA libraries (cublas64_13.dll) were not installed.")
         driver = _driver_version()
         if driver and driver < 580:
             progress(f"[WARNING] The NVIDIA driver is {driver}; the engine needs 580 or newer (CUDA 13).")
         (stage / MARKER).write_text(json.dumps({
-            "version": VERSION, "source": SOURCE["url"], "engine": ENGINE["sha256"], "gguf_py": GGUF_PY["url"],
+            "version": VERSION, "engine_version": ENGINE_VERSION, "source": SOURCE["url"],
+            "engine": ENGINE["sha256"], "gguf_py": GGUF_PY["url"],
             "lock": _lock_digest(), "python": str(_base_python()), "installed": time.strftime("%Y-%m-%d %H:%M:%S"),
         }, indent=2), encoding="utf-8")
         if cancelled and cancelled():
@@ -256,6 +291,21 @@ def prepare_model(cfg: Config, key: str, *, cancelled=None, progress=print, on_p
         progress(f"Preparing the model files in {pack}")
         _run([python, program / "tools" / "iq_pack.py", "--gguf", cfg.model_file(key), "--out", pack],
              cwd=program, env=env, cancelled=cancelled, progress=progress, what="Preparing the model files")
+    dflash2_rel = settings.get("dflash2")
+    dflash2_file = (data / dflash2_rel) if dflash2_rel else None
+    strata_cli = program / "strata.py"
+    if dflash2_file is not None and dflash2_file.is_file():
+        return
+    if dflash2_file is not None and strata_cli.is_file():
+        if on_phase:
+            on_phase("downloading")
+        progress("Downloading the DFlash2 drafter for faster answers")
+        _run([python, strata_cli, "drafting", "fetch", "--data-dir", str(data),
+              "--family", "qwen", "--model", "IQ3_S", "--mode", "dflash2"],
+             cwd=program, env=env, cancelled=cancelled, progress=progress,
+             what="Downloading the DFlash2 drafter")
+        if dflash2_file.is_file():
+            return
     rt = data / settings["mtp"]
     mtp = rt.parent
     if not _mtp_complete(rt):

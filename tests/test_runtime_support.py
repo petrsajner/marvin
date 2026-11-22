@@ -15,6 +15,7 @@ from harness.hardware import Hardware
 from harness.model_files import download_pinned_model, model_ready, local_model_dir
 from harness.config import Config, load_config
 from harness.model_switch import ModelSwitchController
+from harness import runtime_update
 from harness.runtime_update import activate_runtime, extract_archive, install_runtime
 
 GIB = 1024**3
@@ -363,7 +364,7 @@ class RuntimeUpdateTests(unittest.TestCase):
             target = root / "llama"
             target.mkdir()
             (target / "llama-server.exe").write_bytes(b"installed runtime")
-            cache = root / "runtime-archives/b10935"
+            cache = root / "runtime-archives" / runtime_update.RELEASE
             cache.mkdir(parents=True)
             archive = cache / "fake.zip"
             with zipfile.ZipFile(archive, "w") as package:
