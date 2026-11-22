@@ -550,6 +550,13 @@ export function DialogView(props: any) {
                     )}
                   </>
                 )}
+                {model?.speculative_builtin && (
+                  <p>
+                    {tr("Speculative decoding")}:{" "}
+                    <span className="amber">{model.speculative_builtin}</span>{" "}
+                    ({tr("always active")})
+                  </p>
+                )}
                 {settingsMode === "advanced" && (
                   <>
                 <label>

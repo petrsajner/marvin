@@ -178,6 +178,24 @@ class WebUiGreyedOutTests(unittest.TestCase):
                 self.assertTrue(models[key]["available"])
                 self.assertIsNone(models[key]["unavailable_reason"])
                 self.assertGreaterEqual(len(models[key]["profiles"]), 2)
+            self.assertEqual(models[M27]["speculative_builtin"], "DFlash2 + n-gram")
+            self.assertEqual(models[MFN]["speculative_builtin"], "DFlash2")
+            self.assertEqual(models["flash_next_strata"]["speculative_builtin"], "DFlash2")
+            self.assertIsNone(models["q5"]["speculative_builtin"])
+
+    def test_runtime_reports_speculative_label_for_infernix_and_strata(self):
+        with patch.object(servermgmt, "server_state", return_value="running"), \
+             patch.object(servermgmt, "vram_value", return_value="28.0 / 32.0 GB"):
+            client = TestClient(create_app(self.cfg, service=self.app))
+            with patch.object(servermgmt, "running_model", return_value=M27):
+                prof = client.get("/api/runtime").json()["profile"]
+                self.assertTrue(prof["speculative"])
+                self.assertEqual(prof["speculative_label"], "DFlash2 + n-gram")
+            client = TestClient(create_app(self.cfg, service=self.app))
+            with patch.object(servermgmt, "running_model", return_value=MFN):
+                prof = client.get("/api/runtime").json()["profile"]
+                self.assertTrue(prof["speculative"])
+                self.assertEqual(prof["speculative_label"], "DFlash2")
 
 
 class InfernixBackendTests(unittest.TestCase):

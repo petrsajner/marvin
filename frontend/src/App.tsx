@@ -754,7 +754,9 @@ export function App() {
               )?.name
             }
           </span>
-          {runtime.profile?.speculative && <span className="amber">MTP</span>}
+          {(runtime.profile?.speculative_label || runtime.profile?.speculative) && (
+            <span className="amber">{runtime.profile?.speculative_label || "MTP"}</span>
+          )}
           <span className="muted">
             {runtime.switch?.status === "starting"
               ? tr("Loading")

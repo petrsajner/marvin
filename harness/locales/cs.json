@@ -946,7 +946,9 @@
     "NVFP4 · 64k": "NVFP4 · 64k",
     "Requires NVIDIA RTX 50-series (Blackwell)": "Vyžaduje NVIDIA RTX řady 50 (Blackwell)",
     "Requires NVIDIA driver 580 or newer": "Vyžaduje ovladač NVIDIA 580 nebo novější",
-    "Greyed-out models require an NVIDIA RTX 50-series (Blackwell) GPU.": "Zašedlé modely vyžadují grafickou kartu NVIDIA RTX řady 50 (Blackwell)."
+    "Greyed-out models require an NVIDIA RTX 50-series (Blackwell) GPU.": "Zašedlé modely vyžadují grafickou kartu NVIDIA RTX řady 50 (Blackwell).",
+    "Speculative decoding": "Spekulativní dekódování",
+    "always active": "vždy aktivní"
   },
   "legacy_profile_labels": {
     "16 bit - přesnější, kontext 128k": "16-bit - more precise, context 128k",

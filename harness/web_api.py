@@ -31,6 +31,38 @@ _semantic_state = {"preparing": False, "error": ""}
 _semantic_state_lock = threading.Lock()
 
 
+def _builtin_speculative_label(cfg: Config, key: str, *, live: bool = False) -> str | None:
+    """Return the always-on speculative decoding label for Strata/Infernix models, or None."""
+    backend = cfg.backend(key)
+    model = cfg.model(key)
+    if backend == "infernix":
+        s = model.get("infernix") or {}
+        spec = str(s.get("spec") or "").lower()
+        if spec == "dflash2":
+            return "DFlash2 + n-gram" if s.get("ngram_draft_tokens") else "DFlash2"
+        if spec == "dflash":
+            return "DFlash"
+        if spec == "mtp":
+            return "MTP"
+        return None
+    if backend == "strata":
+        from harness import strata_backend
+        if strata_backend.dflash2_pack(cfg, key) is not None:
+            return "DFlash2"
+        s = model.get("strata") or {}
+        if not live and s.get("dflash2"):
+            return "DFlash2"
+        return "MTP"
+    return None
+
+
+def _speculative_label(cfg: Config, key: str, profile: dict, *, live: bool = False) -> str | None:
+    """Return the active speculative decoding badge label for a model/profile pair."""
+    if profile.get("speculative") == "mtp":
+        return "MTP"
+    return _builtin_speculative_label(cfg, key, live=live)
+
+
 def _prepare_semantic_search(cfg: Config) -> None:
     """Download the pinned embedding model in the background when semantic search is enabled."""
     if cfg.embeddings_model_ready():
@@ -118,6 +150,7 @@ def create_app(cfg=None, *, service=None):
                     "installed": cfg.model_ready(key),
                     "available": available,
                     "unavailable_reason": unavailable_reason,
+                    "speculative_builtin": _builtin_speculative_label(selected_cfg, key),
                     "uses_system_ram": bool(model.get("uses_system_ram") or any(
                         "--n-cpu-moe" in p.get("server_args", []) for p in profiles.values())),
                     "profiles": [{"id": p, **spec, "fits_gpu_budget": True} for p, spec in profiles.items()],
@@ -635,8 +668,10 @@ def create_app(cfg=None, *, service=None):
             if model_key and model_key in service.models.cfg.data.get("models", {}):
                 mode = service.models.cfg.kv_cache_mode(model_key)
                 prof = service.models.cfg.kv_cache_profiles(model_key).get(mode, {})
+                spec_label = _speculative_label(service.models.cfg, model_key, prof, live=True)
                 value["profile"] = {"id": mode, "label": prof.get("label", mode),
-                                    "speculative": prof.get("speculative") == "mtp"}
+                                    "speculative": bool(spec_label),
+                                    "speculative_label": spec_label}
             else:
                 value["profile"] = None
         else:
