@@ -38,17 +38,24 @@ BUILTIN_MODELS: dict[str, dict[str, Any]] = {'q4': {'alias': 'Qwen3.8-27B Q4_K_M
         'mmproj': 'mmproj-F16.gguf',
         'server_args': ['-fa', 'on']}}
 
-from harness.model_catalog import FLASH_NEXT_STRATA, FLASH_NEXT_STRATA_IQ2
+from harness.model_catalog import (
+    FLASH_NEXT_INFERNIX,
+    FLASH_NEXT_STRATA,
+    FLASH_NEXT_STRATA_IQ2,
+    QWEN27B_INFERNIX,
+)
 
 BUILTIN_MODELS["flash_next_strata"] = copy.deepcopy(FLASH_NEXT_STRATA)
 BUILTIN_MODELS["flash_next_strata_iq2"] = copy.deepcopy(FLASH_NEXT_STRATA_IQ2)
+BUILTIN_MODELS["qwen27b_infernix"] = copy.deepcopy(QWEN27B_INFERNIX)
+BUILTIN_MODELS["flash_next_infernix"] = copy.deepcopy(FLASH_NEXT_INFERNIX)
 
 from harness.measured_profiles import install_profiles
 install_profiles(BUILTIN_MODELS)
 
 # The inference engines a model entry can name. A closed list, not a registry:
 # servermgmt branches on it at the few places that touch the server process.
-BACKENDS = ("llama", "strata")
+BACKENDS = ("llama", "strata", "infernix")
 # Entries replaced by another: a saved selection of the old one moves to the new
 # one where it is available. The llama.cpp Flash-Next gave way to Strata once
 # qualified (2026-10-07); Ornith and Nemotron were retired (2026-11-22) in favor
@@ -132,6 +139,10 @@ DEFAULTS: dict[str, Any] = {
         # folder (models/, packs/, mtp/).
         "strata_dir": "runtime/strata",
         "strata_data_dir": "runtime/models/strata",
+        # Infernix's program folder (infernix-serve.exe, chat_templates/) and
+        # its model artifacts (Blackwell RTX 50-series only).
+        "infernix_dir": "runtime/infernix",
+        "infernix_models_dir": "runtime/models/infernix",
     },
 }
 
@@ -240,7 +251,7 @@ class Config:
         return self.data["models"][key]
 
     def backend(self, key: str | None = None) -> str:
-        """The engine that serves a model: llama (the default) or strata."""
+        """The engine that serves a model: llama (the default), strata, or infernix."""
         value = self.model(key).get("backend", "llama")
         if value not in BACKENDS:
             raise ValueError(f"Model '{key or self.model_key()}' names the unknown inference backend "
@@ -249,8 +260,11 @@ class Config:
 
     def model_root(self, key: str | None = None) -> Path:
         """The folder a model's file, projector and download paths are relative to."""
-        if self.backend(key) == "strata":
+        backend = self.backend(key)
+        if backend == "strata":
             return self.path("paths.strata_data_dir")
+        if backend == "infernix":
+            return self.path("paths.infernix_models_dir")
         return self.path("paths.models_dir")
 
     def model_file(self, key: str | None = None) -> Path:

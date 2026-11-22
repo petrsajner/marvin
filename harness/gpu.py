@@ -71,6 +71,27 @@ def installed_ram_gib() -> float:
     return psutil.virtual_memory().total / 1024**3
 
 
+def model_availability(cfg, model_key: str, *, hardware=None) -> tuple[bool, str | None]:
+    """Return (available, reason) for hardware-gated models such as Blackwell-only Infernix models.
+
+    Standard llama/strata entries do not require a GPU architecture check and return (True, None)
+    without invoking nvidia-smi.
+    """
+    model = cfg.model(model_key)
+    requires = model.get("requires_gpu")
+    if not requires and cfg.backend(model_key) == "infernix":
+        requires = "blackwell"
+    if requires == "blackwell":
+        from harness.hardware import detect_hardware, driver_major, is_blackwell
+        hw = hardware if hardware is not None else detect_hardware()
+        if not is_blackwell(hw):
+            return False, "Requires NVIDIA RTX 50-series (Blackwell)"
+        drv = driver_major(hw.driver)
+        if drv is not None and drv < 580:
+            return False, "Requires NVIDIA driver 580 or newer"
+    return True, None
+
+
 def fitting_profiles(cfg, model_key: str, vram_gb: float | None) -> dict[str, dict]:
     """Return profiles compatible with a known GPU capacity budget and this PC's RAM class."""
     profiles = cfg.kv_cache_profiles(model_key)
@@ -113,8 +134,10 @@ def best_fit(cfg, vram_gb: float | None) -> tuple[str, str] | None:
     def pick(candidates):
         best: tuple | None = None  # (order, Q8, full cache, context, plain, has_limit, model, profile)
         for order, key in enumerate(candidates):
+            if not model_availability(cfg, key)[0]:
+                continue
             for prof_key, prof in fitting_profiles(cfg, key, vram_gb).items():
-                candidate = (-order, prof.get("cache_type", prof_key) == "q8_0",
+                candidate = (-order, prof.get("cache_type", prof_key) in ("q8_0", "int8"),
                              # A reduced value cache is an option, never the default:
                              # it costs recall over a long conversation, unmeasurably.
                              not prof.get("value_cache_type"),
@@ -129,6 +152,8 @@ def best_fit(cfg, vram_gb: float | None) -> tuple[str, str] | None:
 
 def fits(cfg, model_key: str, profile_key: str, vram_gb: float | None) -> bool:
     """Check profile compatibility; unknown capacity retains known profiles."""
+    if not model_availability(cfg, model_key)[0]:
+        return False
     return profile_key in fitting_profiles(cfg, model_key, vram_gb)
 
 
@@ -171,7 +196,8 @@ def lower_memory_profiles(cfg, model_key=None):
 def download_keys(cfg, vram_gb: float | None) -> list[str]:
     """Select models with a compatible profile; unknown GPU capacity keeps all candidates."""
     keys = [key for key, model in cfg.data["models"].items()
-            if not model.get("optional_download") or key == cfg.model_key()]
+            if (not model.get("optional_download") or key == cfg.model_key())
+            and model_availability(cfg, key)[0]]
     if vram_gb is None:
         return keys
     fitting = [k for k in keys if fitting_profiles(cfg, k, vram_gb)]

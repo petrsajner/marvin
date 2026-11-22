@@ -297,8 +297,12 @@ Thinking depth also stays beside the prompt because it can change between questi
 | 32 GB | Qwen Q4 | F16 | 128k / 96k |
 | 32 GB | Qwen Q5 | Q8 | 192k / 128k |
 | 32 GB | Qwen Q5 | F16 | 128k / 96k |
+| 24–96 GB (RTX 50-series) | Qwen 27B NVFP4 (Infernix) | Q8 / NVFP4 | 256k / 192k / 128k (32 GB+); 64k Q8, 128k / 64k NVFP4 (24 GB) |
+| 12–96 GB (RTX 50-series) | Flash-Next IQ3_S (Infernix) | Q8 | 256k / 128k |
 
 On 32 GB-class cards, the new-installation default is Qwen Q5 with Q8 KV and 192k context. Smaller cards (down to 12 GB) select an appropriate Q8 profile from the table. F16 is an explicit option only for Qwen Q4/Q5 on 32 GB-class cards. IQ3 is offered on 16/24 GB cards only. Each model and KV precision group offers the two highest relevant context choices.
+
+The **Infernix** models require an NVIDIA RTX 50-series (Blackwell, compute capability 12.0+) GPU and driver 580 or newer. On older NVIDIA cards (RTX 20/30/40 series), they remain visible in the model picker as greyed-out options with a hardware notice, while every llama.cpp and Strata model works normally.
 
 Cards with 48 GB or more (64 and 72 GB cards included) use their own **48 GB** profiles and cards with 96 GB the **96 GB** ones. They are estimated from the 32 GB measurements, not measured, because no such card was available: everything that fits a 32 GB card, plus Qwen Q4/Q5 at Q8 256k (also with MTP) and F16 256k. Qwen stays at most at 256k.
 
@@ -977,6 +981,8 @@ During confirmation, `y` allows, `n` denies, and `a` allows all remaining writes
 | `runtime\application.sqlite3` | Durable task queue, events, and file registry |
 | `runtime\models\strata` | Flash-Next's weights and the model files prepared from them |
 | `runtime\strata` | Flash-Next's model engine, prepared automatically |
+| `runtime\models\infernix` | Infernix model artifacts and DFlash2 drafter (RTX 50-series) |
+| `runtime\infernix` | Infernix engine binaries and chat templates, prepared automatically |
 | `sessions\<id>` | Messages, metadata, attachments, task state, research, compression, exports |
 | `projects` | Managed project folders created by the app |
 | `projects.json` | Registered project list |
@@ -1034,6 +1040,7 @@ The offline installation backup does not include chats, projects, memory, or per
 | `runtime\webapp.log` | Web UI startup and Python errors |
 | `runtime\llama-server.log` | Model loading, context, CUDA, inference, and timing |
 | `runtime\strata-server.log` | Flash-Next loading and inference |
+| `runtime\infernix-server.log` | Infernix loading and inference (RTX 50-series) |
 
 # 19. Troubleshooting
 
@@ -1041,7 +1048,7 @@ The offline installation backup does not include chats, projects, memory, or per
 
 - Open **Settings > Model and device**, read the error, and try restart.
 - Confirm all selected model files are complete, including Flash-Next's shards and projector.
-- Read `runtime\llama-server.log`, or `runtime\strata-server.log` for Flash-Next.
+- Read `runtime\llama-server.log`, `runtime\strata-server.log` for Strata, or `runtime\infernix-server.log` for Infernix.
 - Check NVIDIA driver/GPU availability.
 - Stop another process using port 8080.
 - If memory allocation fails, check both free VRAM and system RAM. Flash-Next keeps its weights in system RAM; other large programs left open reduce what it can use.

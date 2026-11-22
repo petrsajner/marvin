@@ -91,6 +91,108 @@ FLASH_NEXT_STRATA_IQ2 = {
     },
 }
 
+# Blackwell-accelerated (RTX 50-series, sm_120+) models on the Infernix engine.
+# Measured on 2026-11-22 (docs/design/2026-11-22-inference-engine-evaluation.md):
+# - Qwen3.8-27B NVFP4-QAD: 184-448 tok/s decode, 5,087 tok/s prefill, 6.6 s load, 8.6 GiB RAM.
+# - Qwen3.8-Flash-Next IQ3_S + DFlash2: 197-282 tok/s decode, 7,288 tok/s prefill, 6.9 GiB free RAM.
+# Both entries stay optional and visibly disabled on non-Blackwell GPUs so every user sees
+# what Marvin offers while older GPUs keep full llama.cpp and Strata support.
+QWEN27B_INFERNIX = {
+    "backend": "infernix",
+    "requires_gpu": "blackwell",
+    "alias": "Qwen3.8-27B NVFP4 · Infernix (22.2 GB, Blackwell RTX 50-series)",
+    "status_label": "Qwen 3.8 27B · NVFP4 (Infernix)",
+    "family": "qwen",
+    "repo": "Wallawalla47/Qwen3.8-27B-NVIDIA-NVFP4-QAD-Infernix-Exact",
+    "revision": "f3c7808267b300886b2e33f1d743160da8119b58",
+    "download_dir": "qwen3.8-27b-nvfp4",
+    "download_transport": "range",
+    "file": "qwen3.8-27b-nvfp4/Qwen3.8-27B-NVIDIA-NVFP4-QAD-Infernix-Exact.infernix",
+    "assets": [
+        {"path": "Qwen3.8-27B-NVIDIA-NVFP4-QAD-Infernix-Exact.infernix", "size": 22205138944,
+         "sha256": "e89a7698166778c5bdeeb66dbc558d8f531ae476397d7e79dea4fb9c2a728b78"},
+    ],
+    "optional_download": True,
+    "vision": True,
+    "uses_system_ram": False,
+    "image_tokens": 1024,
+    "read_timeout": 900,
+    "sampling": {
+        "thinking": {"temperature": 1.0, "top_p": 0.95, "top_k": 20, "min_p": 0.0, "presence_penalty": 0.0},
+        "non_thinking": {"temperature": 0.7, "top_p": 0.8, "top_k": 20, "min_p": 0.0, "presence_penalty": 1.5},
+    },
+    "infernix": {
+        "model_id": "local-model",
+        "chat_template": "chat_templates/qwen3_8.jinja",
+        "spec": "dflash2",
+        "draft_tokens": "auto",
+        "lm_head_draft": True,
+        "ngram_draft_tokens": "auto",
+        "embedding_host": True,
+        "host_context_mib": 4096,
+        "kv_dtype": "int8",
+        "vision": True,
+    },
+}
+
+# Companion DFlash2 drafter for Flash-Next on Infernix; downloaded automatically during model preparation.
+FLASH_NEXT_INFERNIX_DFLASH2 = {
+    "alias": "Qwen3.8-Flash-Next DFlash2 drafter (776 MB, Infernix)",
+    "repo": "Wallawalla47/Qwen3.8-Flash-Next-DFlash2-Infernix",
+    "revision": "9f450f303e07e087a8db1d56718e8f0e591701ba",
+    "download_dir": "flash-next-dflash2",
+    "download_transport": "range",
+    "optional_download": True,
+    "assets": [
+        {"path": "Qwen3.8-Flash-Next-DFlash2-Infernix.infernix", "size": 776075776,
+         "sha256": "8325b68b3790811754bc6a5f803c2f27b5daa868eb295efaa04ba88cc923d704"},
+    ],
+}
+
+FLASH_NEXT_INFERNIX = {
+    "backend": "infernix",
+    "requires_gpu": "blackwell",
+    "alias": "Qwen3.8-Flash-Next IQ3_S · Infernix (85.9 GB, Blackwell RTX 50-series)",
+    "status_label": "Qwen 3.8 Flash-Next · IQ3_S (Infernix)",
+    "family": "qwen4exp",
+    "repo": "Wallawalla47/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-Infernix",
+    "revision": "7552fca2c143b80fd3a8e34508baf9243162b681",
+    "download_dir": "flash-next-iq3_s",
+    "download_transport": "range",
+    "file": "flash-next-iq3_s/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-Infernix-00001-of-00002.infernix",
+    "assets": [
+        {"path": "Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-Infernix-00001-of-00002.infernix", "size": 32000000000,
+         "sha256": "98b1861995e1136d16b6221c6382b91a50c0386d0ec03a9dae02b06cdbc218f7"},
+        {"path": "Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-Infernix-00002-of-00002.infernix", "size": 24755219968,
+         "sha256": "ae501d462740f9aefb537fcdc3b8997346971796eab645534f6dfcb5302b9850"},
+        {"path": "Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-Infernix.ngram", "size": 29127258112,
+         "sha256": "5b0de8e2f86e391b60340a66ebe883cce527d231541b18e149847da8c8f04ccb"},
+    ],
+    "optional_download": True,
+    "vision": True,
+    "uses_system_ram": True,
+    "image_tokens": 1024,
+    "read_timeout": 1800,
+    "sampling": {
+        "thinking": {"temperature": 1.0, "top_p": 0.95, "top_k": 20, "min_p": 0.0, "presence_penalty": 0.0},
+        "non_thinking": {"temperature": 0.7, "top_p": 0.8, "top_k": 20, "min_p": 0.0, "presence_penalty": 1.5},
+    },
+    "infernix": {
+        "model_id": "local-model",
+        "ngram_volume": "flash-next-iq3_s/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-Infernix.ngram",
+        "draft_model": "flash-next-dflash2/Qwen3.8-Flash-Next-DFlash2-Infernix.infernix",
+        "draft_catalog": "FLASH_NEXT_INFERNIX_DFLASH2",
+        "chat_template": "chat_templates/qwen3_8.jinja",
+        "spec": "dflash2",
+        "draft_tokens": "auto",
+        "lm_head_draft": True,
+        "expert_ram_layout": "exclusive",
+        "host_context_mib": 2048,
+        "kv_dtype": "int8",
+        "vision": True,
+    },
+}
+
 # Auxiliary draft model for the speculative ("MTP") q4/q5 profiles. Selected via
 # a profile, never a standalone model entry; same upstream repository as the
 # Qwen3.8-27B weights so the tokenizer matches the target models exactly.

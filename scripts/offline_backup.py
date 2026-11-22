@@ -133,6 +133,13 @@ def _runtime_sources(root: Path, exclude: tuple[str, ...] = ()) -> list[tuple[Pa
             if source.is_file() and "__pycache__" not in source.parts:
                 rel = Path("payload") / "runtime" / "strata" / source.relative_to(strata)
                 sources.append((source, rel, "strata"))
+    infernix = runtime / "infernix"
+    if infernix.is_dir():
+        # Blackwell-accelerated Infernix engine, once prepared.
+        for source in sorted(infernix.rglob("*")):
+            if source.is_file():
+                rel = Path("payload") / "runtime" / "infernix" / source.relative_to(infernix)
+                sources.append((source, rel, "infernix"))
     webview = runtime / "webview2"
     if webview.is_dir():
         for source in sorted(webview.iterdir()):
@@ -226,9 +233,9 @@ def create_backup(root: Path, output: Path) -> dict[str, Any]:
         raise FileExistsError(f"Backup target already exists: {output}")
     sources = _runtime_sources(root)
     model_sources = [item for item in sources if item[2] == "models"
-                     and item[0].suffix.lower() == ".gguf"]
+                     and item[0].suffix.lower() in {".gguf", ".infernix"}]
     if not model_sources:
-        raise FileNotFoundError(f"No downloaded GGUF files found in {root / 'runtime/models'}")
+        raise FileNotFoundError(f"No downloaded model files found in {root / 'runtime/models'}")
     if not any(item[0].name.lower() == "llama-server.exe" for item in sources):
         raise FileNotFoundError(f"llama-server.exe not found in {root / 'runtime/llama'}")
     try:

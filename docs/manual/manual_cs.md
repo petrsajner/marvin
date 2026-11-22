@@ -264,8 +264,12 @@ Myšlení zůstává také u promptu, protože ho můžete měnit mezi otázkami
 | 32 GB | Qwen Q4 | F16 | 128k / 96k |
 | 32 GB | Qwen Q5 | Q8 | 192k / 128k |
 | 32 GB | Qwen Q5 | F16 | 128k / 96k |
+| 24–96 GB (RTX řady 50) | Qwen 27B NVFP4 (Infernix) | Q8 / NVFP4 | 256k / 192k / 128k (32 GB+); 64k Q8, 128k / 64k NVFP4 (24 GB) |
+| 12–96 GB (RTX řady 50) | Flash-Next IQ3_S (Infernix) | Q8 | 256k / 128k |
 
 Na kartách třídy 32 GB je výchozí Qwen Q5 s Q8 KV a kontextem 192k. Menší karty (od 12 GB) dostanou odpovídající Q8 profil podle tabulky. F16 je volitelně pouze pro Qwen Q4/Q5 na 32GB kartách. IQ3 se nabízí pouze na 16/24GB kartách. Každá kombinace modelu a přesnosti KV nabízí dvě nejvyšší odpovídající velikosti kontextu.
+
+Modely **Infernix** vyžadují grafickou kartu NVIDIA RTX řady 50 (Blackwell, compute capability 12.0+) a ovladač 580 nebo novější. Na starších kartách NVIDIA (RTX řady 20/30/40) zůstávají v nabídce modelů viditelné jako zašedlé položky s upozorněním na požadavek Blackwellu, zatímco všechny modely na llama.cpp i Stratě fungují normálně.
 
 Karty se 48 GB a více (včetně 64 a 72GB karet) používají vlastní profily **48 GB** a karty s 96 GB profily **96 GB**. Jsou odhadnuté ze změřených hodnot pro 32 GB, nikoli změřené, protože taková karta nebyla k dispozici: vše, co se vejde na 32GB kartu, a navíc Qwen Q4/Q5 s Q8 256k (i s MTP) a F16 256k. Qwen zůstává nejvýš na 256k.
 
@@ -711,6 +715,8 @@ Při potvrzení `y` povolí, `n` zamítne a `a` povolí zbývající WRITE akce 
 | `runtime\application.sqlite3` | Fronta úloh, trvalé události a registr souborů |
 | `runtime\models\strata` | Váhy Flash-Next a soubory z nich připravené |
 | `runtime\strata` | Jádro Flash-Next, připravené automaticky |
+| `runtime\models\infernix` | Artefakty modelů Infernix a DFlash2 drafter (RTX řady 50) |
+| `runtime\infernix` | Binárky a šablony jádra Infernix, připravené automaticky |
 | `sessions\<id>` | Zprávy, přílohy, task state, research, komprese a exporty |
 | `projects` | Projekty vytvořené aplikací |
 | `projects.json` | Registr projektů |
@@ -755,12 +761,13 @@ Offline instalační záloha neobsahuje chaty, projekty, paměť ani osobní ski
 | `runtime\webapp.log` | Web UI a Python chyby |
 | `runtime\llama-server.log` | Model, kontext, CUDA, inference a timing |
 | `runtime\strata-server.log` | Načítání a inference Flash-Next |
+| `runtime\infernix-server.log` | Načítání a inference Infernix (RTX řady 50) |
 
 # 19. Řešení problémů
 
 ## Server nestartuje
 
-Otevřete **Nastavení > Model a zařízení**, přečtěte hlášení a zkuste restart. Ověřte kompletní model, kompatibilní NVIDIA ovladač a volnou paměť. Flash-Next drží váhy v systémové RAM; další velké otevřené programy zmenšují, co může použít, a potřebuje ovladač NVIDIA 580 nebo novější. Podrobnosti jsou v `runtime\llama-server.log`, u Flash-Next v `runtime\strata-server.log`.
+Otevřete **Nastavení > Model a zařízení**, přečtěte hlášení a zkuste restart. Ověřte kompletní model, kompatibilní NVIDIA ovladač a volnou paměť. Flash-Next drží váhy v systémové RAM; další velké otevřené programy zmenšují, co může použít, a potřebuje ovladač NVIDIA 580 nebo novější. Podrobnosti jsou v `runtime\llama-server.log`, u Straty v `runtime\strata-server.log` a u Infernixu v `runtime\infernix-server.log`.
 
 ## Chybí model nebo projektor
 

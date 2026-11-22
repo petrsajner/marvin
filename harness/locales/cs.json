@@ -941,7 +941,12 @@
     "Press → or Tab to use the suggestion": "Šipkou → nebo Tabem návrh převezmete",
     "Suggestions": "Návrhy",
     "Suggest the next step": "Navrhovat další krok",
-    "While a chat is idle, the empty message field offers the model's idea of your next request. Press → or Tab to use it.": "Když chat nepracuje, prázdné pole pro zprávu nabídne představu modelu o vašem dalším požadavku. Šipkou → nebo Tabem ji převezmete."
+    "While a chat is idle, the empty message field offers the model's idea of your next request. Press → or Tab to use it.": "Když chat nepracuje, prázdné pole pro zprávu nabídne představu modelu o vašem dalším požadavku. Šipkou → nebo Tabem ji převezmete.",
+    "NVFP4 · 128k": "NVFP4 · 128k",
+    "NVFP4 · 64k": "NVFP4 · 64k",
+    "Requires NVIDIA RTX 50-series (Blackwell)": "Vyžaduje NVIDIA RTX řady 50 (Blackwell)",
+    "Requires NVIDIA driver 580 or newer": "Vyžaduje ovladač NVIDIA 580 nebo novější",
+    "Greyed-out models require an NVIDIA RTX 50-series (Blackwell) GPU.": "Zašedlé modely vyžadují grafickou kartu NVIDIA RTX řady 50 (Blackwell)."
   },
   "legacy_profile_labels": {
     "16 bit - přesnější, kontext 128k": "16-bit - more precise, context 128k",

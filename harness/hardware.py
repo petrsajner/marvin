@@ -30,12 +30,42 @@ class Hardware:
     driver: str = ""
     vram_total: int = 0
     vram_available: int = 0
+    compute_cap: str = ""
 
     def fingerprint(self) -> str:
         stable = asdict(self)
         stable.pop("ram_available")
         stable.pop("vram_available")
         return hashlib.sha256(json.dumps(stable, sort_keys=True).encode()).hexdigest()
+
+
+def compute_capability_major(compute_cap: str) -> int | None:
+    """Return the major CUDA compute capability (e.g. 12 for '12.0'), or None."""
+    text = str(compute_cap or "").strip()
+    if not text:
+        return None
+    try:
+        return int(text.split(".", 1)[0])
+    except ValueError:
+        return None
+
+
+def driver_major(driver: str) -> int | None:
+    """Return the major NVIDIA driver version (e.g. 591 for '591.44'), or None."""
+    text = str(driver or "").strip()
+    if not text:
+        return None
+    try:
+        return int(text.split(".", 1)[0])
+    except ValueError:
+        return None
+
+
+def is_blackwell(hw: Hardware | None = None) -> bool:
+    """True when the first NVIDIA GPU is Blackwell architecture (compute capability >= 12.0)."""
+    info = hw if hw is not None else detect_hardware()
+    major = compute_capability_major(info.compute_cap)
+    return major is not None and major >= 12
 
 
 def cpu_sets() -> tuple[tuple[int, ...], tuple[int, ...]]:
@@ -83,16 +113,23 @@ def detect_hardware(*, fresh=False) -> Hardware:
     physical_count = len(physical) or psutil.cpu_count(logical=False) or 1
     logical_count = psutil.cpu_count() or physical_count
     if fresh or time.monotonic() - _gpu_cache["time"] > 2:
-        try:
-            output = subprocess.run(["nvidia-smi", "--query-gpu=name,uuid,driver_version,memory.total,memory.free",
-                "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=5,
-                creationflags=NO_WINDOW)
-            row = [s.strip() for s in output.stdout.splitlines()[0].split(",")]
-            gpu = (row[0], row[1], row[2], int(row[3]) * 2**20, int(row[4]) * 2**20)
-        except (OSError, ValueError, IndexError, subprocess.SubprocessError):
-            gpu = ("", "", "", 0, 0)
+        gpu = ("", "", "", 0, 0, "")
+        for query in ("name,uuid,driver_version,memory.total,memory.free,compute_cap",
+                      "name,uuid,driver_version,memory.total,memory.free"):
+            try:
+                output = subprocess.run(["nvidia-smi", f"--query-gpu={query}",
+                    "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=5,
+                    creationflags=NO_WINDOW)
+                if output.returncode != 0 or not output.stdout.strip():
+                    continue
+                row = [s.strip() for s in output.stdout.splitlines()[0].split(",")]
+                cap = row[5] if len(row) > 5 and row[5] not in ("[N/A]", "N/A") else ""
+                gpu = (row[0], row[1], row[2], int(row[3]) * 2**20, int(row[4]) * 2**20, cap)
+                break
+            except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+                continue
         _gpu_cache.update(time=time.monotonic(), row=gpu)
-    gpu = _gpu_cache["row"] or ("", "", "", 0, 0)
+    gpu = _gpu_cache["row"] or ("", "", "", 0, 0, "")
     return Hardware(platform.processor(), physical_count, logical_count, performance, physical,
                     memory.total, memory.available, *gpu)
 

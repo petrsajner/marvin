@@ -34,6 +34,21 @@ def bundle_strata(target: Path) -> dict:
     return record
 
 
+def bundle_infernix(target: Path) -> dict:
+    """Infernix's pinned Windows archive so Full/offline installs unpack it without the internet."""
+    sys.path.insert(0, str(ROOT))
+    from harness import infernix_runtime
+    cache = ROOT / "runtime" / "runtime-archives" / f"infernix-{infernix_runtime.VERSION}"
+    cache.mkdir(parents=True, exist_ok=True)
+    target.mkdir(parents=True)
+    archive = infernix_runtime._fetch(infernix_runtime.ENGINE, cache)
+    shutil.copy2(archive, target / infernix_runtime.ENGINE["name"])
+    record = {"version": infernix_runtime.VERSION, "archive": infernix_runtime.ENGINE["name"],
+              "sha256": infernix_runtime.ENGINE["sha256"]}
+    (target / "manifest.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
+    return record
+
+
 def build():
     if sys.version_info[:2] != (3, 12) or sys.maxsize < 2**32:
         raise RuntimeError("Full must be built using 64-bit Python 3.12")
@@ -74,6 +89,7 @@ def build():
             copied.add(relative)
     shutil.copytree(ROOT / "runtime/llama", target / "llama", dirs_exist_ok=True)
     strata = bundle_strata(target / "strata-offline")
+    infernix = bundle_infernix(target / "infernix-offline")
     # App-local MSVC runtime: do not rely on a machine-wide VC++ installation.
     crt = target / "crt"
     crt.mkdir()
@@ -91,7 +107,7 @@ def build():
             raise FileNotFoundError(f"Required app-local runtime missing: {name}")
     content = (ROOT / "requirements.txt").read_bytes() + b"\nLOCK\n" + (ROOT / "requirements-windows-py312.lock").read_bytes()
     manifest = {"app_version": version, "python": sys.version.split()[0], "packages_files": len(copied),
-                "requirements_digest": hashlib.sha256(content).hexdigest(), "strata": strata}
+                "requirements_digest": hashlib.sha256(content).hexdigest(), "strata": strata, "infernix": infernix}
     (target / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     # Swap the new payload in, then drop the old one. Keeping it aside used to be
     # permanent and leaked 1.2 GB of build output per full build.

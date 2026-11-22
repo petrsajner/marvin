@@ -59,10 +59,34 @@ def profile(context, gpu_class, measured, *, precision="q8_0", value_precision=N
 
 SMALL_CARD_MEASUREMENT = "profiles-16gb-2026-09-19"
 PROFILES_12GB_MEASUREMENT = "profiles-12gb-2026-11-22"
+INFERNIX_MEASUREMENT_ID = "infernix-profiles-2026-11-22"
 
 # Strata (docs/design/2026-10-05-strata-backend.md), approved by the owner on
 # 2026-10-07 from docs/design/strata-qualification-2026-10-07.md.
 STRATA_MEASUREMENT_ID = "strata-qualification-2026-10-07"
+
+
+INFERNIX_SHORT = {"int8": "Q8", "nvfp4": "NVFP4", "fp8": "FP8", "bf16": "BF16"}
+
+
+def infernix_profile(context, gpu_class, measured, *, kv_dtype="int8", kv_capacity="exact",
+                     measurement=INFERNIX_MEASUREMENT_ID):
+    """One measured Infernix placement for a Blackwell GPU class.
+
+    `kv_capacity="exact"` passes `--kv-capacity <ctx>` so recovery steps genuinely
+    shrink VRAM allocation; `"auto"` lets Infernix fill remaining VRAM with its
+    expert cache (Flash-Next) or prefix block cache (48/96 GB cards).
+    """
+    prefix = INFERNIX_SHORT.get(kv_dtype, kv_dtype)
+    return {
+        "cache_type": kv_dtype,
+        "ctx_size": context * 1024,
+        "gpu_class": gpu_class,
+        "min_vram_gb": measured,
+        "label": f"{prefix} · {context}k",
+        "measurement_id": measurement,
+        "kv_capacity": kv_capacity,
+    }
 
 
 AUTO_CACHE_VRAM_RESERVE_MIB = 1100
@@ -204,6 +228,28 @@ PROFILES = {
         (32, 16, "resident", False, ((256, 14.349, 2535), (128, 14.349, 3896))),
         (32, 12, "resident", False, ((128, 8.076, 1000), (64, 8.034, 1600))),
     ]),
+    # Blackwell-only Infernix profiles sized with infernix-serve --plan and validated
+    # live on RTX 5090 (docs/design/2026-11-22-inference-engine-evaluation.md).
+    "qwen27b_infernix": {
+        "int8_256k": infernix_profile(256, 32, 27.638),
+        "int8_192k": infernix_profile(192, 32, 25.575),
+        "int8_128k": infernix_profile(128, 32, 23.513),
+        "int8_64k_g24": infernix_profile(64, 24, 21.450),
+        "nvfp4_128k_g24": infernix_profile(128, 24, 21.638, kv_dtype="nvfp4"),
+        "nvfp4_64k_g24": infernix_profile(64, 24, 20.513, kv_dtype="nvfp4"),
+    },
+    # Flash-Next on Infernix adapts its VRAM expert cache to DXGI free budget and
+    # dynamically balances RAM vs SSD expert tiers (--expert-ram-layout exclusive).
+    "flash_next_infernix": {
+        "int8_256k_g32": infernix_profile(256, 32, 28.767, kv_capacity="auto"),
+        "int8_128k_g32": infernix_profile(128, 32, 28.768, kv_capacity="auto"),
+        "int8_256k_g24": infernix_profile(256, 24, 20.766, kv_capacity="auto"),
+        "int8_128k_g24": infernix_profile(128, 24, 20.768, kv_capacity="auto"),
+        "int8_256k_g16": infernix_profile(256, 16, 12.768, kv_capacity="auto"),
+        "int8_128k_g16": infernix_profile(128, 16, 12.768, kv_capacity="auto"),
+        "int8_256k_g12": infernix_profile(256, 12, 8.767, kv_capacity="auto"),
+        "int8_128k_g12": infernix_profile(128, 12, 8.767, kv_capacity="auto"),
+    },
 }
 
 
@@ -245,6 +291,15 @@ def larger_card_strata(rows_32):
 for _gpu in LARGER_CARDS:
     for _model, _profiles in larger_card_profiles(_gpu).items():
         PROFILES[_model].update(_profiles)
+    PROFILES["qwen27b_infernix"].update({
+        f"int8_256k_g{_gpu}": infernix_profile(256, _gpu, 27.638, kv_capacity="auto", measurement=DERIVED_MEASUREMENT_ID),
+        f"int8_192k_g{_gpu}": infernix_profile(192, _gpu, 25.575, kv_capacity="auto", measurement=DERIVED_MEASUREMENT_ID),
+        f"int8_128k_g{_gpu}": infernix_profile(128, _gpu, 23.513, kv_capacity="auto", measurement=DERIVED_MEASUREMENT_ID),
+    })
+    PROFILES["flash_next_infernix"].update({
+        f"int8_256k_g{_gpu}": infernix_profile(256, _gpu, 28.767, kv_capacity="auto", measurement=DERIVED_MEASUREMENT_ID),
+        f"int8_128k_g{_gpu}": infernix_profile(128, _gpu, 28.768, kv_capacity="auto", measurement=DERIVED_MEASUREMENT_ID),
+    })
 PROFILES["flash_next_strata"].update(larger_card_strata(STRATA_IQ3_ROWS))
 PROFILES["flash_next_strata_iq2"].update(larger_card_strata(STRATA_IQ2_ROWS))
 

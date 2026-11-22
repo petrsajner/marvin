@@ -105,6 +105,7 @@ Source: "..\build\full-payload-{#MyAppVersion}\python\*"; DestDir: "{app}\runtim
 Source: "..\build\full-payload-{#MyAppVersion}\packages\*"; DestDir: "{app}\runtime\python-packages"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\build\full-payload-{#MyAppVersion}\llama\*"; DestDir: "{app}\runtime\llama"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\build\full-payload-{#MyAppVersion}\strata-offline\*"; DestDir: "{app}\runtime\strata-offline"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\build\full-payload-{#MyAppVersion}\infernix-offline\*"; DestDir: "{app}\runtime\infernix-offline"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\build\full-payload-{#MyAppVersion}\manifest.json"; DestDir: "{app}\runtime"; DestName: "full-manifest.json"; Flags: ignoreversion
 #endif
 ; Main application (PyInstaller: executable and _internal)
@@ -163,11 +164,12 @@ var
   ModelList: TNewCheckListBox;
   // Populated in FillModelTable because Pascal Script does not support typed constants;
   // mirrors config.yaml (min_vram_gb is the smallest model profile)
-  ModelKeys: array[0..5] of String;
-  ModelNames: array[0..5] of String;
-  ModelMinVram: array[0..5] of Double;
-  ModelRowKeys: array[0..5] of String;
-  ModelFiles: array[0..5] of String;
+  ModelKeys: array[0..7] of String;
+  ModelNames: array[0..7] of String;
+  ModelMinVram: array[0..7] of Double;
+  ModelBlackwell: array[0..7] of Boolean;
+  ModelRowKeys: array[0..7] of String;
+  ModelFiles: array[0..7] of String;
 
 procedure FillModelTable;
 begin
@@ -177,18 +179,32 @@ begin
   ModelKeys[3] := 'q5';
   ModelKeys[4] := 'flash_next_strata';
   ModelKeys[5] := 'flash_next_strata_iq2';
-  ModelNames[0] := 'Qwen3.8-27B Q2_K_XL  (9.8 GB download)  -  12/16 GB GPUs, optional on 16 GB+';
-  ModelNames[1] := 'Qwen3.8-27B IQ3_S  (12.0 GB download)  -  16/24 GB GPUs, Q8 64k/48k on 16 GB';
-  ModelNames[2] := 'Qwen3.8-27B Q4_K_M  (16.5 GB download)  -  24 GB+ GPUs';
-  ModelNames[3] := 'Qwen3.8-27B Q5_K_M  (19.8 GB download)  -  24 GB+ GPUs';
-  ModelNames[4] := 'Qwen3.8-Flash-Next IQ3_S  (84.5 GB download)  -  12 GB+ GPU and 32 GB+ RAM, optional';
-  ModelNames[5] := 'Qwen3.8-Flash-Next IQ2_XS  (69 GB, 39 GB beside IQ3_S)  -  faster on 48/32 GB RAM, optional';
+  ModelKeys[6] := 'qwen27b_infernix';
+  ModelKeys[7] := 'flash_next_infernix';
+  ModelNames[0] := 'Qwen3.8-27B Q2_K_XL  (9.8 GB)  -  12/16 GB GPUs, optional on 16 GB+';
+  ModelNames[1] := 'Qwen3.8-27B IQ3_S  (12.0 GB)  -  16/24 GB GPUs, Q8 64k/48k on 16 GB';
+  ModelNames[2] := 'Qwen3.8-27B Q4_K_M  (16.5 GB)  -  24 GB+ GPUs';
+  ModelNames[3] := 'Qwen3.8-27B Q5_K_M  (19.8 GB)  -  24 GB+ GPUs';
+  ModelNames[4] := 'Qwen3.8-Flash-Next IQ3_S  (84.5 GB)  -  12 GB+ GPU & 32 GB+ RAM, optional';
+  ModelNames[5] := 'Qwen3.8-Flash-Next IQ2_XS  (69 GB)  -  faster on 48/32 GB RAM, optional';
+  ModelNames[6] := 'Qwen3.8-27B NVFP4 · Infernix  (22.2 GB)  -  24 GB+ RTX 50-series, optional';
+  ModelNames[7] := 'Qwen3.8-Flash-Next IQ3_S · Infernix  (85.9 GB)  -  12 GB+ RTX 50-series, optional';
   ModelMinVram[0] := 11.0;
   ModelMinVram[1] := 15.0;
   ModelMinVram[2] := 23.0;
   ModelMinVram[3] := 23.0;
   ModelMinVram[4] := 11.0;
   ModelMinVram[5] := 11.0;
+  ModelMinVram[6] := 23.0;
+  ModelMinVram[7] := 11.0;
+  ModelBlackwell[0] := False;
+  ModelBlackwell[1] := False;
+  ModelBlackwell[2] := False;
+  ModelBlackwell[3] := False;
+  ModelBlackwell[4] := False;
+  ModelBlackwell[5] := False;
+  ModelBlackwell[6] := True;
+  ModelBlackwell[7] := True;
   ModelFiles[0] := 'Qwen3.8-27B-UD-Q2_K_XL.gguf';
   ModelFiles[1] := 'Qwen3.8-27B-UD-IQ3_S.gguf';
   ModelFiles[2] := 'Qwen3.8-27B-UD-Q4_K_M.gguf';
@@ -196,6 +212,9 @@ begin
   // Flash-Next's receipts in the default paths.strata_data_dir (runtime\models\strata).
   ModelFiles[4] := 'strata\models\.marvin-verified.json';
   ModelFiles[5] := 'strata\models\.marvin-verified-iq2_xs.json';
+  // Infernix receipts in paths.infernix_models_dir (runtime\models\infernix).
+  ModelFiles[6] := 'infernix\qwen3.8-27b-nvfp4\.marvin-verified.json';
+  ModelFiles[7] := 'infernix\flash-next-iq3_s\.marvin-verified.json';
 end;
 
 function DetectVRAM: Double;
@@ -213,40 +232,74 @@ begin
     Result := StrToIntDef(Trim(Lines[0]), 0) / 1024.0;
 end;
 
+function DetectComputeMajor: Integer;
+var
+  ResultCode, DotPos: Integer;
+  TmpFile, Raw: String;
+  Lines: TArrayOfString;
+begin
+  Result := 0;
+  TmpFile := ExpandConstant('{tmp}\qwen-cap.txt');
+  Exec(ExpandConstant('{cmd}'),
+       Format('/c nvidia-smi --query-gpu=compute_cap --format=csv,noheader > "%s"', [TmpFile]),
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  if (ResultCode = 0) and LoadStringsFromFile(TmpFile, Lines) and (GetArrayLength(Lines) > 0) then
+  begin
+    Raw := Trim(Lines[0]);
+    DotPos := Pos('.', Raw);
+    if DotPos > 1 then
+      Raw := Copy(Raw, 1, DotPos - 1);
+    Result := StrToIntDef(Raw, 0);
+  end;
+end;
+
 procedure RefreshModelChecks(AppDir: String);
 var
-  I: Integer;
+  I, CapMajor: Integer;
   Vram: Double;
-  Fits, Checked, HasAnyModel, IsOptional: Boolean;
-  ModelsDir: String;
+  Fits, Enabled, Checked, HasAnyModel, IsOptional, IsBlackwell: Boolean;
+  ModelsDir, DisplayName: String;
 begin
   Vram := DetectVRAM;
+  CapMajor := DetectComputeMajor;
+  IsBlackwell := CapMajor >= 12;
   ModelsDir := AppDir + '\runtime\models';
   HasAnyModel := False;
-  for I := 0 to 5 do
+  for I := 0 to 7 do
     if FileExists(ModelsDir + '\' + ModelFiles[I]) then HasAnyModel := True;
   // Recreate TNewCheckListBox on refresh because individual items cannot be removed
   if ModelList <> nil then
     ModelList.Free;
   ModelList := TNewCheckListBox.Create(ModelPage.Surface);
-  ModelList.SetBounds(ScaleX(0), ScaleY(0), ModelPage.SurfaceWidth, ScaleY(150));
+  ModelList.SetBounds(ScaleX(0), ScaleY(0), ModelPage.SurfaceWidth, ScaleY(190));
   ModelList.Parent := ModelPage.Surface;
   ModelList.ShowLines := False;
-  for I := 0 to 5 do
+  for I := 0 to 7 do
   begin
     Fits := (Vram <= 0) or (ModelMinVram[I] <= Vram);
-    // Q2 is optional on 16 GB+ GPUs (automatic only on 12 GB); Flash-Next is always optional.
+    // Q2 is optional on 16 GB+ GPUs (automatic only on 12 GB); Flash-Next and Infernix are optional.
     IsOptional := (I >= 4) or ((I = 0) and ((Vram <= 0) or (Vram >= 15.0)));
-    // Fresh installs select all compatible standard models; upgrades select only models
-    // already downloaded. The user selects any additional models explicitly.
-    if HasAnyModel or IsOptional then
-      Checked := Fits and FileExists(ModelsDir + '\' + ModelFiles[I])
+    if ModelBlackwell[I] and (not IsBlackwell) then
+    begin
+      Enabled := False;
+      Checked := False;
+      DisplayName := ModelNames[I] + '  [Requires RTX 50-series Blackwell]';
+    end
     else
-      Checked := Fits;
+    begin
+      Enabled := Fits;
+      DisplayName := ModelNames[I];
+      // Fresh installs select all compatible standard models; upgrades select only models
+      // already downloaded. The user selects any additional models explicitly.
+      if HasAnyModel or IsOptional then
+        Checked := Fits and FileExists(ModelsDir + '\' + ModelFiles[I])
+      else
+        Checked := Fits;
+    end;
     if not ((I = 1) and (Vram >= 31.0)) then
     begin
       ModelRowKeys[ModelList.Items.Count] := ModelKeys[I];
-      ModelList.AddCheckBox(ModelNames[I], '', 0, Checked, Fits, False, False, TObject(I));
+      ModelList.AddCheckBox(DisplayName, '', 0, Checked, Enabled, False, False, TObject(I));
     end;
   end;
 end;

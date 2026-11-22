@@ -1,8 +1,8 @@
 """Manage the inference server: start, stop, switch and status.
 
-llama-server runs every model except those whose entry names `backend: strata`;
-those run on the Strata engine (harness/strata_backend.py). Each function that
-touches the server process branches once on the backend.
+llama-server runs every model except those whose entry names `backend: strata`
+(harness/strata_backend.py) or `backend: infernix` (harness/infernix_backend.py).
+Each function that touches the server process branches once on the backend.
 
 Shared by the CLI, TUI and web application."""
 from __future__ import annotations
@@ -66,10 +66,15 @@ def record_allocation_failure(cfg, error=""):
         if record.get("model") != cfg.model_key():
             return
         markers = MEMORY_MARKERS
-        if record.get("backend") == "strata":
+        backend = record.get("backend")
+        if backend == "strata":
             from harness import strata_backend
             tail = strata_backend.recent_log_text(cfg, record)
             markers += strata_backend.MEMORY_MARKERS
+        elif backend == "infernix":
+            from harness import infernix_backend
+            tail = infernix_backend.recent_log_text(cfg, record)
+            markers += infernix_backend.MEMORY_MARKERS
         else:
             path = cfg.path("paths.runtime_dir") / "llama-server.log"
             with path.open("rb") as stream:
@@ -176,9 +181,16 @@ def _managed_process(cfg: Config):
         proc = psutil.Process(pid)
         if not proc.is_running() or proc.status() == psutil.STATUS_ZOMBIE:
             raise psutil.NoSuchProcess(pid)
-        if _backend_of(cfg, model) == "strata":
+        backend = _backend_of(cfg, model)
+        if backend == "strata":
             from harness import strata_backend
             if not strata_backend.owns_process(cfg, model, proc):
+                pid_file(cfg).unlink(missing_ok=True)
+                return None
+            return proc
+        if backend == "infernix":
+            from harness import infernix_backend
+            if not infernix_backend.owns_process(cfg, model, proc):
                 pid_file(cfg).unlink(missing_ok=True)
                 return None
             return proc
@@ -201,6 +213,11 @@ def _managed_process(cfg: Config):
 
 def slots_processing(cfg: Config) -> bool | None:
     """Check whether the server is processing a request; None means unavailable."""
+    record = _pid_record(cfg)
+    backend = _backend_of(cfg, record[0]) if record is not None else _backend_of(cfg, cfg.model_key())
+    if backend == "infernix":
+        from harness import infernix_backend
+        return infernix_backend.slots_processing(cfg)
     try:
         r = requests.get(f"{cfg.base_url}/slots", timeout=3)
         slots = r.json()
@@ -213,7 +230,8 @@ def stop(cfg: Config, quiet: bool = False) -> bool:
     import psutil
     pf = pid_file(cfg)
     record = _pid_record(cfg)
-    strata = record is not None and _backend_of(cfg, record[0]) == "strata"
+    backend = _backend_of(cfg, record[0]) if record is not None else "llama"
+    strata = backend == "strata"
     proc = _managed_process(cfg)
     killed = False
     if proc is not None:
@@ -242,7 +260,7 @@ def stop(cfg: Config, quiet: bool = False) -> bool:
             time.sleep(1)
     pf.unlink(missing_ok=True)
     if not quiet:
-        name = "Strata server" if strata else "llama-server"
+        name = {"strata": "Strata server", "infernix": "Infernix server"}.get(backend, "llama-server")
         print(f"[OK] {name} stopped." if killed else f"[INFO] {name} was not running.")
     return True
 
@@ -277,16 +295,21 @@ def _start_locked(cfg: Config, model_key: str | None = None,
     if model_key not in cfg.data["models"]:
         print(f"[ERROR] Unknown model '{model_key}'. Available: {', '.join(cfg.data['models'])}")
         return 1
-    from harness.gpu import normalize_vram_setting
+    from harness.gpu import model_availability, normalize_vram_setting
     cfg.data.setdefault("hardware", {})["vram_gb"] = normalize_vram_setting(
         cfg.data.get("hardware", {}).get("vram_gb", "auto"))
-    strata = cfg.backend(model_key) == "strata"
+    available, unavailable_reason = model_availability(cfg, model_key)
+    if not available:
+        raise RuntimeError(unavailable_reason or f"Model '{model_key}' is not supported on this GPU.")
+    backend = cfg.backend(model_key)
+    strata = backend == "strata"
+    infernix = backend == "infernix"
+    server_label = {"strata": "Strata server", "infernix": "Infernix server"}.get(backend, "llama-server")
 
     if health(cfg):
         current = running_model(cfg)
         if current == model_key:
-            print(f"[OK] {'Strata server' if strata else 'llama-server'} already running "
-                  f"with model '{model_key}' ({cfg.base_url})")
+            print(f"[OK] {server_label} already running with model '{model_key}' ({cfg.base_url})")
             print("   ", vram_str())
             return 0
         print(f"[INFO] Model '{current}' is running, switching to '{model_key}' ...")
@@ -300,7 +323,7 @@ def _start_locked(cfg: Config, model_key: str | None = None,
         profiles = fitting_profiles(cfg, model_key, budget)
         if not profiles:
             raise RuntimeError(f"This model has no supported profile for the {budget:g} GiB GPU budget. Choose a smaller model.")
-        selected = max(profiles, key=lambda name: (profiles[name].get("cache_type") == "q8_0",
+        selected = max(profiles, key=lambda name: (profiles[name].get("cache_type", name) in ("q8_0", "int8"),
                                                    int(profiles[name].get("ctx_size", 0)),
                                                    profiles[name].get("speculative") is None))
         cfg.set_kv_cache_mode(model_key, selected)
@@ -310,6 +333,9 @@ def _start_locked(cfg: Config, model_key: str | None = None,
         # The engine first: the weights are of no use without it, and it is the smaller download.
         from harness import strata_runtime
         strata_runtime.ensure_runtime(cfg, model_key, cancelled=cancelled, on_phase=on_phase)
+    elif infernix:
+        from harness import infernix_runtime
+        infernix_runtime.ensure_runtime(cfg, model_key, cancelled=cancelled, on_phase=on_phase)
     if model.get("assets") and not cfg.model_ready(model_key):
         from harness.model_files import download_pinned_model
         if on_phase:
@@ -322,6 +348,11 @@ def _start_locked(cfg: Config, model_key: str | None = None,
         from harness import strata_runtime
         strata_runtime.prepare_model(cfg, model_key, cancelled=cancelled, on_phase=on_phase)
         return _start_strata(cfg, model_key, requested_context, cancelled=cancelled, on_phase=on_phase)
+    if infernix:
+        from harness import infernix_runtime
+        infernix_runtime.prepare_model(cfg, model_key, cancelled=cancelled, on_phase=on_phase,
+                                       on_download_progress=on_download_progress)
+        return _start_infernix(cfg, model_key, requested_context, cancelled=cancelled, on_phase=on_phase)
     from harness.runtime_update import ensure_runtime
     exe = ensure_runtime(cfg, model_key, cancelled=cancelled)
     if exe is None:
@@ -389,6 +420,17 @@ def _start_strata(cfg: Config, model_key: str, ctx: int, *, cancelled=None, on_p
                    strata=prepared)
 
 
+def _start_infernix(cfg: Config, model_key: str, ctx: int, *, cancelled=None, on_phase=None) -> int:
+    from harness import infernix_backend
+    prepared = infernix_backend.prepare(cfg, model_key, ctx)
+    if cancelled and cancelled():
+        return 1
+    cfg.data["_active_placement"] = prepared.placement
+    return _launch(cfg, model_key, prepared.argv, cwd=prepared.cwd, log_path=infernix_backend.server_log(cfg),
+                   ctx=ctx, placement=prepared.placement, cancelled=cancelled, on_phase=on_phase,
+                   infernix=prepared)
+
+
 def guard_available(proc, *, strata: bool) -> int:
     """Available RAM as the emergency memory guard counts it while a server runs.
 
@@ -446,7 +488,7 @@ def _settle_strata(cfg: Config, run: dict, *, ready: bool) -> None:
 
 
 def _launch(cfg: Config, model_key: str, argv: list[str], *, cwd: Path, log_path: Path, ctx: int,
-            placement: dict, cancelled=None, on_phase=None, strata=None) -> int:
+            placement: dict, cancelled=None, on_phase=None, strata=None, infernix=None) -> int:
     """Start the server process, record it, guard host memory and wait until it is ready."""
     if on_phase:
         on_phase("loading")
@@ -455,8 +497,13 @@ def _launch(cfg: Config, model_key: str, argv: list[str], *, cwd: Path, log_path
     log_offset = log_path.stat().st_size if log_path.exists() else 0
     logf = open(log_path, "ab", buffering=0)
     logf.write(f"\n===== START {model_key} {time.strftime('%Y-%m-%d %H:%M:%S')} =====\n".encode())
-    # Strata's server is Python: it gets its own environment and no console input.
-    options = {"stdin": subprocess.DEVNULL, "env": strata.env} if strata else {}
+    # Strata's server is Python (own env + DEVNULL); Infernix gets DEVNULL so it never blocks on console input.
+    if strata:
+        options = {"stdin": subprocess.DEVNULL, "env": strata.env}
+    elif infernix:
+        options = {"stdin": subprocess.DEVNULL}
+    else:
+        options = {}
     try:
         proc = subprocess.Popen(
             argv, stdout=logf, stderr=subprocess.STDOUT,
@@ -465,7 +512,7 @@ def _launch(cfg: Config, model_key: str, argv: list[str], *, cwd: Path, log_path
         )
     finally:
         logf.close()
-    if strata and BIND_SERVER_TO_PROCESS:
+    if (strata or infernix) and BIND_SERVER_TO_PROCESS:
         from harness.winjob import contain
         contain(proc)
     pid_file(cfg).write_text(f"{model_key}:{proc.pid}", encoding="utf-8")
@@ -474,6 +521,8 @@ def _launch(cfg: Config, model_key: str, argv: list[str], *, cwd: Path, log_path
            "log_offset": log_offset, "started": time.time()}
     if strata:
         run.update(strata.run)
+    elif infernix:
+        run.update(infernix.run)
     atomic_write_text(cfg.path("paths.runtime_dir") / "model-run.json", json.dumps(run))
     loaded = threading.Event()
     memory_failure = []
@@ -481,17 +530,18 @@ def _launch(cfg: Config, model_key: str, argv: list[str], *, cwd: Path, log_path
     from harness.hardware import detect_hardware
     hw = detect_hardware(fresh=True)
     capacity = min(hw.vram_total, int(float(requested_budget) * 1024**3)) if requested_budget != "auto" else hw.vram_total
+    ram_backed = bool(strata or (infernix and cfg.model(model_key).get("uses_system_ram")))
     if capacity:
         def watch_memory():
             low_samples = 0
             gpu_used = 0
             while proc.poll() is None:
-                available = guard_available(proc, strata=bool(strata))
+                available = guard_available(proc, strata=ram_backed)
                 # Emergency host protection, not a profile reserve. Allow Windows
                 # to reclaim pages; never fail merely because commit/pagefile grew.
                 low_samples = low_samples + 1 if available < GUARD_RAM_BYTES else 0
                 stop_loading = not loaded.is_set() and cancelled and cancelled()
-                exhausted = low_samples >= GUARD_SECONDS and low_samples >= guard_patience(strata=bool(strata))
+                exhausted = low_samples >= GUARD_SECONDS and low_samples >= guard_patience(strata=ram_backed)
                 if exhausted or stop_loading:
                     if exhausted:
                         code = "ram_pressure"
@@ -525,6 +575,9 @@ def _launch(cfg: Config, model_key: str, argv: list[str], *, cwd: Path, log_path
         from harness import strata_backend
         # Its port opens once the model is loaded, and /health then answers 200 even unloaded.
         readiness["probe"] = strata_backend.ready
+    elif infernix:
+        from harness import infernix_backend
+        readiness["probe"] = infernix_backend.ready
     if not wait_health(cfg, proc=proc, cancelled=cancelled, **readiness):
         print(f"\n[ERROR] Server startup failed after {time.time() - t0:.0f}s. Last log lines:")
         print(log_path.read_bytes()[-2000:].decode(errors="replace"))
@@ -547,6 +600,8 @@ def _launch(cfg: Config, model_key: str, argv: list[str], *, cwd: Path, log_path
             # Strata says why it stopped (driver, CUDA libraries, files); the
             # recovery ladder still takes over when that was memory.
             raise RuntimeError(strata_backend.start_failure(cfg, run))
+        if infernix and not (cancelled and cancelled()):
+            raise RuntimeError(infernix_backend.start_failure(cfg, run))
         return 1
     loaded.set()
     if strata:

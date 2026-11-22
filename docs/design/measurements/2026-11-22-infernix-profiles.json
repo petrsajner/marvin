@@ -1,0 +1,44 @@
+{
+  "measurement_id": "infernix-profiles-2026-11-22",
+  "date": "2026-11-22",
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 5090 (32 GiB VRAM, Blackwell sm_120)",
+    "ram_gib": 64,
+    "os": "Windows 11 x64"
+  },
+  "runtime": {
+    "engine": "Infernix windows-2026.11.20",
+    "archive": "infernix-2026.11.20-windows-x64.zip",
+    "sha256": "bedf320786ae919b2122fd8e942c9d0ef78a36bb4d485fc97b613daa939499b9"
+  },
+  "method": "Exact startup sizing via infernix-serve.exe --plan (Engine::plan) corroborated by live 9-scenario runs B3b and A3 in docs/design/measurements/2026-11-22-engine-eval.json. Smaller VRAM classes for Flash-Next simulated via --vram-headroom-mib.",
+  "profiles": {
+    "qwen27b_infernix": {
+      "model": "Wallawalla47/Qwen3.8-27B-NVIDIA-NVFP4-QAD-Infernix-Exact",
+      "flags": ["--embedding-host", "--host-context-mib", "4096", "--spec", "dflash2", "--draft-tokens", "auto", "--lm-head-draft", "--ngram-draft-tokens", "auto", "--vision"],
+      "entries": [
+        {"profile": "int8_256k", "gpu_class": 32, "ctx": 262144, "kv_dtype": "int8", "kv_capacity": "exact", "planned_vram_gib": 27.638, "weights_gib": 17.879, "kv_gib": 8.250, "planned_ram_gib": 6.368, "live_verified": true},
+        {"profile": "int8_192k", "gpu_class": 32, "ctx": 196608, "kv_dtype": "int8", "kv_capacity": "exact", "planned_vram_gib": 25.575, "weights_gib": 17.879, "kv_gib": 6.188, "planned_ram_gib": 6.368},
+        {"profile": "int8_128k", "gpu_class": 32, "ctx": 131072, "kv_dtype": "int8", "kv_capacity": "exact", "planned_vram_gib": 23.513, "weights_gib": 17.879, "kv_gib": 4.125, "planned_ram_gib": 6.368},
+        {"profile": "int8_64k_g24", "gpu_class": 24, "ctx": 65536, "kv_dtype": "int8", "kv_capacity": "exact", "planned_vram_gib": 21.450, "weights_gib": 17.879, "kv_gib": 2.062, "planned_ram_gib": 6.368},
+        {"profile": "nvfp4_128k_g24", "gpu_class": 24, "ctx": 131072, "kv_dtype": "nvfp4", "kv_capacity": "exact", "planned_vram_gib": 21.638, "weights_gib": 17.879, "kv_gib": 2.250, "planned_ram_gib": 6.368},
+        {"profile": "nvfp4_64k_g24", "gpu_class": 24, "ctx": 65536, "kv_dtype": "nvfp4", "kv_capacity": "exact", "planned_vram_gib": 20.513, "weights_gib": 17.879, "kv_gib": 1.125, "planned_ram_gib": 6.368}
+      ]
+    },
+    "flash_next_infernix": {
+      "model": "Wallawalla47/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-Infernix",
+      "drafter": "Wallawalla47/Qwen3.8-Flash-Next-DFlash2-Infernix",
+      "flags": ["--spec", "dflash2", "--draft-tokens", "auto", "--lm-head-draft", "--expert-ram-layout", "exclusive", "--host-context-mib", "2048", "--vision"],
+      "entries": [
+        {"profile": "int8_256k_g32", "gpu_class": 32, "ctx": 262144, "kv_dtype": "int8", "planned_vram_gib": 28.767, "weights_gib": 4.483, "kv_gib": 3.282, "expert_frames": 12215, "planned_ram_gib": 51.060, "live_verified": true},
+        {"profile": "int8_128k_g32", "gpu_class": 32, "ctx": 131072, "kv_dtype": "int8", "planned_vram_gib": 28.768, "weights_gib": 4.483, "kv_gib": 1.641, "expert_frames": 12224, "planned_ram_gib": 51.053},
+        {"profile": "int8_256k_g24", "gpu_class": 24, "ctx": 262144, "kv_dtype": "int8", "planned_vram_gib": 20.766, "expert_frames": 8022},
+        {"profile": "int8_128k_g24", "gpu_class": 24, "ctx": 131072, "kv_dtype": "int8", "planned_vram_gib": 20.768, "expert_frames": 8031},
+        {"profile": "int8_256k_g16", "gpu_class": 16, "ctx": 262144, "kv_dtype": "int8", "planned_vram_gib": 12.768, "expert_frames": 3830},
+        {"profile": "int8_128k_g16", "gpu_class": 16, "ctx": 131072, "kv_dtype": "int8", "planned_vram_gib": 12.768, "expert_frames": 3838},
+        {"profile": "int8_256k_g12", "gpu_class": 12, "ctx": 262144, "kv_dtype": "int8", "planned_vram_gib": 8.767, "expert_frames": 1733},
+        {"profile": "int8_128k_g12", "gpu_class": 12, "ctx": 131072, "kv_dtype": "int8", "planned_vram_gib": 8.767, "expert_frames": 1741}
+      ]
+    }
+  }
+}

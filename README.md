@@ -52,7 +52,7 @@ These are product decisions, not postponed roadmap items.
   Last used folder is remembered.
 - 🖼️ **Image analysis** — native vision (mmproj), including screenshots
 - 🖱️ **Computer control** — screenshot → clicking, typing, keys (pyautogui + mss)
-- 🔀 **Switchable models** — Qwen3.8-27B (Q2/IQ3/Q4/Q5) and Qwen3.8-Flash-Next (IQ3_S/IQ2_XS)
+- 🔀 **Switchable models** — Qwen3.8-27B (Q2/IQ3/Q4/Q5, plus NVFP4 via Infernix on RTX 50-series) and Qwen3.8-Flash-Next (IQ3_S/IQ2_XS on Strata, plus IQ3_S via Infernix on RTX 50-series)
 - 🎚️ **KV cache precision** — Q8 by default, with optional F16 on 32 GB+ cards and compact Q4 profiles on 12–16 GB cards
 - 🧠 **Thinking on/off** — model reasoning mode (switchable at runtime)
 - 🛡️ **Three autonomy levels** — supervised / semi / auto (switchable anytime);
@@ -192,14 +192,26 @@ model files and a draft layer for faster answers. Progress is visible and a down
 can be interrupted and resumed. Chat, images and agent tools use the existing UI, and
 a chat can switch to Flash-Next and back.
 
-Flash-Next keeps most of its weights in system RAM. It needs an NVIDIA card with 16 GB
+Flash-Next keeps most of its weights in system RAM. It needs an NVIDIA card with 12 GB
 or more, 32 GB of RAM or more and driver 580 or newer. Marvin picks the profile measured
-for the card and the RAM; each offers 256k and 128k of Q8 context, and recovery steps
-down to 128k when memory runs short.
+for the card and the RAM; each offers up to 256k of Q8 context, and recovery steps
+down when memory runs short.
 
-On an RTX 5090 with 64 GB of RAM, IQ3_S answers at about 110 tok/s and reads a
-254k-token input in 43 s; a cached follow-up takes about a second. Smaller cards and
-less RAM are slower. See the [measurement record](docs/design/strata-qualification-2026-10-07.md).
+On an RTX 5090 with 64 GB of RAM, Strata v0.2.17 with DFlash2 answers at ~152–209 tok/s
+and reads a 246k-token prompt at 6,810 tok/s. Smaller cards and less RAM are slower.
+See the [2026-11-22 engine evaluation](docs/design/2026-11-22-inference-engine-evaluation.md).
+
+### Infernix (NVIDIA RTX 50-series / Blackwell)
+
+On NVIDIA RTX 50-series (Blackwell, `sm_120+`, driver 580+) GPUs, Marvin additionally
+offers two opt-in **Infernix** models:
+
+- **Qwen 3.8 27B · NVFP4 (Infernix)** (22.2 GB, 24 GB+ VRAM, ~184–448 tok/s with DFlash2, 6.6 s load, 8.6 GiB RAM)
+- **Qwen 3.8 Flash-Next · IQ3_S (Infernix)** (85.9 GB + 776 MB DFlash2 drafter, 12 GB+ VRAM, ~197–282 tok/s, 7,288 tok/s prefill, ~7 GiB free RAM on 64 GB)
+
+On older NVIDIA GPUs (RTX 20/30/40 series), these entries remain visible as disabled
+(greyed-out) items in the model picker with a Blackwell hardware notice, while every
+llama.cpp (Q2/IQ3/Q4/Q5) and Strata (Flash-Next IQ3_S/IQ2_XS) model stays fully supported.
 
 ## Running
 
@@ -207,7 +219,9 @@ less RAM are slower. See the [measurement record](docs/design/strata-qualificati
 # 1) inference server (llama-server, ~10 s to load)
 .venv/Scripts/python scripts/server.py start          # default model (q5 + Q8 KV)
 .venv/Scripts/python scripts/server.py start q5       # or q5 directly
-.venv/Scripts/python scripts/server.py start flash_next_strata # Flash-Next on Strata
+.venv/Scripts/python scripts/server.py start flash_next_strata   # Flash-Next on Strata (all GPUs)
+.venv/Scripts/python scripts/server.py start qwen27b_infernix    # Qwen3.8-27B NVFP4 on Infernix (RTX 50-series)
+.venv/Scripts/python scripts/server.py start flash_next_infernix # Flash-Next IQ3_S on Infernix (RTX 50-series)
 
 # 2a) terminal UI
 .venv/Scripts/python tui.py

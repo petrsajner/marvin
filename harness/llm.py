@@ -1,4 +1,4 @@
-"""Streaming OpenAI-compatible client for llama-server and Strata, with tools and reasoning support."""
+"""Streaming OpenAI-compatible client for llama-server, Strata and Infernix, with tools and reasoning support."""
 from __future__ import annotations
 
 import json

@@ -498,15 +498,22 @@ export function DialogView(props: any) {
                     }
                   >
                     {app.models.map((m: any) => (
-                      <option key={m.id} value={m.id}>
+                      <option key={m.id} value={m.id} disabled={m.available === false}>
                         {m.name}
-                        {!m.installed
-                          ? " · " + tr("not installed")
-                          : ""}
+                        {m.available === false && m.unavailable_reason
+                          ? " · " + tr(m.unavailable_reason)
+                          : !m.installed
+                            ? " · " + tr("not installed")
+                            : ""}
                       </option>
                     ))}
                   </select>
                 </label>
+                {app.models.some((m: any) => m.available === false) && (
+                  <p className="muted">
+                    {tr("Greyed-out models require an NVIDIA RTX 50-series (Blackwell) GPU.")}
+                  </p>
+                )}
                 {profiles.some((p: any) => p.speculative === "mtp") && (
                   <>
                     <div className="row">
@@ -600,7 +607,7 @@ export function DialogView(props: any) {
                       )
                     }
                   >
-                    {["auto", 16, 24, 32, 48, 64, 96].map((value) => (
+                    {["auto", 12, 16, 24, 32, 48, 64, 96].map((value) => (
                       <option key={value} value={value} disabled={value !== "auto" && app.memory?.vram_detected_gb && Number(value) > Math.ceil(app.memory.vram_detected_gb)}>
                         {value === "auto"
                           ? tr("Automatic detection")
