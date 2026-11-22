@@ -65,6 +65,11 @@ Type: filesandordirs; Name: "{app}\scripts"
 Type: filesandordirs; Name: "{app}\tests"
 Type: filesandordirs; Name: "{app}\skills"
 Type: filesandordirs; Name: "{app}\ui_dist"
+#ifdef FullBuild
+Type: filesandordirs; Name: "{app}\runtime\llama"
+Type: filesandordirs; Name: "{app}\runtime\strata-offline"
+Type: filesandordirs; Name: "{app}\runtime\infernix-offline"
+#endif
 
 [Languages]
 ; First entry = default language (English base after installation).
