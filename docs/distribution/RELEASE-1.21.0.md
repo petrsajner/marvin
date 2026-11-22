@@ -48,3 +48,12 @@ Staged in `dist/release-1.21.0/` and recorded in `release-1.21.0.json` (applicat
 - `offline_backup.py verify` passed for all **3,495** recorded files (**244.06 GiB**, 0 errors).
 
 Old `1.20.0` installers, staged `dist/release-1.20.0/`, retired Nemotron/Ornith weights, quarantine folder, old runtime rollback folders, and `%LOCALAPPDATA%\EngineEval` were deleted after verification (~161 GiB reclaimed).
+
+## GitHub publication verification
+
+Published on 22 November 2026 (`02:30 UTC`) as the latest release:
+[Marvin 1.21.0](https://github.com/petrsajner/marvin/releases/tag/v1.21.0).
+The release tag points at `b032f88`; the application build commit is `40239db`.
+All six uploaded assets are in state `uploaded`, and their sizes and GitHub
+SHA-256 digests match `release-1.21.0.json`.
+`releases/latest/download/SHA256SUMS.txt` serves the 1.21.0 checksums.
