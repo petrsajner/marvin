@@ -477,7 +477,7 @@ def backup_info(backup: Path) -> dict[str, Any]:
             "bytes": sum(int(item.get("size", 0)) for item in files),
             "models": [Path(item["path"]).name for item in files
                        if item.get("component") == "models"
-                       and str(item["path"]).lower().endswith(".gguf")],
+                       and str(item["path"]).lower().endswith((".gguf", ".infernix"))],
             "dependencies": any(item.get("component") == "python-dependencies"
                                 for item in files),
             "installer": next((Path(item["path"]).name for item in files
@@ -522,7 +522,7 @@ APPLICATION_FILES = (
 )
 
 
-RUNTIME_COMPONENTS = {"models", "llama", "strata", "whisper", "openart", "webview2", "settings"}
+RUNTIME_COMPONENTS = {"models", "llama", "strata", "infernix", "whisper", "openart", "webview2", "settings"}
 
 
 def refresh_backup(root: Path, backup: Path, *, runtime_root: Path | None = None,
@@ -587,9 +587,12 @@ def refresh_backup(root: Path, backup: Path, *, runtime_root: Path | None = None
         if same:
             first_name[same] = key
         target = backup / _safe_relative(str((recorded or {}).get("link_to") or key))
-        if recorded and target.is_file() \
-                and recorded.get("size") == source.stat().st_size \
-                and target.stat().st_size == source.stat().st_size:
+        # Large model weight shards skip re-hashing when recorded size matches;
+        # engine binaries and scripts always compare SHA-256 via put() so upgrades
+        # replace same-size files reliably.
+        if (component == "models" and recorded and target.is_file()
+                and recorded.get("size") == source.stat().st_size
+                and target.stat().st_size == source.stat().st_size):
             continue
         put(key, source, component)
 
@@ -685,7 +688,7 @@ def _main() -> int:
     restore.add_argument("--root", default=str(Path(__file__).resolve().parent.parent))
     restore.add_argument("--components", default=None,
                          help="comma-separated components "
-                              "(models,llama,strata,whisper,openart,webview2,settings,python-dependencies)")
+                              "(models,llama,strata,infernix,whisper,openart,webview2,settings,python-dependencies)")
     info = sub.add_parser("info")
     info.add_argument("--backup", required=True)
     refresh = sub.add_parser("refresh")

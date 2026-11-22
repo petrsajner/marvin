@@ -70,10 +70,28 @@ print('PRIVATE_PYTHON_API_OK')
         subprocess.run([str(python), "-I", "-c", probe], cwd=root, env=env, check=True)
         subprocess.run([str(python), "-I", "-m", "pip", "check"], cwd=root, env=env, check=True)
         llama = next((root / "runtime/llama").rglob("llama-server.exe"))
-        subprocess.run([str(llama), "--version"], cwd=llama.parent, env=env, check=True)
+        ver = subprocess.run([str(llama), "--version"], cwd=llama.parent, env=env,
+                             capture_output=True, text=True, check=True)
+        sys.path.insert(0, str(ROOT))
+        from harness import infernix_runtime, runtime_update, strata_runtime
+        assert runtime_update.runtime_build(llama) == runtime_update.BUILD, (
+            f"Expected llama.cpp build {runtime_update.BUILD}, got: {ver.stdout} {ver.stderr}"
+        )
+        # Verify offline engine bundles for Strata and Infernix are present and match pinned hashes.
+        strata_dir = payload / "strata-offline"
+        assert (strata_dir / strata_runtime.ENGINE["name"]).is_file(), "missing bundled Strata engine"
+        assert (strata_dir / strata_runtime.SOURCE["name"]).is_file(), "missing bundled Strata source"
+        assert any((strata_dir / "wheels").glob("*.whl")), "missing bundled Strata wheels"
+        infernix_archive = payload / "infernix-offline" / infernix_runtime.ENGINE["name"]
+        assert infernix_archive.is_file(), f"missing bundled Infernix archive: {infernix_archive}"
+        assert runtime_update.sha256(infernix_archive) == infernix_runtime.ENGINE["sha256"], (
+            "bundled Infernix archive checksum mismatch"
+        )
         result = {"version": version, "private_python": True, "no_system_python": True,
                   "conflicting_python_environment_ignored": True, "locked_dependencies": True,
-                  "llama_dll_load": True, "fresh_api": True, "offline_backup_untouched": True}
+                  "llama_dll_load": True, "llama_build": runtime_update.BUILD,
+                  "strata_offline": strata_runtime.VERSION, "infernix_offline": infernix_runtime.VERSION,
+                  "fresh_api": True, "offline_backup_untouched": True}
         (ROOT / "runtime/full-runtime-check.json").write_text(json.dumps(result, indent=2))
         print(json.dumps(result, indent=2))
 

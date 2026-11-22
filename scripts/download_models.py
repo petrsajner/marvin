@@ -71,6 +71,9 @@ def main() -> int:
         if m.get("assets"):
             from harness.model_files import download_pinned_model
             download_pinned_model(cfg.model_root(key), m)
+            if m.get("backend") == "infernix" and (m.get("infernix") or {}).get("draft_catalog"):
+                from harness import infernix_runtime
+                infernix_runtime.prepare_model(cfg, key)
             continue
         target = models_dir / m["file"]
         if target.exists() and target.stat().st_size > 1 << 30:
