@@ -2,8 +2,7 @@
 
 Your local AI companion — a brain the size of a planet that never leaves your machine.
 
-A harness for local work with **Qwen3.8-27B**, **Qwen3.8-Flash-Next**, **Ornith 1.5**
-and **Nemotron 3.5 Lightning** on NVIDIA GPUs. Model inference, projects, memories and chats stay local.
+A harness for local work with **Qwen3.8-27B** and **Qwen3.8-Flash-Next** on NVIDIA GPUs. Model inference, projects, memories and chats stay local.
 When you use web or research tools, the app makes ordinary internet requests to
 the selected websites and search services.
 
@@ -53,9 +52,8 @@ These are product decisions, not postponed roadmap items.
   Last used folder is remembered.
 - 🖼️ **Image analysis** — native vision (mmproj), including screenshots
 - 🖱️ **Computer control** — screenshot → clicking, typing, keys (pyautogui + mss)
-- 🔀 **Switchable models** — Qwen IQ3/Q4/Q5, Flash-Next IQ3_S/IQ2_XS, Ornith Q5 and Nemotron Q4/Q5
-- 🎚️ **KV cache precision** — Q8 by default, with optional F16 on 32 GB-class cards;
-  Ornith fixed at Q8
+- 🔀 **Switchable models** — Qwen3.8-27B (Q2/IQ3/Q4/Q5) and Qwen3.8-Flash-Next (IQ3_S/IQ2_XS)
+- 🎚️ **KV cache precision** — Q8 by default, with optional F16 on 32 GB+ cards and compact Q4 profiles on 12–16 GB cards
 - 🧠 **Thinking on/off** — model reasoning mode (switchable at runtime)
 - 🛡️ **Three autonomy levels** — supervised / semi / auto (switchable anytime);
   read-only commands (`ls`, `cat`, `grep`, `git log`…) need no confirmation even
@@ -209,7 +207,7 @@ less RAM are slower. See the [measurement record](docs/design/strata-qualificati
 # 1) inference server (llama-server, ~10 s to load)
 .venv/Scripts/python scripts/server.py start          # default model (q5 + Q8 KV)
 .venv/Scripts/python scripts/server.py start q5       # or q5 directly
-.venv/Scripts/python scripts/server.py start ornith_q5 # Ornith reasoning
+.venv/Scripts/python scripts/server.py start flash_next_strata # Flash-Next on Strata
 
 # 2a) terminal UI
 .venv/Scripts/python tui.py
@@ -271,7 +269,7 @@ installer/build_installer.bat     # builds dist/Marvin-Setup-<version>.exe
 
 ```
 /ws [path]              show/set the project folder (workspace)
-/model q4|q5|ornith_q5  switch model (server restart)
+/model q2|q3|q4|q5|flash_next_strata  switch model (server restart)
 /work <mode>            discussion | research | writing | development | computer
 /mode chat|agent|computer     compatibility shortcut
 /autonomy supervised|semi|auto   autonomy level

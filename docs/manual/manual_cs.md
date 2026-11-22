@@ -254,23 +254,20 @@ Myšlení zůstává také u promptu, protože ho můžete měnit mezi otázkami
 
 | Třída GPU | Model | Přesnost KV | Dostupné kontexty |
 |---|---|---|---|
+| 12 GB | Qwen Q2 | Q8 / Q4 | 32k / 16k (Q8), 64k / 32k (Q4) |
+| 16 GB | Qwen Q2 | Q8 / Q4 | 128k / 96k / 64k (Q8), 192k (Q4) |
 | 16 GB | Qwen IQ3 | Q8 | 64k / 48k |
 | 24 GB | Qwen IQ3 | Q8 | 128k / 96k |
 | 24 GB | Qwen Q4 | Q8 | 96k / 64k |
 | 24 GB | Qwen Q5 | Q8 | 96k / 64k |
-| 24 GB | Nemotron Q4 | Q8 | 512k / 256k |
-| 24 GB | Nemotron Q5 | Q8 | 512k / 256k |
 | 32 GB | Qwen Q4 | Q8 | 256k / 192k |
 | 32 GB | Qwen Q4 | F16 | 128k / 96k |
 | 32 GB | Qwen Q5 | Q8 | 192k / 128k |
 | 32 GB | Qwen Q5 | F16 | 128k / 96k |
-| 32 GB | Ornith Q5 | Q8 | 256k / 192k |
-| 32 GB | Nemotron Q4 | Q8 | 512k / 256k |
-| 32 GB | Nemotron Q5 | Q8 | 512k / 256k |
 
-Na kartách třídy 32 GB je výchozí Qwen Q5 s Q8 KV a kontextem 192k. Menší karty dostanou odpovídající Q8 profil podle tabulky. F16 je volitelně pouze pro Qwen Q4/Q5 na 32GB kartách. IQ3 se nabízí pouze na 16/24GB kartách. Každá kombinace modelu a přesnosti KV nabízí dvě nejvyšší odpovídající velikosti kontextu.
+Na kartách třídy 32 GB je výchozí Qwen Q5 s Q8 KV a kontextem 192k. Menší karty (od 12 GB) dostanou odpovídající Q8 profil podle tabulky. F16 je volitelně pouze pro Qwen Q4/Q5 na 32GB kartách. IQ3 se nabízí pouze na 16/24GB kartách. Každá kombinace modelu a přesnosti KV nabízí dvě nejvyšší odpovídající velikosti kontextu.
 
-Karty se 48 GB a více (včetně 64 a 72GB karet) používají vlastní profily **48 GB** a karty s 96 GB profily **96 GB**. Jsou odhadnuté ze změřených hodnot pro 32 GB, nikoli změřené, protože taková karta nebyla k dispozici: vše, co se vejde na 32GB kartu, a navíc Qwen Q4/Q5 s Q8 256k (i s MTP) a F16 256k a Nemotron Q5 s 512k celý na GPU. Qwen a Ornith zůstávají nejvýš na 256k, Nemotron na 512k.
+Karty se 48 GB a více (včetně 64 a 72GB karet) používají vlastní profily **48 GB** a karty s 96 GB profily **96 GB**. Jsou odhadnuté ze změřených hodnot pro 32 GB, nikoli změřené, protože taková karta nebyla k dispozici: vše, co se vejde na 32GB kartu, a navíc Qwen Q4/Q5 s Q8 256k (i s MTP) a F16 256k. Qwen zůstává nejvýš na 256k.
 
 Qwen Q4/Q5 nabízejí také volitelné **MTP varianty** svých Q8 profilů (například „Q8 · 192k · MTP" vedle „Q8 · 192k"). MTP varianta generuje zhruba 2–3× rychleji pomocí malého draft modelu trénovaného pro stejný model; kvalita odpovědí zůstává stejná. Potřebuje asi 2–2,9 GB dodatečné paměti GPU a 1,4 GB draft model se při prvním spuštění automaticky stáhne a ověří. Na kartách třídy 24 GB mají MTP varianty pouze Qwen Q4. Pokud při běhu MTP relace dojde paměť, Marvin nejprve přepne na stejný kontext bez MTP, poté zkusí nižší kontext s MTP a nakonec bez MTP.
 
@@ -278,16 +275,15 @@ Když běží spekulativní profil, záhlaví zobrazuje odznak **MTP** vedle ná
 
 **Sémantické vyhledávání** (Nastavení > Model a zařízení) přidává hledání podle významu v projektových souborech i minulých konverzacích — česky i anglicky, včetně parafrází — kombinované s klíčovým hledáním. Ve výchozím stavu je vypnuté; zapnutí stáhne malý embedding model (~635 MB), který běží jen na CPU a grafickou kartu vůbec nevyužívá. První hledání v projektu staví index na pozadí; agent vidí průběh a hledání podle potřeby zopakuje.
 
-Q5 používejte pro náročný vývoj, architekturu a finální kvalitu. Q4 je vhodný pro vyšší rychlost nebo kontext 256k. Ornith je extrémně rychlý, ale při reálném vývoji může být slabší než dense Qwen.
+Q5 používejte pro náročný vývoj, architekturu a finální kvalitu. Q4 je vhodný pro vyšší rychlost nebo kontext 256k.
 
-
-Nemotron je pouze textový. Qwen, Ornith a Flash-Next mají vlastní podporu obrazových vstupů. Nabídka modelů ukazuje dostupnost souborů; Flash-Next potřebuje své shardy, projektor a připravené soubory a chybějící si Marvin připraví při jeho výběru. Podle karty jsou u Qwenu dostupné také kompaktní profily. Tabulka není příslibem, že každá kombinace poběží na každém počítači; přesný výběr najdete u zvoleného modelu v nastavení.
+Qwen3.8-27B i Flash-Next mají vlastní podporu obrazových vstupů. Nabídka modelů ukazuje dostupnost souborů; Flash-Next potřebuje své shardy, projektor a připravené soubory a chybějící si Marvin připraví při jeho výběru. Podle karty jsou u Qwenu dostupné také kompaktní profily pro 12–16 GB karty. Tabulka není příslibem, že každá kombinace poběží na každém počítači; přesný výběr najdete u zvoleného modelu v nastavení.
 
 ## Limit paměti GPU a automatická obnova
 
 Pro běžnou práci ponechte **Nastavení > Model a zařízení > Limit paměti GPU** na **Automatická detekce**. Ruční hodnota omezuje paměť dostupnou Marvinovi; nezvětší skutečnou kapacitu karty. Měňte ji, když neběží úloha. Marvin uvolní předchozí model, vybere vhodný profil a podle potřeby model restartuje. Úspěšný model a kontext si pamatuje pro každý limit, takže návrat k automatické detekci obnoví její nastavení. Pokud změna selže, pokusí se vrátit předchozí funkční model i nastavení.
 
-Qwen IQ3 používá na 16 GB Q8 64k/48k, Qwen Q5 na 24 GB Q8 96k/64k. Oba zachovávají vision se zpracováním obrázků na CPU. Nemotron Q4/Q5 nabízí na 24 GB 512k/256k s částí expertů na CPU. Také Nemotron Q5 na 32 GB při 512k používá jeden blok expertů na CPU; při 256k jsou váhy na GPU. Tato rozložení byla změřena na RTX 5090, nikoli na fyzických 16/24GB kartách. Jiné programy mohou ovlivnit, zda se větší volba úspěšně spustí.
+Qwen Q2 pokrývá 12 GB karty (Q8 32k/16k a Q4 64k/32k), Qwen IQ3 používá na 16 GB Q8 64k/48k a Qwen Q5 na 24 GB Q8 96k/64k. Všechny zachovávají vision se zpracováním obrázků na CPU. Tato rozložení byla změřena na RTX 5090, nikoli na fyzických 12/16/24GB kartách. Jiné programy mohou ovlivnit, zda se větší volba úspěšně spustí.
 
 Pokud skutečná chyba alokace nebo trvající kritický nedostatek fyzické RAM přeruší úlohu, Marvin zkusí nejbližší menší kontext se stejným modelem, přesností cache i rozložením vah. Výsledky dokončených nástrojů zůstanou v historii. Obnova nepřepíná mezi Q8 a F16. Relace spuštěná s variantou MTP nejprve zruší draft na stejném kontextu a poté postupně zkouší nižší kontexty s MTP i bez něj. Pokud už menší podporovaný kontext nezbývá, úloha se zastaví s vysvětlením; můžete vybrat jiný model a použít **Pokračovat**. Úspěšné nastavení se pamatuje pro každý limit GPU.
 
@@ -317,7 +313,7 @@ Kvantizace vah a KV cache jsou dvě různé věci: **IQ3_S** u Flash-Next popisu
 
 ## Thinking
 
-U Qwenu jsou `xhigh`, `medium`, `low` nativní reasoning effort a `off` thinking vypíná. U Ornithu je nativní pouze on/off: `xhigh` a `medium` jsou promptové vodítko, `low` běžné thinking chování a `off` vypnutí.
+U Qwenu jsou `xhigh`, `medium`, `low` nativní reasoning effort a `off` thinking vypíná.
 
 Reasoning tokeny používají čas i kontext; UI je živě odhaduje. Uložené uvažování lze rozbalit u odpovědi. Odhad persistentního kontextu zahrnuje i uvažování předávané zpět modelu.
 
@@ -691,7 +687,7 @@ Instalátor přidá **Marvin (CLI)** do nabídky Start. Spouští `run_cli.bat` 
 | Příkaz | Účel |
 |---|---|
 | `/memory` | Zobrazit globální, režimovou a projektovou paměť. |
-| `/model q4\|q5\|ornith_q5` | Přepnout model a restartovat server. |
+| `/model q2\|q3\|q4\|q5\|flash_next_strata` | Přepnout model a restartovat server. |
 | `/work discussion\|research\|writing\|development\|computer` | Zvolit pracovní režim. |
 | `/mode chat\|agent\|computer` | Legacy kompatibilní režimová zkratka. |
 | `/autonomy supervised\|semi\|auto` | Nastavit potvrzování. |

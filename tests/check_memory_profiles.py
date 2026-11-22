@@ -20,12 +20,10 @@ from harness.config import load_config
 from tests.check_runtime_upgrade import Probes, make_config, save, stop_owned
 
 CASES = [
-    (16, "q3", "q8_0_32k"),
-    (24, "q4", "q8_0_compact"), (24, "q4", "f16_compact"), (24, "q5", "q8_0_compact"),
-    (24, "nemotron_q4", "q8_0_256k_spill"), (24, "nemotron_q4", "q8_0_512k_spill"),
-    (32, "q3", "q8_0_256k"), (32, "q4", "q8_0"), (32, "q5", "q8_0"),
-    (32, "ornith_q5", "q8_0"), (32, "nemotron_q4", "q8_0_512k"),
-    (32, "nemotron_q5", "q8_0_256k"),
+    (12, "q2", "q8_0_32k_g12"),
+    (16, "q3", "q8_0_64k"),
+    (24, "q4", "q8_0_compact"), (24, "q5", "q8_0_compact"),
+    (32, "q4", "q8_0"), (32, "q5", "q8_0"),
 ]
 
 

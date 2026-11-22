@@ -49,7 +49,7 @@ HARDWARE = Hardware("Intel64 Family 6 Model 198", 20, 20, tuple(range(8)), tuple
                     64 * GIB, 48 * GIB, "NVIDIA GeForce RTX 5090", "GPU-test", "580.00",
                     int(31.84 * GIB), int(29.4 * GIB))
 # Detected capacity per GPU class, as the picker sees a real card of that size.
-DETECTED = {96: 95.59, 48: 47.5, 32: 31.84, 24: 23.84, 16: 15.84}
+DETECTED = {96: 95.59, 48: 47.5, 32: 31.84, 24: 23.84, 16: 15.84, 12: 11.84}
 
 
 def builtin_config(root: Path) -> Config:
@@ -227,11 +227,11 @@ def golden_cases() -> dict:
     variant("manual-budget/q5/q8_0", "q5", "q8_0", budget(32))
     variant("manual-budget/q4/q8_0_compact_mtp", "q4", "q8_0_compact_mtp", budget(24))
     # A recovery keeps the failed run's placement while the context shrinks.
-    variant("recovery/nemotron_q5/q8_0_256k_spill", "nemotron_q5", "q8_0_256k_spill",
-            frozen("nemotron_q5", ["--fit", "off", "--n-cpu-moe", "21"]), detected=DETECTED[24])
+    variant("recovery/q2/q8_0_96k_vision", "q2", "q8_0_96k_vision",
+            frozen("q2", ["--fit", "off", "--no-mmproj-offload"]), detected=DETECTED[16])
     # A frozen placement of another model is ignored.
     variant("recovery-other-model/q5/q8_0_128k", "q5", "q8_0_128k",
-            frozen("nemotron_q5", ["--fit", "off", "--n-cpu-moe", "21"]))
+            frozen("q2", ["--fit", "off", "--no-mmproj-offload"]))
     # The profile no longer fits a smaller card: the best fitting one is chosen.
     variant("budget-reselect/q5/q8_0", "q5", "q8_0", detected=DETECTED[24])
     # The owner's extra server arguments always come last.
@@ -356,7 +356,7 @@ class LaunchSideEffectTests(unittest.TestCase):
 
     def test_no_profile_for_the_budget_is_an_error(self):
         with self.assertRaisesRegex(RuntimeError, "no supported profile"):
-            self.installation.launch("nemotron_q5", detected=DETECTED[16])
+            self.installation.launch("q5", detected=DETECTED[16])
 
 
 class FakePsProcess:
@@ -641,20 +641,20 @@ class RecoveryLadderTests(unittest.TestCase):
             self.ensure("q5", [RuntimeError("broken")])
 
     def test_pressure_lowers_only_the_context_and_freezes_the_placement(self):
-        self.cfg.data["default_model"] = "nemotron_q5"
-        self.cfg.set_kv_cache_mode("nemotron_q5", "q8_0_512k_spill")
+        self.cfg.data["default_model"] = "q2"
+        self.cfg.set_kv_cache_mode("q2", "q8_0_128k")
         phases = []
 
         def pressure(cfg, key):
             self.fail(key)
             return RuntimeError("Pressure")
 
-        result, started = self.ensure("nemotron_q5", [pressure, 0], phases=phases)
+        result, started = self.ensure("q2", [pressure, 0], phases=phases)
         self.assertTrue(result)
-        self.assertEqual(started, [("nemotron_q5", "q8_0_512k_spill"), ("nemotron_q5", "q8_0_256k_spill")])
+        self.assertEqual(started, [("q2", "q8_0_128k"), ("q2", "q8_0_96k_vision")])
         self.assertEqual(self.cfg.data["_recovery_placement"],
-                         {"model": "nemotron_q5", "server_args": ["--fit", "off", "--n-cpu-moe", "21"]})
-        self.assertEqual(self.cfg.data["_recovered_contexts"], {"nemotron_q5": 262144})
+                         {"model": "q2", "server_args": ["--fit", "off", "--no-mmproj-offload"]})
+        self.assertEqual(self.cfg.data["_recovered_contexts"], {"q2": 98304})
         self.assertTrue(self.cfg.data["_memory_profile_recovered"])
         self.assertEqual(phases, ["preparing"])
         self.assertNotIn("_recovery_origin_mtp", self.cfg.data)

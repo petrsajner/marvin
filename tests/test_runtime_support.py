@@ -25,13 +25,15 @@ class ModelFileTests(unittest.TestCase):
         from scripts import download_models
         with tempfile.TemporaryDirectory() as temporary:
             cfg = Config(copy.deepcopy(load_config().data), Path(temporary))
+            cfg.data["models"]["text_only_a"] = {"alias": "Text A", "repo": "owner/text", "file": "text-a.gguf"}
+            cfg.data["models"]["text_only_b"] = {"alias": "Text B", "repo": "owner/text", "file": "text-b.gguf"}
             calls = []
             def download(repo, filename, directory):
                 calls.append(filename)
                 return directory / filename
             with patch.object(download_models, "load_config", return_value=cfg), \
                  patch.object(download_models, "hf_download", side_effect=download), \
-                 patch("sys.argv", ["download_models.py", "--models", "nemotron_q4,nemotron_q5"]):
+                 patch("sys.argv", ["download_models.py", "--models", "text_only_a,text_only_b"]):
                 self.assertEqual(download_models.main(), 0)
             self.assertEqual(len(calls), 2)
             self.assertTrue(all("mmproj" not in name for name in calls))

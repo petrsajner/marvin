@@ -467,7 +467,7 @@ def diagnose_completion_handoff(output: Path):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--candidate", type=Path, required=True)
-    ap.add_argument("--models", default="q5,q4,q3,ornith_q5,nemotron_q4,nemotron_q5")
+    ap.add_argument("--models", default="q5,q4,q3,q2")
     ap.add_argument("--runtimes", default="baseline,candidate")
     ap.add_argument("--profiles", choices=("primary", "all"), default="primary")
     ap.add_argument("--profile", help="Explicit profile for a single selected model")

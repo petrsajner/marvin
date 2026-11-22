@@ -287,23 +287,20 @@ Thinking depth also stays beside the prompt because it can change between questi
 
 | GPU class | Model | KV precision | Context choices |
 |---|---|---|---|
+| 12 GB | Qwen Q2 | Q8 / Q4 | 32k / 16k (Q8), 64k / 32k (Q4) |
+| 16 GB | Qwen Q2 | Q8 / Q4 | 128k / 96k / 64k (Q8), 192k (Q4) |
 | 16 GB | Qwen IQ3 | Q8 | 64k / 48k |
 | 24 GB | Qwen IQ3 | Q8 | 128k / 96k |
 | 24 GB | Qwen Q4 | Q8 | 96k / 64k |
 | 24 GB | Qwen Q5 | Q8 | 96k / 64k |
-| 24 GB | Nemotron Q4 | Q8 | 512k / 256k |
-| 24 GB | Nemotron Q5 | Q8 | 512k / 256k |
 | 32 GB | Qwen Q4 | Q8 | 256k / 192k |
 | 32 GB | Qwen Q4 | F16 | 128k / 96k |
 | 32 GB | Qwen Q5 | Q8 | 192k / 128k |
 | 32 GB | Qwen Q5 | F16 | 128k / 96k |
-| 32 GB | Ornith Q5 | Q8 | 256k / 192k |
-| 32 GB | Nemotron Q4 | Q8 | 512k / 256k |
-| 32 GB | Nemotron Q5 | Q8 | 512k / 256k |
 
-On 32 GB-class cards, the new-installation default is Qwen Q5 with Q8 KV and 192k context. Smaller cards select an appropriate Q8 profile from the table. F16 is an explicit option only for Qwen Q4/Q5 on 32 GB-class cards. IQ3 is offered on 16/24 GB cards only. Each model and KV precision group offers the two highest relevant context choices.
+On 32 GB-class cards, the new-installation default is Qwen Q5 with Q8 KV and 192k context. Smaller cards (down to 12 GB) select an appropriate Q8 profile from the table. F16 is an explicit option only for Qwen Q4/Q5 on 32 GB-class cards. IQ3 is offered on 16/24 GB cards only. Each model and KV precision group offers the two highest relevant context choices.
 
-Cards with 48 GB or more (64 and 72 GB cards included) use their own **48 GB** profiles and cards with 96 GB the **96 GB** ones. They are estimated from the 32 GB measurements, not measured, because no such card was available: everything that fits a 32 GB card, plus Qwen Q4/Q5 at Q8 256k (also with MTP) and F16 256k, and Nemotron Q5 at 512k entirely on the GPU. Qwen and Ornith stay at most at 256k, Nemotron at 512k.
+Cards with 48 GB or more (64 and 72 GB cards included) use their own **48 GB** profiles and cards with 96 GB the **96 GB** ones. They are estimated from the 32 GB measurements, not measured, because no such card was available: everything that fits a 32 GB card, plus Qwen Q4/Q5 at Q8 256k (also with MTP) and F16 256k. Qwen stays at most at 256k.
 
 Qwen Q4/Q5 also offer opt-in **MTP variants** of their Q8 profiles (for example "Q8 · 192k · MTP" next to "Q8 · 192k"). An MTP variant generates about 2–3× faster using a small draft model trained for the same model; answer quality stays the same. It needs about 2–2.9 GB of extra GPU memory, and the 1.4 GB draft model is downloaded and verified automatically on the first start. On 24 GB-class cards only Qwen Q4 has MTP variants. If memory runs out during an MTP session, Marvin first switches to the same context without MTP, then tries the next lower context with MTP, and finally that context without MTP.
 
@@ -311,13 +308,13 @@ While a speculative profile is running, the header shows an **MTP** badge next t
 
 **Semantic search** (Settings > Model and device) adds meaning-based retrieval over the project files and past conversations — Czech and English, including paraphrases — combined with keyword search. It is off by default; enabling it downloads a small embedding model (~635 MB) that runs only on the CPU, without touching the graphics card. The first search in a project builds the index in the background; the agent sees the progress and repeats the search when needed.
 
-Nemotron is text-only. Qwen, Ornith, and Flash-Next use their own image support. The model list reports file availability; Flash-Next requires its shards, its projector and its prepared files, and Marvin prepares any that are missing when you select it. Qwen also offers compact profiles for smaller cards. The table does not promise that every combination will run on every PC; the selected model's settings show its exact profile choices.
+Both Qwen3.8-27B and Flash-Next include image support. The model list reports file availability; Flash-Next requires its shards, its projector and its prepared files, and Marvin prepares any that are missing when you select it. Qwen also offers compact profiles for smaller cards (12–16 GB). The table does not promise that every combination will run on every PC; the selected model's settings show its exact profile choices.
 
 ## GPU memory budget and automatic recovery
 
 Normally leave **Settings > Model and device > GPU memory budget** on **Automatic detection**. A manual value limits the memory Marvin may use; it cannot increase the physical card's capacity. Change it when no task is running. Marvin releases the previous model, selects a compatible profile, and restarts the model when required. It remembers the successful model and context for each budget, so returning to Automatic restores that configuration. If a change fails, it attempts to restore the previous working model and settings.
 
-Qwen IQ3 uses Q8 64k/48k on 16 GB, and Qwen Q5 uses Q8 96k/64k on 24 GB. Both retain vision with CPU image processing. Nemotron Q4/Q5 offer 512k/256k on 24 GB by executing some experts on the CPU. The 32 GB Nemotron Q5 512k profile also executes one expert block on the CPU; 256k uses GPU weights. These placements were measured on an RTX 5090, not physical 16/24 GB cards. Other programs can affect whether the larger choice starts successfully.
+Qwen Q2 covers 12 GB cards (Q8 32k/16k and Q4 64k/32k), Qwen IQ3 uses Q8 64k/48k on 16 GB, and Qwen Q5 uses Q8 96k/64k on 24 GB. All retain vision with CPU image processing. These placements were measured on an RTX 5090, not physical 12/16/24 GB cards. Other programs can affect whether the larger choice starts successfully.
 
 If an actual allocation failure or sustained critical physical RAM interrupts a task, Marvin retries the next smaller context with the same model, cache precision and weight placement. Completed tool results remain in history. It never alternates Q8 and F16 during recovery. A session that started on an MTP variant first drops the draft at the same context, then interleaves lower contexts with and without MTP. If no smaller supported context remains, the task stops with a memory explanation; select another model and use **Continue**. Successful settings are remembered for each GPU budget.
 
@@ -346,17 +343,6 @@ Profile names 128k/192k/256k refer to 131,072 / 196,608 / 262,144 tokens. The nu
 Use Qwen Q5 for serious development, architecture, difficult reasoning, and final-quality writing. Use Qwen Q4 when speed or the full 256k context matters more than the small quality advantage of Q5.
 
 Q5 with Q8 is a strong general default. On 32 GB-class cards, the optional F16 choices are 128k and 96k.
-
-## Ornith
-
-Ornith is a Mixture-of-Experts model and generates very quickly because only part of its weights is active per token. All model weights must still fit in VRAM. In practical application development it may produce weaker results than dense Qwen despite its speed.
-
-Ornith supports thinking on/off natively. The intermediate depths are prompt-guided rather than native `reasoning_effort` values:
-
-- `xhigh` adds deliberate planning, architecture, edge-case, and verification guidance.
-- `medium` adds moderate reasoning guidance.
-- `low` uses Ornith's ordinary thinking behavior.
-- `off` disables thinking.
 
 ## KV cache precision
 
@@ -391,7 +377,7 @@ For best results, state the result you want, important constraints, and how comp
 
 Use **Attach**, drag and drop, or Ctrl+V to add one or more images. Supported formats are BMP, GIF, JPEG, PNG, and WebP. The most recent images remain in active context; older image references stay in history but may be omitted from later API requests.
 
-Images can be photographs, diagrams, screenshots, UI references, error messages, or visual source material. Qwen and Ornith use their matching vision projector automatically.
+Images can be photographs, diagrams, screenshots, UI references, error messages, or visual source material. Built-in models use their matching vision projector automatically.
 
 ## Steering a running task
 
@@ -962,7 +948,7 @@ The installer creates **Marvin (CLI)** in the Start Menu. It opens `run_cli.bat`
 | Command | Purpose |
 |---|---|
 | `/memory` | Show global, active-mode, and project memory. |
-| `/model q4\|q5\|ornith_q5` | Switch model; restarts the server. |
+| `/model q2\|q3\|q4\|q5\|flash_next_strata` | Switch model; restarts the server. |
 | `/work discussion\|research\|writing\|development\|computer` | Select work mode. |
 | `/mode chat\|agent\|computer` | Compatibility shortcut for legacy agent mode. |
 | `/autonomy supervised\|semi\|auto` | Set confirmation behavior. |

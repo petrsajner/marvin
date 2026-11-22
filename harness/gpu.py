@@ -99,28 +99,32 @@ def best_fit(cfg, vram_gb: float | None) -> tuple[str, str] | None:
         return None
     default_key = cfg.model_key()
     def family(key):
-        return cfg.model(key).get("family", "qwen" if key in ("q3", "q4", "q5") else key)
+        return cfg.model(key).get("family", "qwen" if key in ("q2", "q3", "q4", "q5") else key)
     related = [k for k in cfg.data["models"] if k != default_key and family(k) == family(default_key)]
-    ordered = [default_key] + related + [k for k in cfg.data["models"] if k != default_key and k not in related]
-    # A model that is not downloaded by default is not chosen by default either.
-    # The smallest quant buys context by giving up weight quality, and that is a
-    # trade the owner makes deliberately, not one made quietly on their behalf.
-    ordered = [k for k in ordered
-               if k == default_key or not cfg.model(k).get("optional_download")]
-    best: tuple | None = None  # (order, Q8, full cache, context, plain, has_limit, model, profile)
-    for order, key in enumerate(ordered):
-        for prof_key, prof in fitting_profiles(cfg, key, vram_gb).items():
-            candidate = (-order, prof.get("cache_type", prof_key) == "q8_0",
-                         # A reduced value cache is an option, never the default:
-                         # it costs recall over a long conversation, unmeasurably.
-                         not prof.get("value_cache_type"),
-                         int(prof.get("ctx_size", 0)),
-                         prof.get("speculative") is None, "min_vram_gb" in prof, key, prof_key)
-            if best is None or candidate > best:
-                best = candidate
-    if best is None:
-        return None
-    return best[6], best[7]
+    all_ordered = [default_key] + related + [k for k in cfg.data["models"] if k != default_key and k not in related]
+    # A model that is not downloaded by default is not chosen by default while a
+    # standard model fits. On 12 GB cards no larger quant fits, so fall back to
+    # fitting optional llama models (such as Q2) instead of returning None.
+    standard = [k for k in all_ordered
+                if k == default_key or not cfg.model(k).get("optional_download")]
+    optional_fallback = [k for k in all_ordered
+                         if k not in standard and cfg.backend(k) == "llama"]
+
+    def pick(candidates):
+        best: tuple | None = None  # (order, Q8, full cache, context, plain, has_limit, model, profile)
+        for order, key in enumerate(candidates):
+            for prof_key, prof in fitting_profiles(cfg, key, vram_gb).items():
+                candidate = (-order, prof.get("cache_type", prof_key) == "q8_0",
+                             # A reduced value cache is an option, never the default:
+                             # it costs recall over a long conversation, unmeasurably.
+                             not prof.get("value_cache_type"),
+                             int(prof.get("ctx_size", 0)),
+                             prof.get("speculative") is None, "min_vram_gb" in prof, key, prof_key)
+                if best is None or candidate > best:
+                    best = candidate
+        return (best[6], best[7]) if best is not None else None
+
+    return pick(standard) or pick(optional_fallback)
 
 
 def fits(cfg, model_key: str, profile_key: str, vram_gb: float | None) -> bool:
@@ -171,4 +175,7 @@ def download_keys(cfg, vram_gb: float | None) -> list[str]:
     if vram_gb is None:
         return keys
     fitting = [k for k in keys if fitting_profiles(cfg, k, vram_gb)]
-    return fitting
+    if fitting:
+        return fitting
+    return [key for key in cfg.data["models"]
+            if cfg.backend(key) == "llama" and fitting_profiles(cfg, key, vram_gb)]

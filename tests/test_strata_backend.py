@@ -98,7 +98,7 @@ class ConfigTests(unittest.TestCase):
         cfg = load_config(self.root / "missing.yaml", root=self.root)
         self.assertIn(KEY, cfg.data["models"])
         self.assertIn(IQ2, cfg.data["models"])
-        self.assertEqual(len(cfg.kv_cache_profiles(KEY)), 30, "fifteen RAM and GPU classes, two contexts each")
+        self.assertEqual(len(cfg.kv_cache_profiles(KEY)), 36, "eighteen RAM and GPU classes, two contexts each")
         self.assertEqual(cfg.kv_cache_mode(KEY), P256)
         self.assertEqual(cfg.context_size(KEY), 262144)
 
@@ -138,12 +138,14 @@ class ConfigTests(unittest.TestCase):
         cfg = strata_config(self.root)
         for key in (KEY, IQ2):
             for name, profile in cfg.kv_cache_profiles(key).items():
-                derived = profile["gpu_class"] > 32       # 48 and 96 GB cards: no such card to measure on
-                self.assertEqual(profile["measurement_id"], "derived-larger-cards-2026-10-08" if derived
-                                 else "strata-qualification-2026-10-07", name)
-                self.assertGreater(profile["min_vram_gb"], 14, name)
-                self.assertLessEqual(profile["min_vram_gb"], {96: 31.0, 48: 31.0, 32: 31.0, 24: 22.0, 16: 14.4}[
-                    profile["gpu_class"]], name)
+                cls = profile["gpu_class"]
+                expected_id = ("derived-larger-cards-2026-10-08" if cls > 32
+                               else "profiles-12gb-2026-11-22" if cls == 12
+                               else "strata-qualification-2026-10-07")
+                self.assertEqual(profile["measurement_id"], expected_id, name)
+                self.assertGreater(profile["min_vram_gb"], 7.5 if cls == 12 else 14, name)
+                self.assertLessEqual(profile["min_vram_gb"], {96: 31.0, 48: 31.0, 32: 31.0, 24: 22.0, 16: 14.4, 12: 10.0}[
+                    cls], name)
                 self.assertNotIn("server_args", profile)
                 self.assertEqual("expert_cache" in profile, profile["gpu_class"] < 32, name)
                 # Where the engine fills the card, it keeps the reserve it asked for.
@@ -161,7 +163,9 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(list(self.offered(cfg, KEY, 47.5, 63.7)), ["int8_256k_r64g48", "int8_128k_r64g48"])
         self.assertEqual(list(self.offered(cfg, IQ2, 95.59, 31.8)), ["int8_256k_r32g96", "int8_128k_r32g96"])
         self.assertEqual(cfg.kv_cache_profiles(KEY)["int8_256k_r48g96"]["engine_args"], ["--resident-experts"])
-        self.assertEqual(self.offered(cfg, KEY, 11.9, 63.7), {})
+        self.assertEqual(list(self.offered(cfg, KEY, 11.9, 63.7)), ["int8_256k_r64g12", "int8_128k_r64g12"])
+        self.assertEqual(list(self.offered(cfg, IQ2, 11.9, 31.8)), ["int8_128k_r32g12", "int8_64k_r32g12"])
+        self.assertEqual(self.offered(cfg, KEY, 8.0, 63.7), {})
 
     def test_each_class_runs_the_measured_expert_mode(self):
         cfg = strata_config(self.root)
@@ -1014,7 +1018,7 @@ class SeamlessSwitchTests(unittest.TestCase):
                  strata_backend.start_failure(self.cfg, {"engine_log": "", "log_offset": 0}).split(". Logs:")[0]]
         for text in shown:
             self.assertNotRegex(text, "(?i)strata|llama", text)
-        self.assertEqual({p["label"] for p in self.cfg.kv_cache_profiles(KEY).values()}, {"Q8 · 256k", "Q8 · 128k"})
+        self.assertEqual({p["label"] for p in self.cfg.kv_cache_profiles(KEY).values()}, {"Q8 · 256k", "Q8 · 128k", "Q8 · 64k"})
 
     def test_picture_estimate_follows_the_model_of_each_run(self):
         from harness.agent import Agent, build_registry

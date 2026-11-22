@@ -198,21 +198,6 @@ def build_system_prompt(mode: str, cfg, workspace, work_mode: str | None = None)
     block instead, so this text stays byte-identical for the whole session and
     the model never reprocesses the conversation from the start."""
     base = system_prompt(mode, work_mode)
-    model = cfg.model()
-    if (model.get("family") == "ornith" and cfg.data.get("thinking", True)):
-        effort = cfg.data.get("reasoning_effort", "xhigh")
-        if effort == "xhigh":
-            base += """
-
-## ORNITH DELIBERATE REASONING POLICY
-Do not optimize for speed or rush into a tool call. Before acting, reason deeply about the full
-task, inspect relevant project context, form a concrete plan, challenge assumptions, and consider
-edge cases. For coding, understand the existing architecture first, make incremental changes,
-verify behavior with tests, and reconsider the plan after every tool result. Prefer a correct,
-complete solution over a fast scaffold."""
-        elif effort == "medium":
-            base += ("\n\nBefore acting, reason through the task, inspect relevant context, "
-                     "consider edge cases, and verify the result.")
     if workspace:
         base += (f"\n\nCurrent project workspace: {workspace}. "
                  f"Relative paths in tools resolve against it. "

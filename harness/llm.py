@@ -188,7 +188,7 @@ class LLMClient:
             extra_body["chat_template_kwargs"] = {"enable_thinking": bool(thinking)}
         if "top_k" in s:
             extra_body["top_k"] = s.pop("top_k")
-        if "min_p" in s:  # Pass min_p through extra_body for llama-server (Nemotron); it is not an SDK parameter
+        if "min_p" in s:  # Pass min_p through extra_body for llama-server; it is not an SDK parameter
             extra_body["min_p"] = s.pop("min_p")
         params: dict[str, Any] = {
             "model": self.model_name,
@@ -390,7 +390,7 @@ class LLMClient:
         extra_body: dict[str, Any] = {}
         if "top_k" in s:
             extra_body["top_k"] = s.pop("top_k")
-        if "min_p" in s:  # Pass min_p through extra_body for llama-server (Nemotron); it is not an SDK parameter
+        if "min_p" in s:  # Pass min_p through extra_body for llama-server; it is not an SDK parameter
             extra_body["min_p"] = s.pop("min_p")
         if thinking is not None:
             extra_body["chat_template_kwargs"] = {"enable_thinking": bool(thinking)}

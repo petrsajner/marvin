@@ -1,6 +1,6 @@
 """Download configured GGUF weights and multimodal projectors.
 
-Use --model auto for detected hardware, --model all for every model, --models q4,q5 for an explicit selection, or --model ornith_q5 for that model and its projector. Without arguments, use the configured default model."""
+Use --model auto for detected hardware, --model all for every model, --models q4,q5 for an explicit selection, or --model q5 for that model and its projector. Without arguments, use the configured default model."""
 from __future__ import annotations
 
 import argparse

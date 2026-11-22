@@ -955,6 +955,226 @@
    ]
   }
  },
+ "q2/q8_0_32k_g12": {
+  "argv": [
+   "<root>/runtime/llama/bin/llama-server.exe",
+   "-m",
+   "<root>/runtime/models/Qwen3.8-27B-UD-Q2_K_XL.gguf",
+   "-ngl",
+   "999",
+   "-c",
+   "32768",
+   "-np",
+   "1",
+   "--host",
+   "127.0.0.1",
+   "--port",
+   "8080",
+   "--jinja",
+   "--reasoning-preserve",
+   "--image-min-tokens",
+   "1024",
+   "--alias",
+   "q2",
+   "--mmproj",
+   "<root>/runtime/models/mmproj-F16.gguf",
+   "--cache-type-k",
+   "q8_0",
+   "--cache-type-v",
+   "q8_0",
+   "-fa",
+   "on",
+   "--fit",
+   "off",
+   "--no-mmproj-offload"
+  ],
+  "profile": "q8_0_32k_g12",
+  "context": 32768,
+  "placement": {
+   "model": "q2",
+   "server_args": [
+    "--fit",
+    "off",
+    "--no-mmproj-offload"
+   ]
+  }
+ },
+ "q2/q8_0_16k_g12": {
+  "argv": [
+   "<root>/runtime/llama/bin/llama-server.exe",
+   "-m",
+   "<root>/runtime/models/Qwen3.8-27B-UD-Q2_K_XL.gguf",
+   "-ngl",
+   "999",
+   "-c",
+   "16384",
+   "-np",
+   "1",
+   "--host",
+   "127.0.0.1",
+   "--port",
+   "8080",
+   "--jinja",
+   "--reasoning-preserve",
+   "--image-min-tokens",
+   "1024",
+   "--alias",
+   "q2",
+   "--mmproj",
+   "<root>/runtime/models/mmproj-F16.gguf",
+   "--cache-type-k",
+   "q8_0",
+   "--cache-type-v",
+   "q8_0",
+   "-fa",
+   "on",
+   "--fit",
+   "off",
+   "--no-mmproj-offload"
+  ],
+  "profile": "q8_0_16k_g12",
+  "context": 16384,
+  "placement": {
+   "model": "q2",
+   "server_args": [
+    "--fit",
+    "off",
+    "--no-mmproj-offload"
+   ]
+  }
+ },
+ "q2/q8_0v4_48k_g12": {
+  "argv": [
+   "<root>/runtime/llama/bin/llama-server.exe",
+   "-m",
+   "<root>/runtime/models/Qwen3.8-27B-UD-Q2_K_XL.gguf",
+   "-ngl",
+   "999",
+   "-c",
+   "49152",
+   "-np",
+   "1",
+   "--host",
+   "127.0.0.1",
+   "--port",
+   "8080",
+   "--jinja",
+   "--reasoning-preserve",
+   "--image-min-tokens",
+   "1024",
+   "--alias",
+   "q2",
+   "--mmproj",
+   "<root>/runtime/models/mmproj-F16.gguf",
+   "--cache-type-k",
+   "q8_0",
+   "--cache-type-v",
+   "q4_0",
+   "-fa",
+   "on",
+   "--fit",
+   "off",
+   "--no-mmproj-offload"
+  ],
+  "profile": "q8_0v4_48k_g12",
+  "context": 49152,
+  "placement": {
+   "model": "q2",
+   "server_args": [
+    "--fit",
+    "off",
+    "--no-mmproj-offload"
+   ]
+  }
+ },
+ "q2/q4_0_64k_g12": {
+  "argv": [
+   "<root>/runtime/llama/bin/llama-server.exe",
+   "-m",
+   "<root>/runtime/models/Qwen3.8-27B-UD-Q2_K_XL.gguf",
+   "-ngl",
+   "999",
+   "-c",
+   "65536",
+   "-np",
+   "1",
+   "--host",
+   "127.0.0.1",
+   "--port",
+   "8080",
+   "--jinja",
+   "--reasoning-preserve",
+   "--image-min-tokens",
+   "1024",
+   "--alias",
+   "q2",
+   "--mmproj",
+   "<root>/runtime/models/mmproj-F16.gguf",
+   "--cache-type-k",
+   "q4_0",
+   "--cache-type-v",
+   "q4_0",
+   "-fa",
+   "on",
+   "--fit",
+   "off",
+   "--no-mmproj-offload"
+  ],
+  "profile": "q4_0_64k_g12",
+  "context": 65536,
+  "placement": {
+   "model": "q2",
+   "server_args": [
+    "--fit",
+    "off",
+    "--no-mmproj-offload"
+   ]
+  }
+ },
+ "q2/q4_0_32k_g12": {
+  "argv": [
+   "<root>/runtime/llama/bin/llama-server.exe",
+   "-m",
+   "<root>/runtime/models/Qwen3.8-27B-UD-Q2_K_XL.gguf",
+   "-ngl",
+   "999",
+   "-c",
+   "32768",
+   "-np",
+   "1",
+   "--host",
+   "127.0.0.1",
+   "--port",
+   "8080",
+   "--jinja",
+   "--reasoning-preserve",
+   "--image-min-tokens",
+   "1024",
+   "--alias",
+   "q2",
+   "--mmproj",
+   "<root>/runtime/models/mmproj-F16.gguf",
+   "--cache-type-k",
+   "q4_0",
+   "--cache-type-v",
+   "q4_0",
+   "-fa",
+   "on",
+   "--fit",
+   "off",
+   "--no-mmproj-offload"
+  ],
+  "profile": "q4_0_32k_g12",
+  "context": 32768,
+  "placement": {
+   "model": "q2",
+   "server_args": [
+    "--fit",
+    "off",
+    "--no-mmproj-offload"
+   ]
+  }
+ },
  "q2/q8_0_96k_vision": {
   "argv": [
    "<root>/runtime/llama/bin/llama-server.exe",
@@ -2381,918 +2601,6 @@
    ]
   }
  },
- "ornith_q5/q8_0_256k": {
-  "argv": [
-   "<root>/runtime/llama/bin/llama-server.exe",
-   "-m",
-   "<root>/runtime/models/Ornith-1.5-35B-Abliterated-Dynamic-Q5_K_M.gguf",
-   "-ngl",
-   "999",
-   "-c",
-   "262144",
-   "-np",
-   "1",
-   "--host",
-   "127.0.0.1",
-   "--port",
-   "8080",
-   "--jinja",
-   "--reasoning-preserve",
-   "--image-min-tokens",
-   "1024",
-   "--alias",
-   "ornith_q5",
-   "--mmproj",
-   "<root>/runtime/models/mmproj-Ornith-1.5-35B-BF16.gguf",
-   "--cache-type-k",
-   "q8_0",
-   "--cache-type-v",
-   "q8_0",
-   "-fa",
-   "on",
-   "--fit",
-   "off"
-  ],
-  "profile": "q8_0_256k",
-  "context": 262144,
-  "placement": {
-   "model": "ornith_q5",
-   "server_args": [
-    "--fit",
-    "off"
-   ]
-  }
- },
- "ornith_q5/q8_0_192k": {
-  "argv": [
-   "<root>/runtime/llama/bin/llama-server.exe",
-   "-m",
-   "<root>/runtime/models/Ornith-1.5-35B-Abliterated-Dynamic-Q5_K_M.gguf",
-   "-ngl",
-   "999",
-   "-c",
-   "196608",
-   "-np",
-   "1",
-   "--host",
-   "127.0.0.1",
-   "--port",
-   "8080",
-   "--jinja",
-   "--reasoning-preserve",
-   "--image-min-tokens",
-   "1024",
-   "--alias",
-   "ornith_q5",
-   "--mmproj",
-   "<root>/runtime/models/mmproj-Ornith-1.5-35B-BF16.gguf",
-   "--cache-type-k",
-   "q8_0",
-   "--cache-type-v",
-   "q8_0",
-   "-fa",
-   "on",
-   "--fit",
-   "off"
-  ],
-  "profile": "q8_0_192k",
-  "context": 196608,
-  "placement": {
-   "model": "ornith_q5",
-   "server_args": [
-    "--fit",
-    "off"
-   ]
-  }
- },
- "ornith_q5/q8_0_256k_g48": {
-  "argv": [
-   "<root>/runtime/llama/bin/llama-server.exe",
-   "-m",
-   "<root>/runtime/models/Ornith-1.5-35B-Abliterated-Dynamic-Q5_K_M.gguf",
-   "-ngl",
-   "999",
-   "-c",
-   "262144",
-   "-np",
-   "1",
-   "--host",
-   "127.0.0.1",
-   "--port",
-   "8080",
-   "--jinja",
-   "--reasoning-preserve",
-   "--image-min-tokens",
-   "1024",
-   "--alias",
-   "ornith_q5",
-   "--mmproj",
-   "<root>/runtime/models/mmproj-Ornith-1.5-35B-BF16.gguf",
-   "--cache-type-k",
-   "q8_0",
-   "--cache-type-v",
-   "q8_0",
-   "-fa",
-   "on",
-   "--fit",
-   "off"
-  ],
-  "profile": "q8_0_256k_g48",
-  "context": 262144,
-  "placement": {
-   "model": "ornith_q5",
-   "server_args": [
-    "--fit",
-    "off"
-   ]
-  }
- },
- "ornith_q5/q8_0_192k_g48": {
-  "argv": [
-   "<root>/runtime/llama/bin/llama-server.exe",
-   "-m",
-   "<root>/runtime/models/Ornith-1.5-35B-Abliterated-Dynamic-Q5_K_M.gguf",
-   "-ngl",
-   "999",
-   "-c",
-   "196608",
-   "-np",
-   "1",
-   "--host",
-   "127.0.0.1",
-   "--port",
-   "8080",
-   "--jinja",
-   "--reasoning-preserve",
-   "--image-min-tokens",
-   "1024",
-   "--alias",
-   "ornith_q5",
-   "--mmproj",
-   "<root>/runtime/models/mmproj-Ornith-1.5-35B-BF16.gguf",
-   "--cache-type-k",
-   "q8_0",
-   "--cache-type-v",
-   "q8_0",
-   "-fa",
-   "on",
-   "--fit",
-   "off"
-  ],
-  "profile": "q8_0_192k_g48",
-  "context": 196608,
-  "placement": {
-   "model": "ornith_q5",
-   "server_args": [
-    "--fit",
-    "off"
-   ]
-  }
- },
- "ornith_q5/q8_0_256k_g96": {
-  "argv": [
-   "<root>/runtime/llama/bin/llama-server.exe",
-   "-m",
-   "<root>/runtime/models/Ornith-1.5-35B-Abliterated-Dynamic-Q5_K_M.gguf",
-   "-ngl",
-   "999",
-   "-c",
-   "262144",
-   "-np",
-   "1",
-   "--host",
-   "127.0.0.1",
-   "--port",
-   "8080",
-   "--jinja",
-   "--reasoning-preserve",
-   "--image-min-tokens",
-   "1024",
-   "--alias",
-   "ornith_q5",
-   "--mmproj",
-   "<root>/runtime/models/mmproj-Ornith-1.5-35B-BF16.gguf",
-   "--cache-type-k",
-   "q8_0",
-   "--cache-type-v",
-   "q8_0",
-   "-fa",
-   "on",
-   "--fit",
-   "off"
-  ],
-  "profile": "q8_0_256k_g96",
-  "context": 262144,
-  "placement": {
-   "model": "ornith_q5",
-   "server_args": [
-    "--fit",
-    "off"
-   ]
-  }
- },
- "ornith_q5/q8_0_192k_g96": {
-  "argv": [
-   "<root>/runtime/llama/bin/llama-server.exe",
-   "-m",
-   "<root>/runtime/models/Ornith-1.5-35B-Abliterated-Dynamic-Q5_K_M.gguf",
-   "-ngl",
-   "999",
-   "-c",
-   "196608",
-   "-np",
-   "1",
-   "--host",
-   "127.0.0.1",
-   "--port",
-   "8080",
-   "--jinja",
-   "--reasoning-preserve",
-   "--image-min-tokens",
-   "1024",
-   "--alias",
-   "ornith_q5",
-   "--mmproj",
-   "<root>/runtime/models/mmproj-Ornith-1.5-35B-BF16.gguf",
-   "--cache-type-k",
-   "q8_0",
-   "--cache-type-v",
-   "q8_0",
-   "-fa",
-   "on",
-   "--fit",
-   "off"
-  ],
-  "profile": "q8_0_192k_g96",
-  "context": 196608,
-  "placement": {
-   "model": "ornith_q5",
-   "server_args": [
-    "--fit",
-    "off"
-   ]
-  }
- },
- "nemotron_q4/q8_0_512k": {
-  "argv": [
-   "<root>/runtime/llama/bin/llama-server.exe",
-   "-m",
-   "<root>/runtime/models/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q4_K_XL.gguf",
-   "-ngl",
-   "999",
-   "-c",
-   "524288",
-   "-np",
-   "1",
-   "--host",
-   "127.0.0.1",
-   "--port",
-   "8080",
-   "--jinja",
-   "--reasoning-preserve",
-   "--image-min-tokens",
-   "1024",
-   "--alias",
-   "nemotron_q4",
-   "--cache-type-k",
-   "q8_0",
-   "--cache-type-v",
-   "q8_0",
-   "-fa",
-   "on",
-   "--fit",
-   "off"
-  ],
-  "profile": "q8_0_512k",
-  "context": 524288,
-  "placement": {
-   "model": "nemotron_q4",
-   "server_args": [
-    "--fit",
-    "off"
-   ]
-  }
- },
- "nemotron_q4/q8_0_256k": {
-  "argv": [
-   "<root>/runtime/llama/bin/llama-server.exe",
-   "-m",
-   "<root>/runtime/models/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q4_K_XL.gguf",
-   "-ngl",
-   "999",
-   "-c",
-   "262144",
-   "-np",
-   "1",
-   "--host",
-   "127.0.0.1",
-   "--port",
-   "8080",
-   "--jinja",
-   "--reasoning-preserve",
-   "--image-min-tokens",
-   "1024",
-   "--alias",
-   "nemotron_q4",
-   "--cache-type-k",
-   "q8_0",
-   "--cache-type-v",
-   "q8_0",
-   "-fa",
-   "on",
-   "--fit",
-   "off"
-  ],
-  "profile": "q8_0_256k",
-  "context": 262144,
-  "placement": {
-   "model": "nemotron_q4",
-   "server_args": [
-    "--fit",
-    "off"
-   ]
-  }
- },
- "nemotron_q4/q8_0_512k_spill": {
-  "argv": [
-   "<root>/runtime/llama/bin/llama-server.exe",
-   "-m",
-   "<root>/runtime/models/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q4_K_XL.gguf",
-   "-ngl",
-   "999",
-   "-c",
-   "524288",
-   "-np",
-   "1",
-   "--host",
-   "127.0.0.1",
-   "--port",
-   "8080",
-   "--jinja",
-   "--reasoning-preserve",
-   "--image-min-tokens",
-   "1024",
-   "--alias",
-   "nemotron_q4",
-   "--cache-type-k",
-   "q8_0",
-   "--cache-type-v",
-   "q8_0",
-   "-fa",
-   "on",
-   "--fit",
-   "off",
-   "--n-cpu-moe",
-   "14"
-  ],
-  "profile": "q8_0_512k_spill",
-  "context": 524288,
-  "placement": {
-   "model": "nemotron_q4",
-   "server_args": [
-    "--fit",
-    "off",
-    "--n-cpu-moe",
-    "14"
-   ]
-  }
- },
- "nemotron_q4/q8_0_256k_spill": {
-  "argv": [
-   "<root>/runtime/llama/bin/llama-server.exe",
-   "-m",
-   "<root>/runtime/models/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q4_K_XL.gguf",
-   "-ngl",
-   "999",
-   "-c",
-   "262144",
-   "-np",
-   "1",
-   "--host",
-   "127.0.0.1",
-   "--port",
-   "8080",
-   "--jinja",
-   "--reasoning-preserve",
-   "--image-min-tokens",
-   "1024",
-   "--alias",
-   "nemotron_q4",
-   "--cache-type-k",
-   "q8_0",
-   "--cache-type-v",
-   "q8_0",
-   "-fa",
-   "on",
-   "--fit",
-   "off",
-   "--n-cpu-moe",
-   "12"
-  ],
-  "profile": "q8_0_256k_spill",
-  "context": 262144,
-  "placement": {
-   "model": "nemotron_q4",
-   "server_args": [
-    "--fit",
-    "off",
-    "--n-cpu-moe",
-    "12"
-   ]
-  }
- },
- "nemotron_q4/q8_0_512k_g48": {
-  "argv": [
-   "<root>/runtime/llama/bin/llama-server.exe",
-   "-m",
-   "<root>/runtime/models/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q4_K_XL.gguf",
-   "-ngl",
-   "999",
-   "-c",
-   "524288",
-   "-np",
-   "1",
-   "--host",
-   "127.0.0.1",
-   "--port",
-   "8080",
-   "--jinja",
-   "--reasoning-preserve",
-   "--image-min-tokens",
-   "1024",
-   "--alias",
-   "nemotron_q4",
-   "--cache-type-k",
-   "q8_0",
-   "--cache-type-v",
-   "q8_0",
-   "-fa",
-   "on",
-   "--fit",
-   "off"
-  ],
-  "profile": "q8_0_512k_g48",
-  "context": 524288,
-  "placement": {
-   "model": "nemotron_q4",
-   "server_args": [
-    "--fit",
-    "off"
-   ]
-  }
- },
- "nemotron_q4/q8_0_256k_g48": {
-  "argv": [
-   "<root>/runtime/llama/bin/llama-server.exe",
-   "-m",
-   "<root>/runtime/models/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q4_K_XL.gguf",
-   "-ngl",
-   "999",
-   "-c",
-   "262144",
-   "-np",
-   "1",
-   "--host",
-   "127.0.0.1",
-   "--port",
-   "8080",
-   "--jinja",
-   "--reasoning-preserve",
-   "--image-min-tokens",
-   "1024",
-   "--alias",
-   "nemotron_q4",
-   "--cache-type-k",
-   "q8_0",
-   "--cache-type-v",
-   "q8_0",
-   "-fa",
-   "on",
-   "--fit",
-   "off"
-  ],
-  "profile": "q8_0_256k_g48",
-  "context": 262144,
-  "placement": {
-   "model": "nemotron_q4",
-   "server_args": [
-    "--fit",
-    "off"
-   ]
-  }
- },
- "nemotron_q4/q8_0_512k_g96": {
-  "argv": [
-   "<root>/runtime/llama/bin/llama-server.exe",
-   "-m",
-   "<root>/runtime/models/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q4_K_XL.gguf",
-   "-ngl",
-   "999",
-   "-c",
-   "524288",
-   "-np",
-   "1",
-   "--host",
-   "127.0.0.1",
-   "--port",
-   "8080",
-   "--jinja",
-   "--reasoning-preserve",
-   "--image-min-tokens",
-   "1024",
-   "--alias",
-   "nemotron_q4",
-   "--cache-type-k",
-   "q8_0",
-   "--cache-type-v",
-   "q8_0",
-   "-fa",
-   "on",
-   "--fit",
-   "off"
-  ],
-  "profile": "q8_0_512k_g96",
-  "context": 524288,
-  "placement": {
-   "model": "nemotron_q4",
-   "server_args": [
-    "--fit",
-    "off"
-   ]
-  }
- },
- "nemotron_q4/q8_0_256k_g96": {
-  "argv": [
-   "<root>/runtime/llama/bin/llama-server.exe",
-   "-m",
-   "<root>/runtime/models/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q4_K_XL.gguf",
-   "-ngl",
-   "999",
-   "-c",
-   "262144",
-   "-np",
-   "1",
-   "--host",
-   "127.0.0.1",
-   "--port",
-   "8080",
-   "--jinja",
-   "--reasoning-preserve",
-   "--image-min-tokens",
-   "1024",
-   "--alias",
-   "nemotron_q4",
-   "--cache-type-k",
-   "q8_0",
-   "--cache-type-v",
-   "q8_0",
-   "-fa",
-   "on",
-   "--fit",
-   "off"
-  ],
-  "profile": "q8_0_256k_g96",
-  "context": 262144,
-  "placement": {
-   "model": "nemotron_q4",
-   "server_args": [
-    "--fit",
-    "off"
-   ]
-  }
- },
- "nemotron_q5/q8_0_512k": {
-  "argv": [
-   "<root>/runtime/llama/bin/llama-server.exe",
-   "-m",
-   "<root>/runtime/models/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q5_K_XL.gguf",
-   "-ngl",
-   "999",
-   "-c",
-   "524288",
-   "-np",
-   "1",
-   "--host",
-   "127.0.0.1",
-   "--port",
-   "8080",
-   "--jinja",
-   "--reasoning-preserve",
-   "--image-min-tokens",
-   "1024",
-   "--alias",
-   "nemotron_q5",
-   "--cache-type-k",
-   "q8_0",
-   "--cache-type-v",
-   "q8_0",
-   "-fa",
-   "on",
-   "--fit",
-   "off",
-   "--n-cpu-moe",
-   "2"
-  ],
-  "profile": "q8_0_512k",
-  "context": 524288,
-  "placement": {
-   "model": "nemotron_q5",
-   "server_args": [
-    "--fit",
-    "off",
-    "--n-cpu-moe",
-    "2"
-   ]
-  }
- },
- "nemotron_q5/q8_0_256k": {
-  "argv": [
-   "<root>/runtime/llama/bin/llama-server.exe",
-   "-m",
-   "<root>/runtime/models/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q5_K_XL.gguf",
-   "-ngl",
-   "999",
-   "-c",
-   "262144",
-   "-np",
-   "1",
-   "--host",
-   "127.0.0.1",
-   "--port",
-   "8080",
-   "--jinja",
-   "--reasoning-preserve",
-   "--image-min-tokens",
-   "1024",
-   "--alias",
-   "nemotron_q5",
-   "--cache-type-k",
-   "q8_0",
-   "--cache-type-v",
-   "q8_0",
-   "-fa",
-   "on",
-   "--fit",
-   "off"
-  ],
-  "profile": "q8_0_256k",
-  "context": 262144,
-  "placement": {
-   "model": "nemotron_q5",
-   "server_args": [
-    "--fit",
-    "off"
-   ]
-  }
- },
- "nemotron_q5/q8_0_512k_spill": {
-  "argv": [
-   "<root>/runtime/llama/bin/llama-server.exe",
-   "-m",
-   "<root>/runtime/models/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q5_K_XL.gguf",
-   "-ngl",
-   "999",
-   "-c",
-   "524288",
-   "-np",
-   "1",
-   "--host",
-   "127.0.0.1",
-   "--port",
-   "8080",
-   "--jinja",
-   "--reasoning-preserve",
-   "--image-min-tokens",
-   "1024",
-   "--alias",
-   "nemotron_q5",
-   "--cache-type-k",
-   "q8_0",
-   "--cache-type-v",
-   "q8_0",
-   "-fa",
-   "on",
-   "--fit",
-   "off",
-   "--n-cpu-moe",
-   "21"
-  ],
-  "profile": "q8_0_512k_spill",
-  "context": 524288,
-  "placement": {
-   "model": "nemotron_q5",
-   "server_args": [
-    "--fit",
-    "off",
-    "--n-cpu-moe",
-    "21"
-   ]
-  }
- },
- "nemotron_q5/q8_0_256k_spill": {
-  "argv": [
-   "<root>/runtime/llama/bin/llama-server.exe",
-   "-m",
-   "<root>/runtime/models/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q5_K_XL.gguf",
-   "-ngl",
-   "999",
-   "-c",
-   "262144",
-   "-np",
-   "1",
-   "--host",
-   "127.0.0.1",
-   "--port",
-   "8080",
-   "--jinja",
-   "--reasoning-preserve",
-   "--image-min-tokens",
-   "1024",
-   "--alias",
-   "nemotron_q5",
-   "--cache-type-k",
-   "q8_0",
-   "--cache-type-v",
-   "q8_0",
-   "-fa",
-   "on",
-   "--fit",
-   "off",
-   "--n-cpu-moe",
-   "18"
-  ],
-  "profile": "q8_0_256k_spill",
-  "context": 262144,
-  "placement": {
-   "model": "nemotron_q5",
-   "server_args": [
-    "--fit",
-    "off",
-    "--n-cpu-moe",
-    "18"
-   ]
-  }
- },
- "nemotron_q5/q8_0_512k_g48": {
-  "argv": [
-   "<root>/runtime/llama/bin/llama-server.exe",
-   "-m",
-   "<root>/runtime/models/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q5_K_XL.gguf",
-   "-ngl",
-   "999",
-   "-c",
-   "524288",
-   "-np",
-   "1",
-   "--host",
-   "127.0.0.1",
-   "--port",
-   "8080",
-   "--jinja",
-   "--reasoning-preserve",
-   "--image-min-tokens",
-   "1024",
-   "--alias",
-   "nemotron_q5",
-   "--cache-type-k",
-   "q8_0",
-   "--cache-type-v",
-   "q8_0",
-   "-fa",
-   "on",
-   "--fit",
-   "off"
-  ],
-  "profile": "q8_0_512k_g48",
-  "context": 524288,
-  "placement": {
-   "model": "nemotron_q5",
-   "server_args": [
-    "--fit",
-    "off"
-   ]
-  }
- },
- "nemotron_q5/q8_0_256k_g48": {
-  "argv": [
-   "<root>/runtime/llama/bin/llama-server.exe",
-   "-m",
-   "<root>/runtime/models/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q5_K_XL.gguf",
-   "-ngl",
-   "999",
-   "-c",
-   "262144",
-   "-np",
-   "1",
-   "--host",
-   "127.0.0.1",
-   "--port",
-   "8080",
-   "--jinja",
-   "--reasoning-preserve",
-   "--image-min-tokens",
-   "1024",
-   "--alias",
-   "nemotron_q5",
-   "--cache-type-k",
-   "q8_0",
-   "--cache-type-v",
-   "q8_0",
-   "-fa",
-   "on",
-   "--fit",
-   "off"
-  ],
-  "profile": "q8_0_256k_g48",
-  "context": 262144,
-  "placement": {
-   "model": "nemotron_q5",
-   "server_args": [
-    "--fit",
-    "off"
-   ]
-  }
- },
- "nemotron_q5/q8_0_512k_g96": {
-  "argv": [
-   "<root>/runtime/llama/bin/llama-server.exe",
-   "-m",
-   "<root>/runtime/models/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q5_K_XL.gguf",
-   "-ngl",
-   "999",
-   "-c",
-   "524288",
-   "-np",
-   "1",
-   "--host",
-   "127.0.0.1",
-   "--port",
-   "8080",
-   "--jinja",
-   "--reasoning-preserve",
-   "--image-min-tokens",
-   "1024",
-   "--alias",
-   "nemotron_q5",
-   "--cache-type-k",
-   "q8_0",
-   "--cache-type-v",
-   "q8_0",
-   "-fa",
-   "on",
-   "--fit",
-   "off"
-  ],
-  "profile": "q8_0_512k_g96",
-  "context": 524288,
-  "placement": {
-   "model": "nemotron_q5",
-   "server_args": [
-    "--fit",
-    "off"
-   ]
-  }
- },
- "nemotron_q5/q8_0_256k_g96": {
-  "argv": [
-   "<root>/runtime/llama/bin/llama-server.exe",
-   "-m",
-   "<root>/runtime/models/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q5_K_XL.gguf",
-   "-ngl",
-   "999",
-   "-c",
-   "262144",
-   "-np",
-   "1",
-   "--host",
-   "127.0.0.1",
-   "--port",
-   "8080",
-   "--jinja",
-   "--reasoning-preserve",
-   "--image-min-tokens",
-   "1024",
-   "--alias",
-   "nemotron_q5",
-   "--cache-type-k",
-   "q8_0",
-   "--cache-type-v",
-   "q8_0",
-   "-fa",
-   "on",
-   "--fit",
-   "off"
-  ],
-  "profile": "q8_0_256k_g96",
-  "context": 262144,
-  "placement": {
-   "model": "nemotron_q5",
-   "server_args": [
-    "--fit",
-    "off"
-   ]
-  }
- },
  "manual-budget/q5/q8_0": {
   "argv": [
    "<root>/runtime/llama/bin/llama-server.exe",
@@ -3385,15 +2693,15 @@
    ]
   }
  },
- "recovery/nemotron_q5/q8_0_256k_spill": {
+ "recovery/q2/q8_0_96k_vision": {
   "argv": [
    "<root>/runtime/llama/bin/llama-server.exe",
    "-m",
-   "<root>/runtime/models/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q5_K_XL.gguf",
+   "<root>/runtime/models/Qwen3.8-27B-UD-Q2_K_XL.gguf",
    "-ngl",
    "999",
    "-c",
-   "262144",
+   "98304",
    "-np",
    "1",
    "--host",
@@ -3405,7 +2713,9 @@
    "--image-min-tokens",
    "1024",
    "--alias",
-   "nemotron_q5",
+   "q2",
+   "--mmproj",
+   "<root>/runtime/models/mmproj-F16.gguf",
    "--cache-type-k",
    "q8_0",
    "--cache-type-v",
@@ -3414,18 +2724,16 @@
    "on",
    "--fit",
    "off",
-   "--n-cpu-moe",
-   "21"
+   "--no-mmproj-offload"
   ],
-  "profile": "q8_0_256k_spill",
-  "context": 262144,
+  "profile": "q8_0_96k_vision",
+  "context": 98304,
   "placement": {
-   "model": "nemotron_q5",
+   "model": "q2",
    "server_args": [
     "--fit",
     "off",
-    "--n-cpu-moe",
-    "21"
+    "--no-mmproj-offload"
    ]
   }
  },

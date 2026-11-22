@@ -79,13 +79,25 @@ def test_config() -> None:
     check(abs(s["temperature"] - 1.0) < 1e-9, "thinking sampling t=1.0")
     s2 = cfg.sampling(thinking=False)
     check(abs(s2["temperature"] - 0.7) < 1e-9, "non-thinking sampling t=0.7")
-    cfg.data["default_model"] = "ornith_q5"
+    # Retired built-ins migrate cleanly to their Qwen3.8 replacements.
+    for retired, expected in (("ornith_q5", "q5"), ("nemotron_q4", "q4"), ("nemotron_q5", "q5")):
+        cfg.data["default_model"] = retired
+        check(cfg.model_key() == expected, f"Retired model {retired} migrates to {expected}")
+    cfg.data["default_model"] = "q5"
+    # Custom models may override sampling and use a separate projector repo.
+    cfg.data["models"]["custom_mm"] = {
+        "alias": "Custom", "repo": "owner/model", "file": "custom.gguf",
+        "mmproj_repo": "owner/mmproj", "mmproj": "mmproj.gguf",
+        "sampling": {"thinking": {"temperature": 0.6}},
+        "supports_reasoning_effort": False,
+    }
+    cfg.data["default_model"] = "custom_mm"
     check(abs(cfg.sampling(thinking=True)["temperature"] - 0.6) < 1e-9,
-          "Ornith uses sampling settings from its own model card")
-    check(cfg.mmproj_repo() == "ornith-ai/Ornith-1.5-35B-A3B-GGUF",
-          "The Ornith vision projector can come from a separate repository")
-    check(cfg.context_size() == 262144 and cfg.kv_cache_mode() == "q8_0_256k",
-          "Ornith uses the validated 256k context and Q8 KV")
+          "Custom model uses sampling settings from its own entry")
+    check(cfg.mmproj_repo() == "owner/mmproj",
+          "A vision projector can come from a separate repository")
+    cfg.data["default_model"] = "q5"
+    cfg.data["models"].pop("custom_mm")
     legacy_file = Path(tempfile.mkdtemp()) / "legacy.yaml"
     try:
         legacy_file.write_text(
@@ -124,9 +136,8 @@ def test_config() -> None:
           "Discussion does not use the development system prompt")
     check("Never filter" in research_prompt and "adult user" in research_prompt,
           "Research forbids filtering sources by trustworthiness")
-    check("ORNITH DELIBERATE REASONING POLICY" in development_prompt
-          and "Do not optimize for speed" in development_prompt,
-          "Ornith xhigh receives explicit deep-reasoning guidance")
+    check("development" in development_prompt.lower() or "coding" in development_prompt.lower(),
+          "Development mode uses the development system prompt")
     skills_catalog = skills_block(cfg, ROOT)
     check("## OPTIONAL SKILLS" in skills_catalog
           and "research-synthesis" in skills_catalog
@@ -471,36 +482,35 @@ def test_gpu_autofit() -> None:
     choice = best_fit(cfg, 24.0)
     check(choice == ("q5", "q8_0_96k"),
           f"auto-fit for 24 GB selects a feasible combination ({choice})")
-    check(set(fitting_profiles(cfg, "ornith_q5", 24.0)) == set(),
-          "Ornith has no supported 24 GB profile")
-    check(set(download_keys(cfg, 24.0)) == {"q3", "q4", "q5", "nemotron_q4", "nemotron_q5"},
-          "Setup selects compatible 24 GB models, including Nemotron Q4 with CPU experts")
+    check(set(download_keys(cfg, 24.0)) == {"q3", "q4", "q5"},
+          "Setup selects compatible 24 GB models")
     check(set(download_keys(cfg, 16.0)) == {"q3"},
           "Setup selects IQ3_S for 16 GB cards")
     check(best_fit(cfg, 16.0) == ("q3", "q8_0_64k"),
           "auto-fit for 16 GB selects the measured IQ3_S / 64k profile")
+    check(set(download_keys(cfg, 12.0)) == {"q2"},
+          "Setup selects Q2 for 12 GB cards where larger quants do not fit")
+    check(best_fit(cfg, 12.0) == ("q2", "q8_0_32k_g12"),
+          "auto-fit for 12 GB selects the measured Q2 / 32k profile")
     q3_profiles = cfg.kv_cache_profiles("q3")
     check(set(q3_profiles) == {"q8_0", "q8_0_64k", "q8_0v4_96k", "q4_0_128k",
                                "q8_0_128k", "q8_0_96k"},
           "IQ3 has only the approved 16 and 24 GB profiles")
-    check(set(cfg.kv_cache_profiles("q2")) == {"q8_0_96k_vision", "q8_0_64k_vision",
+    check(set(cfg.kv_cache_profiles("q2")) == {"q8_0_32k_g12", "q8_0_16k_g12",
+                                               "q8_0v4_48k_g12", "q4_0_64k_g12", "q4_0_32k_g12",
+                                               "q8_0_96k_vision", "q8_0_64k_vision",
                                                "q8_0_128k", "q4_0_192k", "q8_0_256k",
                                                "q8_0_256k_g48", "q8_0_256k_g96"},
-          "Q2 has the approved 16 GB profiles and one for each large card class")
+          "Q2 has the approved 12/16 GB profiles and one for each large card class")
     check(cfg.model("q2").get("optional_download") is True
           and best_fit(cfg, 16.0) == ("q3", "q8_0_64k"),
-          "Q2 is offered for 16 GB but never chosen automatically")
+          "Q2 is offered for 16 GB but never chosen automatically when IQ3 fits")
     check(all("min_vram_gb" in p for p in q3_profiles.values()),
           "Every Q3 profile specifies min_vram_gb")
-    check(set(download_keys(cfg, 32.0)) == {"q4", "q5", "ornith_q5",
-                                            "nemotron_q4", "nemotron_q5"},
+    check(set(download_keys(cfg, 32.0)) == {"q4", "q5"},
           "Setup selects all standard models on a 32 GB card")
-    # Nemotron: measured profiles, RAM spill, text-only (no projector)
-    nq4 = cfg.kv_cache_profiles("nemotron_q4")
-    check(nq4["q8_0_512k_spill"].get("server_args") == ["--fit", "off", "--n-cpu-moe", "14"],
-          "Nemotron spill profiles include --n-cpu-moe")
-    check(cfg.mmproj_file("nemotron_q4") is None and cfg.mmproj_file("q5") is not None,
-          "Nemotron is text-only; Qwen has a multimodal projector")
+    check(cfg.mmproj_file("q5") is not None,
+          "Qwen has a multimodal projector")
     check(best_fit(cfg, 32.0) == ("q5", "q8_0"),
           "Q5 with Q8 remains the default for 32 GB cards")
     # Compact profiles use their cache_type instead of their profile identifier.
@@ -766,11 +776,13 @@ def test_reasoning_effort_kwargs() -> None:
     data["thinking"] = True
     data["reasoning_effort"] = "blbost"
     check(_template_kwargs(Config(data, ROOT)) == {}, "Invalid effort uses the chat-template default")
-    data["default_model"] = "ornith_q5"
+    data["models"]["no_effort"] = {"alias": "NoEffort", "file": "x.gguf", "supports_reasoning_effort": False}
+    data["default_model"] = "no_effort"
     data["reasoning_effort"] = "xhigh"
     check(_template_kwargs(Config(data, ROOT)) == {
         "chat_template_kwargs": {"enable_thinking": True}},
-          "Ornith enables reasoning without an unsupported reasoning_effort parameter")
+          "Models without reasoning_effort enable thinking without passing reasoning_effort")
+    data["models"].pop("no_effort")
     data["default_model"] = "q4"
 
     class CaptureCompletions:

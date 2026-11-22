@@ -58,6 +58,7 @@ def profile(context, gpu_class, measured, *, precision="q8_0", value_precision=N
 
 
 SMALL_CARD_MEASUREMENT = "profiles-16gb-2026-09-19"
+PROFILES_12GB_MEASUREMENT = "profiles-12gb-2026-11-22"
 
 # Strata (docs/design/2026-10-05-strata-backend.md), approved by the owner on
 # 2026-10-07 from docs/design/strata-qualification-2026-10-07.md.
@@ -69,12 +70,12 @@ AUTO_CACHE_VRAM_RESERVE_MIB = 1100
 
 def strata_profile(context, gpu_class, ram_class, measured, *, mode="normal", kv_resident=False,
                    expert_cache=None, measurement=STRATA_MEASUREMENT_ID):
-    """One Strata placement: int8 KV with MTP, for one GPU class and one RAM class.
+    """One Strata placement: int8 KV with drafter, for one GPU class and one RAM class.
 
     Modes: "normal" keeps every expert in RAM; "resident" page-locks the experts
     the GPU does not hold, as far as the free RAM allows, and reads the rest from
     the GGUF files in place. `kv_resident` keeps the whole KV cache in RAM, which
-    leaves a 16 GB card more room for experts. `expert_cache` fixes the GPU's
+    leaves a 12-16 GB card more room for experts. `expert_cache` fixes the GPU's
     expert cache (a byte budget in largest-expert units) at what was measured to
     fit the class; without it the engine fills the free VRAM.
 
@@ -100,15 +101,27 @@ def strata_menu(rows):
     """Profiles from (RAM class, GPU class, mode, KV in RAM, ((context, measured GiB, cache), ...)) rows."""
     menu = {}
     for ram, gpu, mode, kv_resident, contexts in rows:
+        measurement = PROFILES_12GB_MEASUREMENT if gpu == 12 else STRATA_MEASUREMENT_ID
         for context, measured, cache in contexts:
             menu[f"int8_{context}k_r{ram}g{gpu}"] = strata_profile(
-                context, gpu, ram, measured, mode=mode, kv_resident=kv_resident, expert_cache=cache)
+                context, gpu, ram, measured, mode=mode, kv_resident=kv_resident,
+                expert_cache=cache, measurement=measurement)
     return menu
 
 PROFILES = {
-    # The smallest quant. Two gigabytes less than IQ3_S, which buys either twice
-    # the context or the vision projector back on the graphics card.
+    # The smallest quant. Covers 12 GB cards (all layers on GPU with CPU vision)
+    # and on 16 GB cards buys either twice the context or GPU vision.
     "q2": {
+        "q8_0_32k_g12": profile(32, 12, 10.546, cpu_vision=True,
+                                measurement=PROFILES_12GB_MEASUREMENT),
+        "q8_0_16k_g12": profile(16, 12, 9.975, cpu_vision=True,
+                                measurement=PROFILES_12GB_MEASUREMENT),
+        "q8_0v4_48k_g12": profile(48, 12, 10.818, value_precision="q4_0", cpu_vision=True,
+                                  measurement=PROFILES_12GB_MEASUREMENT),
+        "q4_0_64k_g12": profile(64, 12, 10.791, precision="q4_0", cpu_vision=True,
+                                measurement=PROFILES_12GB_MEASUREMENT),
+        "q4_0_32k_g12": profile(32, 12, 10.086, precision="q4_0", cpu_vision=True,
+                                measurement=PROFILES_12GB_MEASUREMENT),
         "q8_0_96k_vision": profile(96, 16, 14.19, gpu_vision=True,
                                    measurement=SMALL_CARD_MEASUREMENT),
         "q8_0_64k_vision": profile(64, 16, 12.96, gpu_vision=True,
@@ -156,50 +169,40 @@ PROFILES = {
         "q8_0_96k": profile(96, 24, 21.923, cpu_vision=True),
         "q8_0_compact": profile(64, 24, 20.723, cpu_vision=True),
     },
-    "ornith_q5": {
-        "q8_0_256k": profile(256, 32, 27.906),
-        "q8_0_192k": profile(192, 32, 27.129),
-    },
-    "nemotron_q4": {
-        "q8_0_512k": profile(512, 32, 25.420),
-        "q8_0_256k": profile(256, 32, 24.311),
-        "q8_0_512k_spill": profile(512, 24, 21.278, cpu_layers=14),
-        "q8_0_256k_spill": profile(256, 24, 20.641, cpu_layers=12),
-    },
-    "nemotron_q5": {
-        "q8_0_512k": profile(512, 32, 29.085, cpu_layers=2),
-        "q8_0_256k": profile(256, 32, 28.883),
-        "q8_0_512k_spill": profile(512, 24, 21.499, cpu_layers=21),
-        "q8_0_256k_spill": profile(256, 24, 20.899, cpu_layers=18),
-    },
-    # Measured server VRAM and the cache budgets of the 2026-10-07 record. Below
-    # 64 GB of RAM the resident mode won everywhere; with 64 GB a 16 GB card keeps
-    # the KV cache in RAM.
+    # Measured server VRAM and the cache budgets of the 2026-10-07 record (16-32 GB)
+    # and the 2026-11-22 record (12 GB). Below 64 GB of RAM the resident mode won
+    # everywhere; with 64 GB a 12-16 GB card keeps the KV cache in RAM.
     "flash_next_strata": strata_menu(STRATA_IQ3_ROWS := [
         (64, 32, "normal", False, ((256, 30.535, None), (128, 30.56, None))),
         (64, 24, "normal", False, ((256, 21.943, 4110), (128, 21.945, 4882))),
         (64, 16, "normal", True, ((256, 14.344, 2240), (128, 14.345, 2330))),
+        (64, 12, "normal", True, ((256, 8.919, 900), (128, 8.84, 950))),
         (48, 32, "resident", False, ((256, 30.468, None), (128, 30.346, None))),
         (48, 24, "resident", False, ((256, 21.941, 4118), (128, 21.942, 4890))),
         # 128k with its own larger cache ran out of memory on the long input; this
         # is the 256k placement with a smaller KV, as recovery from 256k runs it.
         (48, 16, "resident", False, ((256, 14.349, 1054), (128, 14.349, 1054))),
+        (48, 12, "resident", False, ((128, 8.895, 500), (64, 8.844, 850))),
         (32, 32, "resident", False, ((256, 30.469, None), (128, 30.401, None))),
         (32, 24, "resident", False, ((256, 21.94, 4129), (128, 21.941, 4901))),
         (32, 16, "resident", False, ((256, 14.345, 1065), (128, 14.344, 1837))),
+        (32, 12, "resident", False, ((128, 8.895, 500), (64, 8.844, 850))),
     ]),
     "flash_next_strata_iq2": strata_menu(STRATA_IQ2_ROWS := [
         (64, 32, "normal", False, ((256, 30.081, None), (128, 30.518, None))),
         (64, 24, "normal", False, ((256, 21.95, 7921), (128, 21.95, 9282))),
         (64, 16, "normal", True, ((256, 14.349, 4619), (128, 14.35, 4780))),
+        (64, 12, "normal", True, ((256, 8.26, 1800), (128, 8.26, 1800))),
         # The 48 GB / 256k run lost its server's VRAM counter; the placement is the
         # 64 GB one, which RAM does not change.
         (48, 32, "normal", False, ((256, 30.081, None), (128, 30.411, None))),
         (48, 24, "normal", False, ((256, 21.95, 7921), (128, 21.95, 9282))),
         (48, 16, "normal", False, ((256, 14.348, 2517), (128, 14.348, 3878))),
+        (48, 12, "resident", False, ((128, 8.076, 1000), (64, 8.034, 1600))),
         (32, 32, "resident", False, ((256, 30.332, None), (128, 30.342, None))),
         (32, 24, "resident", False, ((256, 21.952, 7940), (128, 21.946, 9300))),
         (32, 16, "resident", False, ((256, 14.349, 2535), (128, 14.349, 3896))),
+        (32, 12, "resident", False, ((128, 8.076, 1000), (64, 8.034, 1600))),
     ]),
 }
 
@@ -207,9 +210,8 @@ PROFILES = {
 # Cards of 48 and 96 GB (owner, 2026-10-08). Not measured: the owner's PC has a
 # 32 GB card and a larger one cannot be simulated. What fits a 32 GB card keeps its
 # measured allocation; the larger placements are estimated from those measurements
-# (KV per token at Q8, F16 at about twice that, the MTP draft's measured increment,
-# a Nemotron expert block at about 0.4 GiB) and stop where the menu already stops:
-# 256k for Qwen and Ornith, 512k for Nemotron.
+# (KV per token at Q8, F16 at about twice that, the MTP draft's measured increment)
+# and stop where the menu already stops: 256k for Qwen.
 DERIVED_MEASUREMENT_ID = "derived-larger-cards-2026-10-08"
 LARGER_CARDS = (48, 96)
 
@@ -226,9 +228,6 @@ def larger_card_profiles(gpu):
         "q5": {"q8_0_256k": derived(256, 28.97), "q8_0_256k_mtp": derived(256, 31.52, speculative=True),
                "q8_0_192k": derived(192, 26.58), "q8_0_192k_mtp": derived(192, 29.126, speculative=True),
                "f16_256k": derived(256, 36.65, precision="f16"), "f16_128k": derived(128, 27.654, precision="f16")},
-        "ornith_q5": {"q8_0_256k": derived(256, 27.906), "q8_0_192k": derived(192, 27.129)},
-        "nemotron_q4": {"q8_0_512k": derived(512, 25.420), "q8_0_256k": derived(256, 24.311)},
-        "nemotron_q5": {"q8_0_512k": derived(512, 29.9), "q8_0_256k": derived(256, 28.883)},
     }
     return {model: {f"{name}_g{gpu}": spec for name, spec in profiles.items()} for model, profiles in menu.items()}
 
@@ -255,7 +254,6 @@ def install_profiles(models):
         models[key]["kv_cache_profiles"] = copy.deepcopy(profiles)
         models[key]["kv_cache"] = next(iter(profiles))
         models[key]["ctx_size"] = next(iter(profiles.values()))["ctx_size"]
-    models["ornith_q5"]["alias"] = "Ornith 1.5 35B-A3B Abliterated Q5 (23.0 GB, reasoning)"
 
 
 def gpu_class(capacity):
@@ -265,7 +263,7 @@ def gpu_class(capacity):
         return 96
     if capacity >= 44:
         return 48
-    return 32 if capacity >= 31 else 24 if capacity >= 23 else 16 if capacity >= 15 else 0
+    return 32 if capacity >= 31 else 24 if capacity >= 23 else 16 if capacity >= 15 else 12 if capacity >= 11 else 0
 
 
 def ram_class(installed_gib):

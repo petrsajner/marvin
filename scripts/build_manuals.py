@@ -216,7 +216,7 @@ def cover(title: str, subtitle: str, version: str, language: str):
         ),
         Spacer(1, 55 * mm),
         Paragraph(
-            "Local AI · Qwen 3.8 · Ornith 1.5 · Windows 11 · RTX 5090",
+            "Local AI · Qwen 3.8 · Windows 11 · RTX GPUs",
             ParagraphStyle("CoverFoot", fontName=FONT, fontSize=9, textColor=MUTED),
         ),
         PageBreak(),

@@ -73,7 +73,7 @@ if errorlevel 1 if defined BACKUP_OK (
 if errorlevel 1 ( echo [ERROR] llama.cpp is unavailable online and in the backup. & pause & exit /b 1 )
 
 echo ============================================================
-echo  [4/4] Qwen/Ornith models + vision projectors
+echo  [4/4] Qwen models + vision projectors
 echo         (selection from the installer; re-running downloads
 echo          only missing files - may take a long time)
 echo ============================================================

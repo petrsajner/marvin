@@ -53,15 +53,15 @@ class MemoryProfileTests(unittest.TestCase):
 
     def test_budget_switch_back_restores_the_saved_model_and_context(self):
         self.app.preferences.update(model="q3", vram_gb=16, memory_presets={
-            "auto": {"model": "nemotron_q5", "profile": "q8_0_256k", "requested_profile": "q8_0_256k"}})
+            "auto": {"model": "q4", "profile": "q8_0_192k", "requested_profile": "q8_0_192k"}})
         self.app.manage_model = True
         try:
             with patch.object(gpu, "vram_total_gb", return_value=32), patch.object(self.app.models, "request", return_value=True) as request:
                 client = TestClient(create_app(self.cfg, service=self.app))
                 response = client.patch("/api/settings", json={"vram_gb": "auto"})
                 response.raise_for_status()
-                self.assertEqual(response.json()["model"], "nemotron_q5")
-                self.assertEqual(request.call_args.kwargs["kv_profile"], "q8_0_256k")
+                self.assertEqual(response.json()["model"], "q4")
+                self.assertEqual(request.call_args.kwargs["kv_profile"], "q8_0_192k")
                 self.assertFalse(request.call_args.kwargs["restart"])
         finally:
             self.app.manage_model = False
@@ -174,6 +174,8 @@ class MemoryProfileTests(unittest.TestCase):
 
     def test_approved_menu_is_exact_for_each_card_class(self):
         expected = {
+            # Measured on 2026-11-22 for 12 GB minimum GPU floor.
+            12: {"q2": {"q8_0": ["32k", "16k"], "q8_0/q4_0": ["48k"], "q4_0": ["64k", "32k"]}},
             # Approved on 2026-09-19 after measuring a 16 GB budget: a two-bit
             # quant buys either the vision projector back on the card or twice
             # the context, and quantising only the value half costs a gigabyte.
@@ -181,15 +183,10 @@ class MemoryProfileTests(unittest.TestCase):
                  "q3": {"q8_0": ["64k", "48k"], "q8_0/q4_0": ["96k"], "q4_0": ["128k"]}},
             24: {"q3": {"q8_0": ["128k", "96k"]},
                  "q4": {"q8_0": ["96k", "96k·MTP", "64k", "64k·MTP"]},
-                 "q5": {"q8_0": ["96k", "64k"]},
-                 "nemotron_q4": {"q8_0": ["512k", "256k"]},
-                 "nemotron_q5": {"q8_0": ["512k", "256k"]}},
+                 "q5": {"q8_0": ["96k", "64k"]}},
             32: {"q2": {"q8_0": ["256k"]},
                  "q4": {"q8_0": ["256k", "256k·MTP", "192k", "192k·MTP"], "f16": ["128k", "96k"]},
-                 "q5": {"q8_0": ["192k", "192k·MTP", "128k", "128k·MTP"], "f16": ["128k", "96k"]},
-                 "ornith_q5": {"q8_0": ["256k", "192k"]},
-                 "nemotron_q4": {"q8_0": ["512k", "256k"]},
-                 "nemotron_q5": {"q8_0": ["512k", "256k"]}},
+                 "q5": {"q8_0": ["192k", "192k·MTP", "128k", "128k·MTP"], "f16": ["128k", "96k"]}},
         }
         for capacity, table in expected.items():
             actual = {}
@@ -221,8 +218,6 @@ class MemoryProfileTests(unittest.TestCase):
                               ("f16", 256, False), ("f16", 128, False)})
             self.assertTrue(all(p["gpu_class"] == cls and p["measurement_id"] == DERIVED_MEASUREMENT_ID
                                 for p in q5.values()))
-            nemotron = gpu.offered_profiles(self.cfg, "nemotron_q5", capacity)[f"q8_0_512k_g{cls}"]
-            self.assertNotIn("--n-cpu-moe", nemotron["server_args"], "512k entirely on the GPU")
             self.assertFalse(gpu.offered_profiles(self.cfg, "q3", capacity), "IQ3 stays a small-card model")
         self.assertEqual(gpu.best_fit(self.cfg, 47.5), ("q5", "q8_0_256k_g48"))
 
@@ -342,11 +337,11 @@ class MemoryProfileTests(unittest.TestCase):
                 freeze_placement(self.cfg)
                 self.assertEqual(self.cfg.data["_recovery_placement"]["server_args"], values.get("server_args", []))
         self.cfg.data.pop("_recovery_placement", None)
-        self.cfg.data["default_model"] = "nemotron_q5"
-        self.cfg.set_kv_cache_mode("nemotron_q5", "q8_0_512k_spill")
+        self.cfg.data["default_model"] = "q2"
+        self.cfg.set_kv_cache_mode("q2", "q8_0_128k")
         freeze_placement(self.cfg)
-        self.cfg.set_kv_cache_mode("nemotron_q5", "q8_0_256k_spill")
-        self.assertIn("21", self.cfg.data["_recovery_placement"]["server_args"])
+        self.cfg.set_kv_cache_mode("q2", "q8_0_96k_vision")
+        self.assertIn("--no-mmproj-offload", self.cfg.data["_recovery_placement"]["server_args"])
 
     def test_allocator_detection_ignores_old_launch_logs(self):
         directory = self.cfg.path("paths.runtime_dir")

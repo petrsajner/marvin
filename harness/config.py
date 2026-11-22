@@ -17,9 +17,9 @@ BUILTIN_MODELS: dict[str, dict[str, Any]] = {'q4': {'alias': 'Qwen3.8-27B Q4_K_M
         'file': 'Qwen3.8-27B-UD-Q4_K_M.gguf',
         'mmproj': 'mmproj-F16.gguf',
         'server_args': ['-fa', 'on']},
- 'q2': {'alias': 'Qwen3.8-27B Q2_K_XL (9.8 GB, smallest quant - the most context on a 16 GB GPU)',
+ 'q2': {'alias': 'Qwen3.8-27B Q2_K_XL (9.8 GB, smallest quant - fits 12 GB and 16 GB GPUs)',
         'status_label': 'Qwen 3.8 27B · Q2',
-        # Offered, never chosen for the owner: it trades weight quality for room.
+        # Offered on 16 GB+ as an explicit opt-in; automatic fallback only on 12 GB where larger quants do not fit.
         'optional_download': True,
         'repo': 'unsloth/Qwen3.8-27B-GGUF',
         'file': 'Qwen3.8-27B-UD-Q2_K_XL.gguf',
@@ -36,42 +36,7 @@ BUILTIN_MODELS: dict[str, dict[str, Any]] = {'q4': {'alias': 'Qwen3.8-27B Q4_K_M
         'repo': 'unsloth/Qwen3.8-27B-GGUF',
         'file': 'Qwen3.8-27B-UD-Q5_K_M.gguf',
         'mmproj': 'mmproj-F16.gguf',
-        'server_args': ['-fa', 'on']},
- 'ornith_q5': {'alias': 'Ornith 1.5 35B-A3B Abliterated Q5 (23.0 GB, reasoning, context 128k)',
-               'status_label': 'Ornith 1.5 35B-A3B · Abliterated Q5',
-               'family': 'ornith',
-               'repo': 'alztrk/Ornith-1.5-35B-A3B-Abliterated-GGUF',
-               'file': 'Ornith-1.5-35B-Abliterated-Dynamic-Q5_K_M.gguf',
-               'mmproj_repo': 'ornith-ai/Ornith-1.5-35B-A3B-GGUF',
-               'mmproj': 'mmproj-Ornith-1.5-35B-BF16.gguf',
-               'server_args': ['-fa', 'on'],
-               'sampling': {'thinking': {'temperature': 0.6,
-                                         'top_p': 0.95,
-                                         'top_k': 20,
-                                         'presence_penalty': 0.0},
-                            'non_thinking': {'temperature': 0.7,
-                                             'top_p': 0.8,
-                                             'top_k': 20,
-                                             'presence_penalty': 1.5}},
-               'supports_reasoning_effort': False},
- 'nemotron_q4': {'alias': 'Nemotron 3.5 Lightning 30B-A3B Q4_K_XL (25.5 GB, hybrid MoE, ~210 tok/s)',
-                 'status_label': 'Nemotron 3.5 Lightning · Q4_XL',
-                 'family': 'nemotron',
-                 'repo': 'unsloth/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-GGUF',
-                 'file': 'NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q4_K_XL.gguf',
-                 'server_args': ['-fa', 'on'],
-                 'supports_reasoning_effort': False,
-                 'sampling': {'thinking': {'temperature': 0.6, 'top_p': 0.95, 'min_p': 0.01},
-                              'non_thinking': {'temperature': 0.2}}},
- 'nemotron_q5': {'alias': 'Nemotron 3.5 Lightning 30B-A3B Q5_K_XL (30.4 GB, hybrid MoE, top quality)',
-                 'status_label': 'Nemotron 3.5 Lightning · Q5_KXL',
-                 'family': 'nemotron',
-                 'repo': 'unsloth/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-GGUF',
-                 'file': 'NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q5_K_XL.gguf',
-                 'server_args': ['-fa', 'on'],
-                 'supports_reasoning_effort': False,
-                 'sampling': {'thinking': {'temperature': 0.6, 'top_p': 0.95, 'min_p': 0.01},
-                              'non_thinking': {'temperature': 0.2}}}}
+        'server_args': ['-fa', 'on']}}
 
 from harness.model_catalog import FLASH_NEXT_STRATA, FLASH_NEXT_STRATA_IQ2
 
@@ -85,9 +50,15 @@ install_profiles(BUILTIN_MODELS)
 # servermgmt branches on it at the few places that touch the server process.
 BACKENDS = ("llama", "strata")
 # Entries replaced by another: a saved selection of the old one moves to the new
-# one where it is available. The llama.cpp Flash-Next gave way to the same model
-# on Strata once that was qualified (owner, 2026-10-07).
-REPLACED_MODELS = {"flash_next_q3": "flash_next_strata"}
+# one where it is available. The llama.cpp Flash-Next gave way to Strata once
+# qualified (2026-10-07); Ornith and Nemotron were retired (2026-11-22) in favor
+# of the main Qwen3.8 models.
+REPLACED_MODELS = {
+    "flash_next_q3": "flash_next_strata",
+    "ornith_q5": "q5",
+    "nemotron_q4": "q4",
+    "nemotron_q5": "q5",
+}
 
 DEFAULTS: dict[str, Any] = {
     "server": {
@@ -261,6 +232,7 @@ class Config:
     # -- models ------------------------------------------------------------
     def model_key(self) -> str:
         key = self.data.get("default_model", "q4")
+        key = REPLACED_MODELS.get(key, key)
         return key if key in self.data.get("models", {}) else next(iter(self.data["models"]), "q4")
 
     def model(self, key: str | None = None) -> dict:
