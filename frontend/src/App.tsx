@@ -120,7 +120,8 @@ export function App() {
       files: string[];
     } | null>(null),
     liveRate = useRef<{ run: string; chars: number; at: number; rate: number } | null>(null),
-    loadGeneration = useRef(0);
+    loadGeneration = useRef(0),
+    autoLocatedMissing = useRef<Set<string>>(new Set());
   const [now, setNow] = useState(Date.now());
   const [listening, setListening] = useState(false),
     [transcribing, setTranscribing] = useState(false),
@@ -597,22 +598,112 @@ export function App() {
       // which is the thing the user is looking at. A toast is for something
       // important that is visible nowhere else.
     } catch (e) {
-      error(e);
+      const message = e instanceof Error ? e.message : String(e);
+      if (project && message.toLowerCase().includes("project folder is unavailable")) {
+        await refresh().catch(() => {});
+        setDialog({ type: "missing-project", data: { ...project, missing: true } });
+      } else {
+        error(e);
+      }
     } finally {
       setSending(false);
     }
   };
-  const pick = async (folder = true) => {
-    const value = await api("/api/pick", "POST", { folder });
+  const pick = async (
+    folder = true,
+    options?: { initialdir?: string; title?: string },
+  ) => {
+    const value = await api("/api/pick", "POST", {
+      folder,
+      ...(options || {}),
+    });
     return value.path as string | null;
   };
   const selectProject = async (id: string) => {
-    const value = await api("/api/projects/select", "POST", { id: id || null });
-    sidRef.current = value.session_id;
-    setSid(value.session_id);
-    setNav(false);
-    await refresh();
+    const chosen = (app?.projects || []).find((p: any) => p.id === id);
+    if (chosen?.missing) {
+      const located = await api(`/api/projects/${id}/locate`, "POST");
+      if (located?.found) {
+        sidRef.current = located.session_id;
+        setSid(located.session_id);
+        setNav(false);
+        await refresh();
+        if (located.relocated) {
+          setToast(
+            tr("Project folder was moved and automatically redirected to:") +
+              " " +
+              located.new_path,
+          );
+        }
+        return;
+      }
+      setNav(false);
+      setDialog({ type: "missing-project", data: located?.project || chosen });
+      return;
+    }
+    try {
+      const value = await api("/api/projects/select", "POST", { id: id || null });
+      sidRef.current = value.session_id;
+      setSid(value.session_id);
+      setNav(false);
+      await refresh();
+      if (value?.relocated?.new_path) {
+        setToast(
+          tr("Project folder was moved and automatically redirected to:") +
+            " " +
+            value.relocated.new_path,
+        );
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (chosen && message.toLowerCase().includes("project folder is unavailable")) {
+        await refresh();
+        setDialog({ type: "missing-project", data: { ...chosen, missing: true } });
+        return;
+      }
+      throw e;
+    }
   };
+  // Step 1 recovery on load: if the active chat's project folder moved while
+  // Marvin was closed (or externally), try locating it automatically once;
+  // otherwise prompt the user to pick or create a folder.
+  useEffect(() => {
+    if (!project?.missing || !project?.id) return;
+    const key = `${project.id}:${project.path}`;
+    if (autoLocatedMissing.current.has(key)) return;
+    autoLocatedMissing.current.add(key);
+    let cancelled = false;
+    api(`/api/projects/${project.id}/locate`, "POST")
+      .then(async (located: any) => {
+        if (cancelled) return;
+        if (located?.found) {
+          if (located.session_id) {
+            sidRef.current = located.session_id;
+            setSid(located.session_id);
+          }
+          await refresh();
+          await reloadChat();
+          if (located.relocated) {
+            setToast(
+              tr("Project folder was moved and automatically redirected to:") +
+                " " +
+                located.new_path,
+            );
+          }
+        } else {
+          setDialog((current) =>
+            current || {
+              type: "missing-project",
+              data: located?.project || project,
+            },
+          );
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [project?.id, project?.path, project?.missing, refresh, reloadChat, tr]);
   // Documents worth watching render as text; a binary would show nothing useful.
   const watchDocument = async (path: string) => {
     try {
@@ -806,7 +897,7 @@ export function App() {
               <option value="">{tr("No project")}</option>
               {app.projects.map((p: any) => (
                 <option key={p.id} value={p.id}>
-                  {p.name}
+                  {p.missing ? `${p.name} · ${tr("folder missing")}` : p.name}
                 </option>
               ))}
             </select>
@@ -1160,6 +1251,23 @@ export function App() {
                 </button>
               )}
               <div className="composer-area">
+                {project?.missing && (
+                  <div className="attention">
+                    <div>
+                      <strong>{tr("Project folder was moved or is missing")}</strong>
+                      <p className="path">{project.path}</p>
+                    </div>
+                    <button
+                      className="positive"
+                      onClick={() =>
+                        setDialog({ type: "missing-project", data: project })
+                      }
+                    >
+                      <FolderOpen />
+                      {tr("Locate or create folder")}
+                    </button>
+                  </div>
+                )}
                 {interrupted && !active && (
                   <div className="attention">
                     <div>
@@ -2142,6 +2250,7 @@ export function App() {
           act={act}
           settings={settings}
           error={error}
+          setToast={setToast}
           refresh={refresh}
           setSid={setSid}
           pick={pick}

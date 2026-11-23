@@ -124,6 +124,7 @@ export function DialogView(props: any) {
     act,
     settings,
     error,
+    setToast,
     refresh,
     setSid,
     pick,
@@ -142,6 +143,7 @@ export function DialogView(props: any) {
   const [openart, setOpenart] = useState<any>(null);
   const [content, setContent] = useState(""),
     [name, setName] = useState(""),
+    [gitRemote, setGitRemote] = useState(""),
     [scope, setScope] = useState("global"),
     [library, setLibrary] = useState<FileItem[]>([]),
     [backup, setBackup] = useState<any>({}),
@@ -232,6 +234,9 @@ export function DialogView(props: any) {
   }, [close]);
   useEffect(() => {
     setName(dialog.type === "queue-edit" ? dialog.data.payload.text : "");
+    if (dialog.type === "missing-project") {
+      setGitRemote(dialog.data?.git_remote || "");
+    }
     if (dialog.type === "library")
       api("/api/sessions/" + sid + "/library")
         .then(setLibrary)
@@ -251,7 +256,7 @@ export function DialogView(props: any) {
         .catch(error);
       api("/api/openart").then(setOpenart).catch(error);
     }
-  }, [dialog.type, section, sid, error]);
+  }, [dialog.type, dialog.data?.id, dialog.data?.git_remote, section, sid, error]);
   // Sign-in happens in a browser window outside this interface, and the download
   // says nothing while it runs, so both are followed rather than waited for.
   useEffect(() => {
@@ -325,6 +330,9 @@ export function DialogView(props: any) {
         : (
             {
               project: tr("Project"),
+              "missing-project": dialog.data?.manual
+                ? tr("Change project folder")
+                : tr("Project folder not found"),
               chat: tr("Conversation"),
               "delete-chat": tr("Delete conversation"),
               "delete-project": tr("Delete project"),
@@ -345,6 +353,51 @@ export function DialogView(props: any) {
     if (result?.session_id) setSid(result.session_id);
     await refresh();
     close();
+  };
+  const notifyRelocate = (result: any) => {
+    if (!setToast || !result?.new_path) return;
+    const git = result.git;
+    const warning = git?.warnings?.[0] ? " — " + git.warnings[0] : "";
+    if (git?.action === "cloned") {
+      setToast(
+        tr("Folder created and repository cloned from GitHub:") +
+          " " +
+          result.new_path,
+      );
+    } else if (git?.action === "initialized_and_fetched") {
+      setToast(
+        tr("Folder linked, local Git initialized and fetched from remote:") +
+          " " +
+          result.new_path,
+      );
+    } else if (git?.action === "initialized_with_remote") {
+      setToast(
+        tr(
+          "Folder linked, local Git initialized and remote origin restored (sync manually):",
+        ) +
+          " " +
+          result.new_path +
+          warning,
+      );
+    } else if (git?.action === "remote_added") {
+      setToast(
+        tr("Folder linked and remote origin restored:") + " " + result.new_path,
+      );
+    } else if (git?.action === "initialized") {
+      setToast(
+        tr("Folder linked and local Git repository initialized:") +
+          " " +
+          result.new_path,
+      );
+    } else if (git?.action === "git_unavailable") {
+      setToast(
+        tr("Folder linked, but Git is not available on this computer:") +
+          " " +
+          result.new_path,
+      );
+    } else {
+      setToast(tr("Project folder updated:") + " " + result.new_path);
+    }
   };
   useEffect(() => {
     if (dialog.type !== "diff") return;
@@ -1311,7 +1364,22 @@ export function DialogView(props: any) {
                 {project && (
                   <>
                     <button
+                      className={project.missing ? "positive wide" : "wide"}
+                      onClick={() =>
+                        setDialog({
+                          type: "missing-project",
+                          data: { ...project, manual: !project.missing },
+                        })
+                      }
+                    >
+                      <FolderOpen />
+                      {project.missing
+                        ? tr("Locate or create folder")
+                        : tr("Change project folder…")}
+                    </button>
+                    <button
                       className="wide"
+                      disabled={!!project.missing}
                       onClick={() =>
                         call(() =>
                           api(`/api/projects/${project.id}/checks/run`, "POST"),
@@ -1323,6 +1391,7 @@ export function DialogView(props: any) {
                     </button>
                     <button
                       className="wide"
+                      disabled={!!project.missing}
                       onClick={() =>
                         call(async () => {
                           const value = await api(
@@ -1377,6 +1446,137 @@ export function DialogView(props: any) {
                       </button>
                     </div>
                   </>
+                )}
+              </>
+            )}
+            {dialog.type === "missing-project" && dialog.data && (
+              <>
+                <p>
+                  {dialog.data.manual
+                    ? tr(
+                        "Point this project and its conversations to another folder, or set up a new folder with Git.",
+                      )
+                    : tr(
+                        "Marvin could not find the moved folder automatically at its previous path or on another drive.",
+                      )}
+                </p>
+                <p className="path">{dialog.data.path}</p>
+                {dialog.data.git_remote && (
+                  <p className="muted">
+                    {tr("Saved GitHub / Git remote:")}{" "}
+                    <code>{dialog.data.git_remote}</code>
+                  </p>
+                )}
+                {!dialog.data.manual && (
+                  <button
+                    className="wide"
+                    disabled={busy}
+                    onClick={() =>
+                      call(async () => {
+                        const located = await api(
+                          `/api/projects/${dialog.data.id}/locate`,
+                          "POST",
+                        );
+                        if (located?.found) {
+                          await finishSelect(located);
+                          setToast?.(
+                            tr(
+                              "Project folder was moved and automatically redirected to:",
+                            ) +
+                              " " +
+                              located.new_path,
+                          );
+                        } else {
+                          setToast?.(
+                            tr(
+                              "The folder still could not be found automatically.",
+                            ),
+                          );
+                        }
+                      })
+                    }
+                  >
+                    <Search />
+                    {tr("Search again automatically")}
+                  </button>
+                )}
+                <button
+                  className="wide"
+                  disabled={busy}
+                  onClick={() =>
+                    call(async () => {
+                      const path = await pick(true, {
+                        initialdir: dialog.data.path,
+                        title: tr("Select project folder"),
+                      });
+                      if (!path) return;
+                      const result = await api(
+                        `/api/projects/${dialog.data.id}/relocate`,
+                        "POST",
+                        { path, mode: "existing" },
+                      );
+                      await finishSelect(result);
+                      notifyRelocate(result);
+                    })
+                  }
+                >
+                  <FolderOpen />
+                  {tr("Choose existing folder…")}
+                </button>
+                <label>
+                  {tr("GitHub / Git repository URL (optional)")}
+                  <input
+                    value={gitRemote}
+                    onChange={(e) => setGitRemote(e.target.value)}
+                    placeholder="https://github.com/..."
+                  />
+                </label>
+                <p className="muted">
+                  {tr(
+                    "In a new folder, Marvin opens Windows Explorer so you can select or create it, then restores the GitHub remote and local Git repository without overwriting existing files.",
+                  )}
+                </p>
+                <button
+                  className="positive wide"
+                  disabled={busy}
+                  onClick={() =>
+                    call(async () => {
+                      const path = await pick(true, {
+                        initialdir: app.projects_root || dialog.data.path,
+                        title: tr("Select or create a new project folder"),
+                      });
+                      if (!path) return;
+                      const result = await api(
+                        `/api/projects/${dialog.data.id}/relocate`,
+                        "POST",
+                        {
+                          path,
+                          mode: "new",
+                          git_remote: gitRemote.trim(),
+                          init_git: true,
+                        },
+                      );
+                      await finishSelect(result);
+                      notifyRelocate(result);
+                    })
+                  }
+                >
+                  <GitBranch />
+                  {tr("Create or choose new folder and restore Git…")}
+                </button>
+                {!dialog.data.manual && (
+                  <div className="danger-zone">
+                    <button
+                      className="danger"
+                      disabled={busy}
+                      onClick={() =>
+                        setDialog({ type: "delete-project", data: dialog.data })
+                      }
+                    >
+                      <Trash2 />
+                      {tr("Remove project")}
+                    </button>
+                  </div>
                 )}
               </>
             )}

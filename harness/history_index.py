@@ -82,6 +82,24 @@ class HistoryIndex:
             connection.execute("DELETE FROM messages_fts WHERE session_id = ?", (session_id,))
             connection.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
 
+    def rewrite_workspace(self, old_workspace: str, new_workspace: str) -> int:
+        """Update indexed session workspace paths after a project folder moves."""
+        if not old_workspace or not new_workspace:
+            return 0
+        import os
+        with self._connect() as connection:
+            if os.name == "nt":
+                cursor = connection.execute(
+                    "UPDATE sessions SET workspace = ? WHERE LOWER(workspace) = LOWER(?)",
+                    (new_workspace, old_workspace),
+                )
+            else:
+                cursor = connection.execute(
+                    "UPDATE sessions SET workspace = ? WHERE workspace = ?",
+                    (new_workspace, old_workspace),
+                )
+            return int(cursor.rowcount or 0)
+
     def sync_existing(self) -> None:
         with self._connect() as connection:
             known = {row[0]: float(row[1] or 0) for row in connection.execute(

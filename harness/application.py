@@ -17,7 +17,13 @@ from harness.config import Config, REPLACED_MODELS
 from harness.llm import LLMClient
 from harness.model_switch import ModelSwitchController
 from harness.processes import ProcessManager
-from harness.projects import Projects
+from harness.projects import (
+    Projects,
+    _path_key,
+    find_relocated_folder,
+    restore_git_workspace,
+    sanitize_git_remote,
+)
 from harness.prompts import build_system_prompt
 from harness.safety import SafetyPolicy
 from harness.session import IMG_MIMES, Session
@@ -445,18 +451,194 @@ class ApplicationService:
         self.save_preferences()
         return session
 
+    def _rewrite_pinned_path(self, raw_path: str, old_root: Path, new_root: Path) -> str:
+        """Rewrite a pinned file path from old_root to new_root when it lived inside old_root."""
+        try:
+            old_key = _path_key(old_root)
+            raw_key = _path_key(raw_path)
+            if raw_key == old_key:
+                return str(new_root)
+            sep = "\\" if "\\" in old_key else "/"
+            prefix = old_key.rstrip("\\/") + sep
+            if raw_key.startswith(prefix):
+                rel = Path(raw_path).relative_to(old_root)
+                return str(new_root / rel)
+        except (ValueError, OSError):
+            pass
+        return raw_path
+
+    def _rewrite_sessions_workspace(self, old_path: str, new_path: str) -> int:
+        """Update all persisted and loaded sessions plus the history index to new_path."""
+        old_key = _path_key(old_path)
+        old_root = Path(old_path)
+        new_root = Path(new_path)
+        updated = 0
+        sessions_dir = self.cfg.path("paths.sessions_dir")
+        if sessions_dir.is_dir():
+            for directory in sessions_dir.iterdir():
+                meta_file = directory / "meta.json"
+                if not directory.is_dir() or not meta_file.is_file():
+                    continue
+                try:
+                    meta = json.loads(meta_file.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                if _path_key(meta.get("workspace")) != old_key:
+                    continue
+                meta["workspace"] = new_path
+                if meta.get("pinned_files"):
+                    meta["pinned_files"] = [
+                        self._rewrite_pinned_path(p, old_root, new_root)
+                        for p in meta["pinned_files"]
+                    ]
+                atomic_write_text(meta_file, json.dumps(meta, ensure_ascii=False, indent=2))
+                updated += 1
+        with self.lock:
+            for sid, sess in list(self.sessions.items()):
+                if _path_key(sess.meta.get("workspace")) == old_key:
+                    sess.meta["workspace"] = new_path
+                    if sess.meta.get("pinned_files"):
+                        sess.meta["pinned_files"] = [
+                            self._rewrite_pinned_path(p, old_root, new_root)
+                            for p in sess.meta["pinned_files"]
+                        ]
+                    if not (self.active and self.active.get("session_id") == sid):
+                        self.agents.pop(sid, None)
+        try:
+            from harness.history_index import HistoryIndex
+            HistoryIndex(sessions_dir).rewrite_workspace(old_path, new_path)
+        except Exception:
+            pass
+        try:
+            from harness.file_index import invalidate_project_files
+            invalidate_project_files(old_root)
+            invalidate_project_files(new_root)
+        except Exception:
+            pass
+        return updated
+
+    def locate_project(self, project_id: str, *, drives=None, extra_roots=None) -> dict:
+        """Step 1 recovery: search for a moved project folder and redirect automatically."""
+        all_projects = Projects(self.cfg).list_all()
+        project = next((p for p in all_projects if p["id"] == project_id), None)
+        if not project:
+            raise ValueError("Unknown project")
+        if not project.get("missing"):
+            Projects(self.cfg).refresh_git_metadata(project_id)
+            fresh = Projects(self.cfg).by_id(project_id) or project
+            session = self.select_project(project_id)
+            return {
+                "found": True,
+                "relocated": False,
+                "project": fresh,
+                "old_path": fresh["path"],
+                "new_path": fresh["path"],
+                "session_id": session.id,
+            }
+        other_paths = {p["path"] for p in all_projects if p["id"] != project_id}
+        found = find_relocated_folder(
+            project,
+            self.cfg,
+            other_paths=other_paths,
+            drives=drives,
+            extra_roots=extra_roots,
+        )
+        if not found:
+            return {"found": False, "relocated": False, "project": project}
+        relocated = self.relocate_project(project_id, str(found), mode="existing")
+        return {"found": True, "relocated": True, **relocated}
+
+    def relocate_project(
+        self,
+        project_id: str,
+        new_path: str,
+        *,
+        mode: str = "existing",
+        git_remote: str | None = None,
+        init_git: bool | None = None,
+    ) -> dict:
+        """Step 2 & 3 recovery: point a project to a chosen/new folder and restore Git/GitHub."""
+        mode = (mode or "existing").strip().lower()
+        if mode not in ("existing", "new"):
+            raise ValueError("Invalid relocation mode")
+        with self.lock:
+            project = Projects(self.cfg).by_id(project_id)
+            if not project:
+                raise ValueError("Unknown project")
+            if self.active:
+                active_ws = self.session(self.active["session_id"]).meta.get("workspace")
+                if _path_key(active_ws) == _path_key(project["path"]):
+                    raise ValueError("Stop the project's task before changing its folder")
+            saved_remote = project.get("git_remote") or ""
+            saved_branch = project.get("git_branch") or ""
+            if git_remote is None:
+                remote_to_use = saved_remote if mode == "new" else ""
+            else:
+                remote_to_use = str(git_remote).strip()
+            if remote_to_use and not sanitize_git_remote(remote_to_use):
+                raise ValueError("Invalid Git remote URL")
+            do_init_git = (mode == "new") if init_git is None else bool(init_git)
+            should_restore_git = (mode == "new") or do_init_git or bool(remote_to_use)
+            updated, old_path = Projects(self.cfg).relocate(project_id, new_path)
+            sessions_updated = self._rewrite_sessions_workspace(old_path, updated["path"])
+
+        git_result: dict | None = None
+        if should_restore_git:
+            git_result = restore_git_workspace(
+                Path(updated["path"]),
+                remote_url=remote_to_use or None,
+                branch=saved_branch or None,
+                init_local=do_init_git,
+            )
+
+        with self.lock:
+            Projects(self.cfg).refresh_git_metadata(project_id)
+            fresh = Projects(self.cfg).by_id(project_id) or updated
+            try:
+                from harness.file_index import invalidate_project_files
+                invalidate_project_files(Path(fresh["path"]))
+            except Exception:
+                pass
+            session = self.select_project(project_id)
+            self.store.emit(None, "settings_changed", self.preferences)
+            return {
+                "project": fresh,
+                "old_path": old_path,
+                "new_path": fresh["path"],
+                "sessions_updated": sessions_updated,
+                "git": git_result,
+                "session_id": session.id,
+            }
+
     def select_project(self, project_id=None):
         project = next((p for p in Projects(self.cfg).list_all() if p["id"] == project_id), None)
         if project and project.get("missing"):
+            located = self.locate_project(project["id"])
+            if located.get("found"):
+                return self.session(located["session_id"])
             raise FileNotFoundError(f"Project folder is unavailable: {project['path']}")
         workspace = project["path"] if project else None
-        matches = [s for s in Session.list_sessions(self.cfg, limit=100000) if s.get("workspace") == workspace]
+        if workspace is None:
+            matches = [s for s in Session.list_sessions(self.cfg, limit=100000) if not s.get("workspace")]
+        else:
+            ws_key = _path_key(workspace)
+            matches = [s for s in Session.list_sessions(self.cfg, limit=100000)
+                       if _path_key(s.get("workspace")) == ws_key]
         return self.select_session(matches[0]["id"]) if matches else self.new_session(
             workspace, project.get("work_mode") if project else "discussion")
 
     def config_for(self, session, settings=None):
-        if session.meta.get("workspace") and not Path(session.meta["workspace"]).is_dir():
-            raise FileNotFoundError(f"Project folder is unavailable: {session.meta['workspace']}")
+        workspace = session.meta.get("workspace")
+        if workspace and not Path(workspace).is_dir():
+            ws_key = _path_key(workspace)
+            matched = next((p for p in Projects(self.cfg).list_all()
+                            if _path_key(p.get("path")) == ws_key), None)
+            if matched:
+                located = self.locate_project(matched["id"])
+                if located.get("found"):
+                    workspace = session.meta.get("workspace")
+            if workspace and not Path(workspace).is_dir():
+                raise FileNotFoundError(f"Project folder is unavailable: {workspace}")
         preferences = {**self.preferences, **(settings or {})}
         data = copy.deepcopy(self.cfg.data)
         data["default_model"] = preferences["model"]

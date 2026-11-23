@@ -282,6 +282,10 @@ def create_app(cfg=None, *, service=None):
     @app.post("/api/sessions")
     def new_session(payload: dict):
         project = next((p for p in Projects(cfg).list_all() if p["id"] == payload.get("project_id")), None)
+        if project and project.get("missing"):
+            located = service.locate_project(project["id"])
+            if located.get("found"):
+                project = located["project"]
         session = service.new_session(project["path"] if project else None,
                     payload.get("mode") or (project.get("work_mode") if project else "discussion"))
         return {"session_id": session.id}
@@ -426,7 +430,18 @@ def create_app(cfg=None, *, service=None):
         root.withdraw()
         root.attributes("-topmost", True)
         try:
-            path = filedialog.askdirectory(parent=root) if payload.get("folder", True) else filedialog.askopenfilename(parent=root)
+            opts: dict = {"parent": root}
+            title = str(payload.get("title") or "").strip()
+            if title:
+                opts["title"] = title
+            initialdir = str(payload.get("initialdir") or "").strip()
+            if initialdir:
+                candidate = Path(initialdir)
+                if candidate.is_dir():
+                    opts["initialdir"] = str(candidate)
+                elif candidate.parent.is_dir():
+                    opts["initialdir"] = str(candidate.parent)
+            path = filedialog.askdirectory(**opts) if payload.get("folder", True) else filedialog.askopenfilename(**opts)
             return {"path": path or None}
         finally:
             root.destroy()
@@ -441,7 +456,36 @@ def create_app(cfg=None, *, service=None):
 
     @app.post("/api/projects/select")
     def select_project(payload: dict):
-        return {"session_id": service.select_project(payload.get("id")).id}
+        project_id = payload.get("id")
+        before = Projects(cfg).by_id(project_id) if project_id else None
+        session = service.select_project(project_id)
+        result: dict = {"session_id": session.id}
+        if before and before.get("missing") and session.meta.get("workspace") != before.get("path"):
+            result["relocated"] = {
+                "old_path": before["path"],
+                "new_path": session.meta.get("workspace"),
+            }
+        return result
+
+    @app.post("/api/projects/{project_id}/locate")
+    def locate_project(project_id: str):
+        return service.locate_project(project_id)
+
+    @app.post("/api/projects/{project_id}/relocate")
+    def relocate_project(project_id: str, payload: dict):
+        path = str(payload.get("path") or "").strip()
+        if not path:
+            raise ValueError("Choose a project folder")
+        mode = str(payload.get("mode") or "existing").strip().lower()
+        git_remote = payload.get("git_remote") if "git_remote" in payload else None
+        init_git = payload.get("init_git") if "init_git" in payload else None
+        return service.relocate_project(
+            project_id,
+            path,
+            mode=mode,
+            git_remote=git_remote,
+            init_git=init_git,
+        )
 
     @app.patch("/api/projects/{project_id}")
     def update_project(project_id: str, payload: dict):
@@ -511,7 +555,7 @@ def create_app(cfg=None, *, service=None):
         from harness.repo_index import DOCUMENT_EXTENSIONS
         session = service.session(sid)
         workspace = session.meta.get("workspace")
-        if not workspace:
+        if not workspace or not Path(workspace).is_dir():
             return []
         return [service.store.register_file(path, sid, "project")
                 for path in project_files(Path(workspace))
