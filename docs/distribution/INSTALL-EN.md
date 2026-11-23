@@ -1,13 +1,13 @@
-# Marvin 1.21.0 - Windows Installation
+# Marvin 1.22.0 - Windows Installation
 
 Public downloads: **[Full](https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Full.exe)** · **[Minimal](https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Minimal.exe)**.
 These links follow the latest release. Public assets keep the names `Marvin-Setup-Full.exe` and `Marvin-Setup-Minimal.exe`; local and offline builds also include the version number in their filenames.
 
 ## Minimal and Full
 
-- `Marvin-Setup-1.21.0-Minimal.exe`: smaller installer. Requires separate 64-bit Python 3.12 with the Python Launcher (`py`); downloads Python packages, llama.cpp/CUDA, and any missing selected model weights during setup.
-- `Marvin-Setup-1.21.0-Full.exe`: includes private Python 3.12, locked packages, validated `llama.cpp` v1.0.0 (`b12359`, CUDA 13.5), Flash-Next's Strata `0.2.17` engine bundle with its packages, and Infernix `2026.11.20` for RTX 50-series GPUs, plus the offline WebView2 runtime. No system Python is required. Only model weights are outside the EXE and downloaded when not already on disk.
-- `Marvin-Offline-Backup-1.21.0`: complete local bundle with Full Setup, all included model weights and projectors (Qwen3.8-27B Q2/IQ3/Q4/Q5 + MTP, Flash-Next IQ3_S on Strata + DFlash2, Qwen3.8-27B NVFP4 and Flash-Next IQ3_S on Infernix + DFlash2, speech & semantic-search models), all engines, dependency snapshot, and SHA-256 checksum manifest — installs completely without internet.
+- `Marvin-Setup-1.22.0-Minimal.exe`: smaller installer. Requires separate 64-bit Python 3.12 with the Python Launcher (`py`); downloads Python packages, llama.cpp/CUDA, and any missing selected model weights during setup.
+- `Marvin-Setup-1.22.0-Full.exe`: includes private Python 3.12, locked packages, validated `llama.cpp` v1.0.0 (`b12359`, CUDA 13.5), Flash-Next's Strata `0.2.17` engine bundle with its packages, and Infernix `2026.11.20` for RTX 50-series GPUs, plus the offline WebView2 runtime. No system Python is required. Only model weights are outside the EXE and downloaded when not already on disk.
+- `Marvin-Offline-Backup-1.22.0`: complete local bundle with Full Setup, all included model weights and projectors (Qwen3.8-27B Q2/IQ3/Q4/Q5 + MTP, Flash-Next IQ3_S on Strata + DFlash2, Qwen3.8-27B NVFP4 and Flash-Next IQ3_S on Infernix + DFlash2, speech & semantic-search models), all engines, dependency snapshot, and SHA-256 checksum manifest — installs completely without internet.
 
 Both variants require supported 64-bit Windows and a user-installed NVIDIA driver (580 or newer for Strata and Infernix). WebView2 for the desktop window is detected and prepared automatically. Minimal downloads it if needed; Full includes the complete runtime for offline installation. Microsoft Edge is still required for the optional browser tools. A separate CUDA Toolkit or Node.js is not required.
 
