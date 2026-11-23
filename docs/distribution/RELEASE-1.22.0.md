@@ -38,3 +38,12 @@ Staged in `dist/release-1.22.0/` and recorded in `release-1.22.0.json` (applicat
 - Replaced `Marvin-Setup-1.21.0-Full.exe` with `Marvin-Setup-1.22.0-Full.exe` and updated manuals and installation guides.
 - `offline_backup.py verify` passed for all **3,496** recorded files (0 errors).
 - Superseded `1.21.0` installers and staging directory were deleted after verification.
+
+## GitHub publication verification
+
+Published on 23 November 2026 (`01:35 UTC`) as the latest release:
+[Marvin 1.22.0](https://github.com/petrsajner/marvin/releases/tag/v1.22.0).
+The release tag points at `f797c9d`; the application build commit is `74660a2`.
+All six uploaded assets are in state `uploaded`, and their sizes and GitHub
+SHA-256 digests match `release-1.22.0.json`.
+`releases/latest/download/SHA256SUMS.txt` serves the 1.22.0 checksums.
