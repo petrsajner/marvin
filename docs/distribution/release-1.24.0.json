@@ -1,0 +1,50 @@
+{
+  "version": "1.24.0",
+  "tag": "v1.24.0",
+  "application_commit": "581d453639e83771d48e234ef033c16d0ecf66c1",
+  "release_url": "https://github.com/petrsajner/marvin/releases/tag/v1.24.0",
+  "assets": [
+    {
+      "name": "Marvin-Manual-CS.pdf",
+      "bytes": 229122,
+      "sha256": "8f8abc130e14805392dcd6f86dac55492c721bf79a9deec2ce50bc4a95b3e77f",
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.24.0/Marvin-Manual-CS.pdf",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Manual-CS.pdf"
+    },
+    {
+      "name": "Marvin-Manual-EN.pdf",
+      "bytes": 232114,
+      "sha256": "6e3e0576bced0987e5a7ceb58b50123cac4c8e0caac19ed4e8b4e2f53cc07f87",
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.24.0/Marvin-Manual-EN.pdf",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Manual-EN.pdf"
+    },
+    {
+      "name": "Marvin-Setup-Full.exe",
+      "bytes": 1807475756,
+      "sha256": "f8506bab2889187272da591bea9124b24d3c292db3a3d49e38d0a0cfd5d169e5",
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.24.0/Marvin-Setup-Full.exe",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Full.exe"
+    },
+    {
+      "name": "Marvin-Setup-Minimal.exe",
+      "bytes": 54190657,
+      "sha256": "ef94c3cd8cfa3f589b9796f13a12d47c0ebb2d4236725cabf268a8abc89f3d48",
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.24.0/Marvin-Setup-Minimal.exe",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Minimal.exe"
+    },
+    {
+      "name": "Marvin-Workspace.jpg",
+      "bytes": 136523,
+      "sha256": "41bdec06fd93e28ab17c53167777f566c9fda995860d93a0781c58ac3055652b",
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.24.0/Marvin-Workspace.jpg",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Workspace.jpg"
+    },
+    {
+      "name": "SHA256SUMS.txt",
+      "bytes": 445,
+      "sha256": "a104483d836957508f8be63cdc32f8091d30fb515140cf38fd859703d13c8854",
+      "url": "https://github.com/petrsajner/marvin/releases/download/v1.24.0/SHA256SUMS.txt",
+      "latest_url": "https://github.com/petrsajner/marvin/releases/latest/download/SHA256SUMS.txt"
+    }
+  ]
+}
