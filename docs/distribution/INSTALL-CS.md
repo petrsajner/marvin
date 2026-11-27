@@ -1,13 +1,13 @@
-# Marvin 1.23.0 - instalace pro Windows
+# Marvin 1.24.0 - instalace pro Windows
 
 Veřejné stažení: **[Full](https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Full.exe)** · **[Minimal](https://github.com/petrsajner/marvin/releases/latest/download/Marvin-Setup-Minimal.exe)**.
 Odkazy míří na nejnovější vydání. Veřejné soubory mají stálé názvy `Marvin-Setup-Full.exe` a `Marvin-Setup-Minimal.exe`; místní a offline balíčky obsahují také číslo verze v názvu.
 
 ## Minimal a Full
 
-- `Marvin-Setup-1.23.0-Minimal.exe`: menší instalátor bez přibaleného prostředí. Vyžaduje samostatný 64bitový Python 3.12 s Python Launcherem (`py`); při nastavení sám stáhne balíčky, llama.cpp/CUDA i chybějící vybrané váhy modelů.
-- `Marvin-Setup-1.23.0-Full.exe`: obsahuje kompletní prostředí — vlastní Python 3.12, uzamčené balíčky, ověřené `llama.cpp` v1.0.0 (`b12359`, CUDA 13.5), balíček jádra Strata `0.2.17` pro Flash-Next, balíček jádra Infernix `2026.11.20` pro karty RTX řady 50 i offline WebView2. Systémový Python není potřeba. Mimo EXE jsou jen váhy modelů, které se stahují jen pokud nejsou na disku.
-- `Marvin-Offline-Backup-1.23.0`: úplná místní sada s Full instalátorem, všemi přibalenými modely (Qwen3.8-27B Q2/IQ3/Q4/Q5 + MTP, Flash-Next IQ3_S na Stratě + DFlash2, Qwen3.8-27B NVFP4 a Flash-Next IQ3_S na Infernixu + DFlash2, diktování a sémantické hledání), všemi enginy, snapshotem závislostí a manifestem SHA-256 — instaluje se kompletně bez internetu.
+- `Marvin-Setup-1.24.0-Minimal.exe`: menší instalátor bez přibaleného prostředí. Vyžaduje samostatný 64bitový Python 3.12 s Python Launcherem (`py`); při nastavení sám stáhne balíčky, llama.cpp/CUDA i chybějící vybrané váhy modelů.
+- `Marvin-Setup-1.24.0-Full.exe`: obsahuje kompletní prostředí — vlastní Python 3.12, uzamčené balíčky, ověřené `llama.cpp` v1.0.0 (`b12359`, CUDA 13.5), balíček jádra Strata `0.2.17` pro Flash-Next, balíček jádra Infernix `2026.11.20` pro karty RTX řady 50 i offline WebView2. Systémový Python není potřeba. Mimo EXE jsou jen váhy modelů, které se stahují jen pokud nejsou na disku.
+- `Marvin-Offline-Backup-1.24.0`: úplná místní sada s Full instalátorem, všemi přibalenými modely (Qwen3.8-27B Q2/IQ3/Q4/Q5 + MTP, Bonsai 2.5 27B Ternary Q2_0 + BF16 vision, Flash-Next IQ3_S na Stratě + DFlash2, Qwen3.8-27B NVFP4 a Flash-Next IQ3_S na Infernixu + DFlash2, diktování a sémantické hledání), všemi enginy, snapshotem závislostí a manifestem SHA-256 — instaluje se kompletně bez internetu.
 
 Obě varianty vyžadují podporované 64bitové Windows a ovladač NVIDIA nainstalovaný uživatelem (580 a novější pro Stratu a Infernix). WebView2 pro desktopové okno instalátor rozpozná a připraví automaticky. Minimal jej v případě potřeby stáhne; Full obsahuje celý runtime i pro instalaci bez internetu. Microsoft Edge je nadále potřeba pro volitelné prohlížečové nástroje. Samostatný CUDA Toolkit ani Node.js nejsou potřeba.
 
