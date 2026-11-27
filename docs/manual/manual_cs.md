@@ -414,6 +414,14 @@ fungují — nové místo platí až pro další projekt.
 
 Klikněte **Smazat projekt**, ověřte zobrazenou cestu a potvrďte v dialogu. U projektu vytvořeného v Marvinu se smaže registrace, všechny chaty projektu, složka i její obsah. U projektu připojeného z vlastní složky se smaže jen registrace a chaty projektu — **vaše složka a její obsah vždy zůstávají na disku**. Pokud by složku nešlo smazat, nic se neodebere a zobrazí se srozumitelná chyba.
 
+## Přesunutá složka projektu
+
+Pokud se složka projektu mimo aplikaci přesune do jiného adresáře nebo na jiný disk, Marvin spustí tříkrokovou obnovu:
+
+1. **Automatické nalezení:** Marvin prohledá místní disky a blízké kořeny projektů podle uložené Git identity (remote URL, větev a kořenový commit) a automaticky přesměruje projekt, všechny jeho chaty, připnuté soubory i vyhledávací indexy.
+2. **Výběr ve Windows Exploreru:** Pokud složku nenajde automaticky, otevře průvodce obnovou (i informační lištu nad zprávou), kde lze v dialogu Windows Exploreru vybrat existující složku nebo založit novou. Složku projektu lze kdykoli změnit i preventivně přes menu projektu (**Změnit složku projektu…**).
+3. **Obnovení Gitu a GitHubu:** Při zvolení nové složky Marvin nabídne nedestruktivní obnovu uloženého vzdáleného repozitáře i lokálního Gitu (klonování do prázdné složky, případně inicializace a `git fetch` bez přepsání stávajících souborů).
+
 # 8. Správa chatů
 
 - **Nový chat** vytvoří transientní relaci, která se uloží po první zprávě.
@@ -428,17 +436,21 @@ Klikněte **Smazat projekt**, ověřte zobrazenou cestu a potvrďte v dialogu. U
 
 # 9. Kontext, komprese a pins
 
-Panel **Kontext** ukazuje odhad tokenů, viditelné/celkové zprávy, obrázky, stav komprese a pins. Rozpad zvlášť uvádí konverzaci/přílohy, aktuální projektový kontext a definice nástrojů. Celkový údaj proto zahrnuje i režii tool schemas.
+Panel **Kontext** ukazuje odhad tokenů, viditelné/celkové zprávy, obrázky, stav komprese, **Prompt cache** (`cached / total` a procento zásahů z posledního tahu), **Zkrácené výstupy nástrojů** a pins. Rozpad zvlášť uvádí konverzaci/přílohy, aktuální projektový kontext a definice nástrojů. Celkový údaj proto zahrnuje i režii tool schemas.
 
-Ve Vývoji model dostává kompaktní repo snapshot; ostatní režimy katalog dokumentů. Snapshot, pins a aktivní projektové instrukce se skládají jen pro aktuální request a neukládají se jako stále nové kopie do historie.
+Ve Vývoji model dostává kompaktní repo snapshot včetně hlavních symbolů napříč podporovanými jazyky; ostatní režimy katalog dokumentů. Snapshot, pins a aktivní projektové instrukce se skládají jen pro aktuální request a neukládají se jako stále nové kopie do historie.
 
 Harness automaticky hledá `AGENTS.md`, `QWEN.md` a `CLAUDE.md` od kořene projektu po adresář právě čteného nebo měněného souboru. Hlubší dokument je konkrétnější. Jde o guidance; aktuální zadání uživatele má přednost.
 
 **Připnout soubor** vloží text vybraného souboru do následujících úloh tohoto chatu. Vhodné jsou architektura, specifikace, handoff a projektová pravidla. Limit je 10 souborů a asi 40 000 znaků. Větev pins kopíruje, nový chat ne.
 
-Při 85 % kontextu se nejdřív přestanou posílat všechny snímky obrazovky kromě čtyř nejnovějších. V režimu Počítač jsou zdaleka největší částí konverzace, takže to obvykle stačí a text konverzace zůstane celý. Obrázky zůstanou vidět v chatu; jen je model u starších zpráv přestane dostávat, a to už trvale.
+Při 85 % kontextu uvolňuje harness prostor ve třech postupných krocích:
 
-Když to nestačí, starší část se automaticky shrne. Viditelná historie se nemaže. Ruční komprese je v **Kontext > Komprimovat**. Při overflow agent jednou automaticky komprimuje a request zopakuje.
+1. **Starší snímky obrazovky:** Nejprve přestane posílat všechny snímky kromě čtyř nejnovějších. V režimu Počítač jsou zdaleka největší částí konverzace, takže to obvykle stačí a text zůstane celý. Obrázky zůstávají vidět v chatu.
+2. **Nedestruktivní maskování výstupů:** Pokud kontext zůstává plný, nahradí se v pohledu modelu jen starší objemné výstupy nástrojů (velké výpisy souborů, dlouhé logy příkazů, webové stránky) stručným odkazem, zatímco nejnovější výstupy, uživatelské zprávy, odpovědi, paměti, projektová rozhodnutí, plán úlohy a diffy zůstávají nedotčené. Plné originály vždy zůstávají uložené na disku, v UI i dostupné přes `read_chat_history`.
+3. **Shrnutí historie:** Teprve pokud ani to nestačí, starší část se automaticky shrne (se zachováním posledních 25 % kontextu). Viditelná historie se nikdy nemaže.
+
+Ruční komprese je v **Kontext > Komprimovat**. Při overflow agent jednou automaticky komprimuje a request zopakuje.
 
 # 10. Tři vrstvy paměti
 
@@ -448,7 +460,7 @@ Když to nestačí, starší část se automaticky shrne. Viditelná historie se
 | Režimová | Všechny chaty daného režimu | `memory\MEMORY.md` nebo `memory\modes\*.md` |
 | Projektová | Jeden workspace | `<projekt>\QWEN_MEMORY.md` |
 
-Paměti otevřete v **Nastavení > Paměť a skilly** nebo řekněte modelu "zapamatuj si globálně", "pro Výzkum" či "pro tento projekt". Přesun chatu přepne projektovou paměť.
+Paměti otevřete v **Nastavení > Paměť a skilly** nebo řekněte modelu "zapamatuj si globálně", "pro Výzkum" či "pro tento projekt". Nástroj `memory` automaticky brání duplicitám a umí zastaralé záznamy přímo upravit (`replace`) nebo smazat (`remove`). Přesun chatu přepne projektovou paměť.
 
 # 11. Volitelné skills
 
@@ -531,15 +543,15 @@ S projektem se výstup ukládá do `<projekt>\exports`. Bez projektu jde do `ses
 
 ## Poznání projektu
 
-Při každém requestu dostane model aktuální repo snapshot a platné hierarchické projektové instrukce. Může použít `repo_overview`, `project_instructions`, procházet/globovat soubory, hledat literal nebo regex, navigovat deklarace přes `find_symbol`/`document_symbols`, hledat použití přes `find_references` a číst relevantní rozsahy.
+Při každém requestu dostane model aktuální repo snapshot a platné hierarchické projektové instrukce. Může použít `project_info` (`overview`, `instructions`, `validation`), procházet/globovat soubory, hledat literal nebo regex, navigovat deklarace přes `find_symbol`/`document_symbols`, hledat použití přes `find_references` a číst relevantní rozsahy.
 
 ## Souborové operace
 
-- `read_file` čte text s čísly řádků.
-- `search_files` používá ripgrep, podporuje literal/regex, case sensitivity a glob názvu.
+- `read_file` čte text s čísly řádků (výchozí okno je 400 řádků / 30 000 znaků s údajem pro plynulé pokračování, aby obří soubory nezahltily kontext).
+- `search_files` používá ripgrep (případně fallback přes `git ls-files` respektující `.gitignore`), podporuje literal/regex, case sensitivity a glob názvu.
 - `find_files` vrací soubory odpovídající globu.
-- `write_file` vytvoří nebo přepíše celý soubor.
-- `apply_patch` provádí přesné atomické náhrady.
+- `write_file` vytvoří nebo přepíše celý soubor se syntaktickou kontrolou (`.py`, `.json`, `.toml`, `.xml`).
+- `apply_patch` provádí atomické náhrady s bezpečným fallbackem pro mezery/CRLF a posunutou indentaci při jednoznačné shodě, hlídá externí změny od posledního čtení, vrací kompaktní diff a při nenalezení ukáže nejbližší řádky.
 - `make_directory`, `move_file`, `delete_file` jsou strukturované operace zahrnuté do rollbacku.
 - `view_image` vloží obrázek do vision kontextu.
 
@@ -547,22 +559,15 @@ Při každém requestu dostane model aktuální repo snapshot a platné hierarch
 
 Vývoj a Počítač obsahují persistentní headless Microsoft Edge session oddělenou od běžného browser okna uživatele:
 
-1. `browser_open` načte lokální nebo veřejnou URL.
-2. `browser_snapshot` vrátí viditelný text a interaktivní prvky s refs jako `e1`.
-3. `browser_fill`, `browser_click`, `browser_press` pracují přes tyto refs.
-4. `browser_select`, `browser_hover`, `browser_scroll` obslouží dropdowny, hover a dlouhé stránky.
-5. `browser_upload` nastaví lokální file input; `browser_download` uloží download k aktivnímu chatu.
-6. `browser_viewport` přepne desktop, tablet nebo mobilní rozměr.
-7. Nový snapshot ověří DOM výsledek; zastaralé refs jsou odmítnuty.
-8. `browser_console` a `browser_network` vracejí konzoli, HTTP responses a selhané requesty.
-9. `browser_screenshot` vloží vykreslenou stránku do dalšího requestu pro Qwen vision.
-10. `browser_close` nebo **Browser session > Zavřít browser** uvolní Edge proces.
+1. `browser_inspect` (`open`, `snapshot`, `console`, `network`, `screenshot`, `close`) načte lokální nebo veřejnou URL, vrátí viditelný text a interaktivní prvky s refs jako `e1`, zkontroluje konzoli a síť, pořídí screenshot pro vision a zavře Edge proces.
+2. `browser_interact` (`click`, `fill`, `select`, `press`, `hover`, `scroll`, `wait`, `upload`, `download`, `viewport`) ovládá stránku přes čerstvé refs, přepíná desktop/tablet/mobilní rozměr a pracuje s uploady i downloady (zastaralé refs jsou odmítnuty).
+3. Proces Edge lze zavřít také v UI přes **Browser session > Zavřít browser**.
 
 Browser přežije jednotlivé agentní kroky. Režim Počítač použijte pro nativní desktopové aplikace nebo celou obrazovku Windows.
 
 ## Plán úlohy
 
-U větší práce model vytvoří operační plán pomocí `set_task_plan` a aktualizuje kroky přes `update_task_step`. Panel **Průběh úlohy** ukazuje cíl, pending/in-progress/completed kroky, poslední validaci a kontrolu diffu. Ledger je v `task-plan.json`, přežije restart i kompresi a neobsahuje soukromý chain-of-thought.
+U větší práce model vytvoří a aktualizuje operační plán pomocí `task_plan` (`status`, `set`, `update_step`, `record_validation`). Panel **Průběh úlohy** ukazuje cíl, pending/in-progress/completed kroky, poslední validaci a kontrolu diffu. Ledger je v `task-plan.json`, přežije restart i kompresi a neobsahuje soukromý chain-of-thought.
 
 ## Checkpoint a rollback
 
@@ -805,22 +810,21 @@ Použijte **Nastavení > Vzhled a jazyk**. UI se přepne přímo a zachová chat
 
 # 20. Reference nástrojů
 
-Nástroje běžně požadujete přirozeným jazykem.
+Nástroje běžně požadujete přirozeným jazykem. Související akce jsou pro úsporu kontextu sloučené do kompaktních nástrojů, přičemž starší názvy zůstávají nadále funkční jako zpětně kompatibilní aliasy.
 
 ## Všechny režimy
 
 | Nástroj | Schopnost |
 |---|---|
-| `read_memory`, `save_memory` | Číst a ukládat tři vrstvy paměti. |
+| `memory` | Ukládat, upravovat (`replace`), mazat (`remove`) a číst tři vrstvy paměti. |
 | `web_search`, `web_fetch` | Hledat a číst veřejný web/dokumenty. |
-| `context_status` | Tokeny, zprávy, obrázky, pins a komprese. |
-| `pin_context_file`, `unpin_context_file` | Spravovat pins aktuálního chatu. |
+| `manage_context` | Zkontrolovat stav kontextu a připínat či odepínat soubory v chatu. |
 | `list_project_documents`, `read_project_document` | Katalog a čtení dokumentů. |
 | `list_skills`, `read_skill` | Katalog a načtení skillů. |
 | `export_document` | Export Markdown, DOCX nebo PDF. |
 | `list_dir`, `read_file` | Procházet adresáře a číst rozsahy textu. |
 | `search_files`, `find_files` | Rychlé literal/regex hledání a glob souborů. |
-| `write_file`, `apply_patch` | Vytvářet a atomicky upravovat text. |
+| `write_file`, `apply_patch` | Vytvářet a atomicky upravovat text s diffem a kontrolou syntaxe. |
 | `make_directory`, `move_file`, `delete_file` | Strukturované změny s rollbackem. |
 | `list_task_changes`, `undo_task_changes` | Task journal a rollback. |
 | `view_image` | Vizuální analýza lokálního obrázku. |
@@ -843,24 +847,17 @@ zodpovědět: jak to teď vypadá.
 
 | Nástroj | Schopnost |
 |---|---|
-| `task_plan_status`, `set_task_plan` | Číst nebo vytvořit operační plán. |
-| `update_task_step` | Aktualizovat stav kroků. |
-| `record_task_validation` | Zapsat ručně provedenou kontrolu. |
+| `task_plan` | Číst, nastavit, aktualizovat kroky a zapisovat kontroly do plánu úlohy. |
 
 ## Vývoj a Počítač
 
 | Nástroj | Schopnost |
 |---|---|
-| `repo_overview`, `project_instructions` | Mapa repozitáře a hierarchické instrukce. |
-| `project_validation_profile`, `start_project_check` | Nabídka a spuštění projektových kontrol. |
+| `project_info` | Mapa repozitáře, hierarchické instrukce a detekované kontroly projektu. |
+| `start_project_check` | Spuštění primární nebo vybrané projektové kontroly. |
 | `find_symbol`, `document_symbols`, `find_references` | Deklarace, symboly dokumentu a rychlá použití. |
-| `browser_open`, `browser_snapshot` | Otevřít a sémanticky prohlédnout izolovaný Edge. |
-| `browser_fill`, `browser_click`, `browser_press`, `browser_wait` | Práce s refs a čekání na změny UI. |
-| `browser_select`, `browser_hover`, `browser_scroll` | Dropdowny, hover a scrolling. |
-| `browser_upload`, `browser_download` | Lokální upload a uložení downloadu. |
-| `browser_viewport` | Desktopový, tabletový nebo mobilní viewport. |
-| `browser_console`, `browser_network` | Konzole a síťová diagnostika. |
-| `browser_screenshot`, `browser_close` | Vision screenshot a zavření browseru. |
+| `browser_inspect` | Otevřít, udělat snapshot, číst konzoli/síť, screenshot nebo zavřít izolovaný Edge. |
+| `browser_interact` | Klikat, vyplňovat, vybírat, stisk kláves, hover, scroll, upload/download a viewport. |
 | `git_status`, `git_diff`, `git_commit` | Lokální Git operace bez automatického push. |
 | `run_command` | Krátký Bash, PowerShell nebo cmd příkaz. |
 | `start_command`, `poll_command`, `send_stdin`, `terminate_command` | Persistentní procesy na pozadí. |

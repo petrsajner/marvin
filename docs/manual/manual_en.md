@@ -543,7 +543,11 @@ In the chat's three-dot menu, open **Move to project** and select a target proje
 
 For a project created inside Marvin, deletion removes the project registry entry, every chat belonging to the project, the project folder and all files inside it. For a project attached from your own folder, deletion only removes the registry entry and the project's chats — **your folder and its contents always stay on disk**. If such a folder cannot be deleted for another reason, nothing is removed and a readable error is shown.
 
-If a folder was removed outside the application, the project is marked missing. Reattach or remove the stale project entry as appropriate.
+If a project folder is moved to another directory or drive outside the application, Marvin automatically runs a three-step recovery:
+
+1. **Automatic discovery:** Marvin scans local drives and nearby project roots using saved Git identity (remote URL, branch, and root commit) and redirects the project, its chats, pinned files, and search indexes automatically.
+2. **Windows Explorer picker:** If the folder cannot be found automatically, Marvin shows a guided recovery dialog (and inline workspace banner) where you can choose an existing folder or create a new one in Windows Explorer. You can also change a project's folder proactively anytime via the three-dot menu (**Change project folder…**).
+3. **Git/GitHub restoration:** When pointing to a new folder, Marvin offers to restore the saved GitHub/Git remote and local repository non-destructively (cloning into an empty folder or initializing and fetching without overwriting existing files).
 
 # 8. Chat Management
 
@@ -593,11 +597,11 @@ Use **Context > Hand off** for a long conversation that should continue in a fre
 
 ## Context indicator
 
-The status and **Context** panel show estimated tokens, visible versus total messages, images, compression state, and pinned files. The detailed breakdown separates conversation/attachments, current project context, and tool definitions, so the displayed total includes tool-schema overhead.
+The status and **Context** panel show estimated tokens, visible versus total messages, images, compression state, **Prompt cache** hit-rate (`cached / total` and percentage from the last completed turn), **Masked tool outputs**, and pinned files. The detailed breakdown separates conversation/attachments, current project context, and tool definitions, so the displayed total includes tool-schema overhead.
 
 ## Automatic project snapshot
 
-In Development, the model receives a compact map of the current workspace, file types, key entry points, directories, and top-level Python symbols. It is assembled as a temporary tail for the current request and is not stored in chat history, so stale snapshots do not accumulate and the earlier reusable prefix remains unchanged.
+In Development, the model receives a compact map of the current workspace, file types, key entry points, directories, and top-level symbols across supported languages (Python, JS/TS, Rust, Go, C/C++, C#, Java, Kotlin). It is assembled as a temporary tail for the current request and is not stored in chat history, so stale snapshots do not accumulate and the earlier reusable prefix remains unchanged.
 
 Discussion, Research, and Writing use a project document catalog instead of a coding repository map.
 
@@ -619,9 +623,11 @@ Do not pin ordinary source files that the model can read on demand, large logs, 
 
 ## Manual and automatic compression
 
-At approximately 85% of the selected model context, the harness first stops sending all but the four newest screenshots. In Computer mode they are by far the largest part of the conversation, so giving them up is usually enough and the text of the conversation is kept intact. The pictures stay visible in the chat; only the model stops receiving the older ones, and that decision is permanent for those messages.
+At approximately 85% of the selected model context, the harness frees space in three progressive steps:
 
-If that is not enough, the harness summarizes older messages. The visible chat history is never deleted; only the model's request view changes to system prompt + summary + recent messages.
+1. **Older screenshots:** First it stops sending all but the four newest screenshots. In Computer mode they are by far the largest part of the conversation, so giving them up is usually enough and the text of the conversation stays intact. The pictures remain visible in the chat; only the model stops receiving the older ones.
+2. **Non-destructive observation masking:** If context is still high, older bulky tool outputs (such as large file reads, long command logs, or web pages) are replaced in the model view with short references while keeping the newest tool outputs, user turns, assistant replies, memories, project decisions, task plans, and diffs intact. Every full original output remains saved on disk, visible in the UI, and retrievable via `read_chat_history`.
+3. **Summarization:** Only if masking is still not enough does the harness summarize older messages (preserving the most recent 25% of the context). The visible chat history is never deleted; only the model's request view changes to system prompt + summary + recent messages.
 
 Use **Context > Compress** to compress earlier. If the model reports an overflow, the agent performs one automatic compression-and-retry cycle. A second overflow is reported instead of looping forever.
 
@@ -655,7 +661,7 @@ Remember for Research that every final answer must preserve contradictory findin
 Remember for this project that the delivery folder is D:\Exports.
 ```
 
-The model chooses `global`, `mode`, or `project` storage through `save_memory`. Moving a chat to another project immediately changes its project-memory layer.
+The model chooses `global`, `mode`, or `project` storage through `memory` (`save`, `replace`, `remove`, or `read`), automatically avoiding duplicate entries and letting it update or remove outdated facts cleanly. Moving a chat to another project immediately changes its project-memory layer.
 
 # 11. Optional Skills
 
@@ -775,15 +781,15 @@ Development mode is intended for complete repository work while keeping the main
 
 ## Project discovery
 
-At each request, the model receives a current repository snapshot plus applicable hierarchical project instructions. It can call `repo_overview`, `project_instructions`, list or glob files, search literal text or regex, navigate declarations with `find_symbol`/`document_symbols`, find whole-word uses with `find_references`, and read relevant ranges before editing.
+At each request, the model receives a current repository snapshot plus applicable hierarchical project instructions. It can call `project_info` (`overview`, `instructions`, `validation`), list or glob files, search literal text or regex, navigate declarations with `find_symbol`/`document_symbols`, find whole-word uses with `find_references`, and read relevant ranges before editing.
 
 ## File operations
 
-- `read_file` reads text with line numbers.
-- `search_files` uses ripgrep when available and supports literal/regex, case sensitivity, and filename glob.
+- `read_file` reads text with line numbers (defaulting to a 400-line / 30k-character window with continuation coordinates so huge files do not flood the context).
+- `search_files` uses ripgrep when available (or a `.gitignore`-aware `git ls-files` fallback) and supports literal/regex, case sensitivity, and filename glob.
 - `find_files` lists matching project files through a glob.
-- `write_file` creates or fully rewrites a file.
-- `apply_patch` performs exact atomic text replacements.
+- `write_file` creates or fully rewrites a file with pre-write syntax validation (`.py`, `.json`, `.toml`, `.xml`).
+- `apply_patch` performs atomic text replacements with safe whitespace/CRLF and indentation-shift fallback when unique, detects external changes made since reading, validates syntax, returns a compact diff on success, and shows closest matching lines on failure.
 - `make_directory`, `move_file`, and `delete_file` provide structured filesystem operations. Their changes participate in task rollback.
 - `view_image` brings an image file into vision context.
 
@@ -791,22 +797,15 @@ At each request, the model receives a current repository snapshot plus applicabl
 
 Development and Computer modes include a persistent headless Microsoft Edge session. This is separate from the user's normal browser window and is intended for testing web applications:
 
-1. `browser_open` loads a local or public URL.
-2. `browser_snapshot` returns visible text and interactive elements with refs such as `e1`.
-3. `browser_fill`, `browser_click`, and `browser_press` interact through those refs.
-4. `browser_select`, `browser_hover`, and `browser_scroll` cover dropdowns, hover states, and long pages.
-5. `browser_upload` sets a local file input; `browser_download` stores a downloaded file under the active chat.
-6. `browser_viewport` switches between desktop, tablet, and mobile layouts.
-7. A new snapshot verifies DOM-visible results; stale refs are rejected.
-8. `browser_console` and `browser_network` expose console messages, HTTP responses, and failed requests.
-9. `browser_screenshot` attaches the rendered page to the next Qwen request for native vision inspection.
-10. `browser_close` or **Browser session > Close browser** releases the Edge process.
+1. `browser_inspect` (`open`, `snapshot`, `console`, `network`, `screenshot`, `close`) loads a local or public URL, returns visible text and interactive refs such as `e1`, inspects console/network diagnostics, attaches page screenshots for native vision, and closes the Edge process.
+2. `browser_interact` (`click`, `fill`, `select`, `press`, `hover`, `scroll`, `wait`, `upload`, `download`, `viewport`) interacts through fresh refs, switches between desktop/tablet/mobile viewports, handles uploads/downloads, and verifies DOM changes (stale refs are rejected).
+3. **Browser session > Close browser** also releases the Edge process from the UI.
 
 The browser remains available across individual agent steps. Use Computer mode instead when the task concerns a native desktop application or the entire Windows screen rather than a web page.
 
 ## Task plan
 
-For substantial work the model creates an operational plan with `set_task_plan` and updates steps with `update_task_step`. **Task progress** shows the goal, pending/in-progress/completed steps, validation result, and whether the final diff was reviewed. This task ledger is stored in `task-plan.json`, survives restart and compression, and contains operational state rather than private chain-of-thought.
+For substantial work the model creates and updates an operational plan with `task_plan` (`status`, `set`, `update_step`, `record_validation`). **Task progress** shows the goal, pending/in-progress/completed steps, validation result, and whether the final diff was reviewed. This task ledger is stored in `task-plan.json`, survives restart and compression, and contains operational state rather than private chain-of-thought.
 
 ## Task checkpoint and rollback
 
@@ -1093,7 +1092,7 @@ Open **Unfinished task** and choose **Continue task**. Pending confirmations, pa
 
 ## Project folder is missing
 
-The project list marks missing directories. Reattach the correct folder, move affected chats, or remove the stale project. Be careful: confirmed project deletion removes the folder and chats rather than merely unregistering it.
+If a project folder moved to another location or drive, Marvin first tries to locate and redirect it automatically using its saved Git identity. If it cannot be found automatically, open the recovery prompt (or **Project actions → Change project folder…**) to pick an existing folder or create a new one in Windows Explorer and optionally restore Git/GitHub connectivity. Be careful: confirmed deletion of a managed project removes its folder and chats, whereas deleting an attached project only unregisters it and keeps your folder on disk.
 
 ## Where is an exported PDF or DOCX?
 
@@ -1107,27 +1106,22 @@ Choose **Settings > Appearance and language**. The interface updates in place an
 
 # 20. User-Facing Tool Reference
 
-You normally request these operations in natural language; the names below explain what the model can call.
+You normally request these operations in natural language; the names below explain what the model can call. Related actions are grouped into compact tools to save context tokens, while legacy tool names remain callable as compatibility aliases.
 
 ## Available in every work mode
 
 | Tool | Capability |
 |---|---|
-| `read_memory` | Read one complete memory layer. |
-| `save_memory` | Save a durable fact to global, mode, or project memory. |
+| `memory` | Save, update (`replace`), remove, or read global, mode, or project memory. |
 | `web_search` | Search current public web results. |
 | `web_fetch` | Read a public HTTP/HTTPS page or supported document. |
-| `context_status` | Inspect tokens, messages, images, pins, and compression. |
-| `pin_context_file` | Pin a text file to the current chat. |
-| `unpin_context_file` | Remove one pin. |
-| `list_project_documents` | List readable documents in the project. |
-| `read_project_document` | Read text, Markdown, PDF, DOCX, JSON, YAML, or CSV. |
-| `list_skills` | List optional skill metadata. |
-| `read_skill` | Load one selected `SKILL.md`. |
+| `manage_context` | Check context status or pin/unpin text files for the current chat. |
+| `list_project_documents`, `read_project_document` | List and read project text, Markdown, PDF, DOCX, JSON, YAML, or CSV documents. |
+| `list_skills`, `read_skill` | List optional skill metadata and load a selected `SKILL.md`. |
 | `export_document` | Export Markdown, DOCX, or PDF. |
-| `list_dir`, `read_file` | Browse directories and read text with line ranges. |
+| `list_dir`, `read_file` | Browse directories and read text with line numbers and ranges. |
 | `search_files`, `find_files` | Fast literal/regex search and file globs. |
-| `write_file`, `apply_patch` | Create or atomically edit text files. |
+| `write_file`, `apply_patch` | Create or atomically edit text files with diff feedback and syntax checks. |
 | `make_directory`, `move_file`, `delete_file` | Structured filesystem changes with task rollback. |
 | `list_task_changes`, `undo_task_changes` | Inspect or revert the current task journal. |
 | `view_image` | Attach a local image for visual analysis. |
@@ -1136,29 +1130,19 @@ You normally request these operations in natural language; the names below expla
 
 | Tool | Capability |
 |---|---|
-| `task_plan_status` | Read the persistent operational plan. |
-| `set_task_plan` | Define ordered task steps. |
-| `update_task_step` | Update progress and step results. |
-| `record_task_validation` | Record a validation performed outside automatic checks. |
+| `task_plan` | Read, set, update steps, and record validations in the persistent task plan. |
 
 ## Added in Development and Computer
 
 | Tool | Capability |
 |---|---|
-| `repo_overview` | Return the automatic repository map. |
-| `project_instructions` | Read hierarchical project guidance for a path. |
-| `project_validation_profile` | List detected/configured checks. |
+| `project_info` | Return the repository map, hierarchical project instructions, or detected checks. |
 | `start_project_check` | Start the primary or selected validation command. |
 | `find_symbol` | Find declarations across supported programming languages. |
 | `document_symbols` | List declarations and line ranges in one source file. |
 | `find_references` | Find fast whole-word symbol uses across the project. |
-| `browser_open`, `browser_snapshot` | Open and semantically inspect an isolated Edge page. |
-| `browser_fill`, `browser_click`, `browser_press`, `browser_wait` | Interact with fresh element refs and wait for UI changes. |
-| `browser_select`, `browser_hover`, `browser_scroll` | Dropdowns, hover states, and scrolling. |
-| `browser_upload`, `browser_download` | Transfer a local file through the page or save a download. |
-| `browser_viewport` | Set a desktop, tablet, or mobile viewport. |
-| `browser_console`, `browser_network` | Inspect browser diagnostics incrementally. |
-| `browser_screenshot`, `browser_close` | Attach the page for Qwen vision or close the session. |
+| `browser_inspect` | Open, snapshot, inspect console/network, screenshot, or close isolated Edge. |
+| `browser_interact` | Click, fill, select, press, hover, scroll, wait, upload/download, or set viewport. |
 | `git_status` | Show branch and file status. |
 | `git_diff` | Show working or staged diff. |
 | `git_commit` | Create a local commit from selected/current-task files. |
