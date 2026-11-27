@@ -642,6 +642,7 @@ class ApplicationService:
         preferences = {**self.preferences, **(settings or {})}
         data = copy.deepcopy(self.cfg.data)
         data["default_model"] = preferences["model"]
+        data["language"] = preferences.get("language", "en")
         data["thinking"] = preferences["thinking"] != "off"
         data["reasoning_effort"] = preferences["thinking"] if data["thinking"] else "xhigh"
         data["work_mode"] = session.meta.get("work_mode") or preferences["work_mode"]

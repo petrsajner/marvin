@@ -973,7 +973,11 @@
     "Folder linked and local Git repository initialized:": "Složka propojena a inicializován lokální Git repozitář:",
     "Folder linked, but Git is not available on this computer:": "Složka propojena, ale na tomto počítači není dostupný Git:",
     "Project folder updated:": "Složka projektu aktualizována:",
-    "Saved GitHub / Git remote:": "Uložené propojení na GitHub / Git:"
+    "Saved GitHub / Git remote:": "Uložené propojení na GitHub / Git:",
+    "🧹 Masked {count} older large tool output(s) - context ~{est} tokens; originals kept in history": "🧹 Zkráceno {count} starších velkých výstupů nástrojů – kontext ~{est} tokenů; originály zůstávají v historii",
+    "Repetitive thinking loop interrupted; retrying concisely...": "Opakující se smyčka uvažování byla přerušena; zkouším stručněji…",
+    "Prompt cache": "Mezipaměť promptu",
+    "Masked tool outputs": "Zkrácené výstupy nástrojů"
   },
   "legacy_profile_labels": {
     "16 bit - přesnější, kontext 128k": "16-bit - more precise, context 128k",

@@ -27,6 +27,31 @@ BLOCKED_PATTERNS = [
 ]
 
 
+_FAILURE_LINE_RE = re.compile(
+    r"(?:^|\b)(?:FAIL|FAILED|ERROR|Traceback|AssertionError|SyntaxError|"
+    r"TypeError|ValueError|NameError|AttributeError|ImportError|ModuleNotFoundError|"
+    r"error\s+TS\d+|error\[E\d+\]|Exception:)",
+    re.IGNORECASE,
+)
+
+
+def _extract_failure_lines(stdout: str, stderr: str, limit: int = 20) -> list[str]:
+    """Pull key error/traceback lines from long failed command logs so they are not lost in the middle."""
+    combined = "\n".join(part for part in (stdout, stderr) if part).splitlines()
+    hits: list[str] = []
+    seen: set[str] = set()
+    for line in combined:
+        clean = line.strip()
+        if not clean or clean in seen:
+            continue
+        if _FAILURE_LINE_RE.search(clean):
+            seen.add(clean)
+            hits.append(clean[:220])
+            if len(hits) >= limit:
+                break
+    return hits
+
+
 def _head_tail(text: str, limit: int, label: str) -> str:
     """Keep the useful beginning and failure-heavy tail of long command output."""
     if len(text) <= limit:
@@ -111,12 +136,17 @@ def find_bash() -> str | None:
 
 
 # Read-only commands do not require confirmation, including in supervised mode.
-SAFE_CMDS = {"ls", "dir", "cat", "type", "head", "tail", "grep", "find", "wc", "file",
-             "stat", "du", "df", "pwd", "whoami", "which", "where", "tree", "echo",
-             "date", "uname", "hostname", "ipconfig"}
+SAFE_CMDS = {"ls", "dir", "cat", "type", "head", "tail", "grep", "rg", "find", "findstr",
+             "wc", "file", "stat", "du", "df", "pwd", "whoami", "which", "where", "tree",
+             "echo", "date", "uname", "hostname", "ipconfig",
+             "select-string", "sls", "get-childitem", "gci", "get-content", "gc",
+             "get-location", "gl", "measure-object", "select-object"}
 # Read-only Git subcommands; exclude ambiguous commands that can also modify state.
 SAFE_GIT_SUB = {"status", "log", "diff", "show", "blame", "rev-parse",
                 "ls-files", "describe", "shortlog", "help"}
+_GIT_BRANCH_WRITE_FLAGS = {"-d", "-D", "-m", "-M", "-c", "-C", "-f", "--delete", "--move", "--copy", "--force", "--set-upstream-to", "-u", "--unset-upstream"}
+_GIT_TAG_READ_FLAGS = {"-l", "--list", "-n", "-v", "--verify"}
+_GIT_REMOTE_READ_SUBS = {"-v", "--verbose", "show", "get-url"}
 # Reject mutation-related keywords in every command segment.
 UNSAFE_RE = re.compile(
     r"\b(rm|del|rd|move|mv|cp|copy|touch|mkdir|rmdir|chmod|chown|kill|taskkill|"
@@ -146,9 +176,31 @@ def is_read_only_command(command: str) -> bool:
         if base not in SAFE_CMDS and base != "git":
             return False
         if base == "git":
-            sub = next((t for t in toks[1:] if not t.startswith("-")), None)
-            if sub is None or sub.lower() not in SAFE_GIT_SUB:
+            rest = [t for t in toks[1:] if not t.startswith("-")]
+            sub = rest[0].lower() if rest else None
+            if sub is None:
                 return False
+            if sub in SAFE_GIT_SUB:
+                continue
+            sub_idx = toks.index(rest[0])
+            sub_args = toks[sub_idx + 1:]
+            if sub == "branch":
+                # Only allow read-only listing/inspection (no create/delete/rename flags or positional branch creation).
+                if any(a in _GIT_BRANCH_WRITE_FLAGS for a in sub_args):
+                    return False
+                positional = [a for a in sub_args if not a.startswith("-")]
+                if positional:
+                    return False
+                continue
+            if sub == "tag":
+                if not sub_args or all(a in _GIT_TAG_READ_FLAGS or a.startswith("--list") or a.startswith("--sort") for a in sub_args):
+                    continue
+                return False
+            if sub == "remote":
+                if not sub_args or sub_args[0].lower() in _GIT_REMOTE_READ_SUBS:
+                    continue
+                return False
+            return False
     return True
 
 
@@ -251,6 +303,10 @@ class RunCommandTool(Tool):
         parts = [f"$ {command}", f"[state: {state}]", f"[exit code: {proc.returncode}]"]
         if log_path:
             parts.append(f"[full log: {log_path}]")
+        if proc.returncode not in (0, None) and (len(out) > 20_000 or len(err) > 10_000):
+            key_lines = _extract_failure_lines(out, err)
+            if key_lines:
+                parts.append("KEY FAILURE LINES:\n" + "\n".join(key_lines))
         if out:
             parts.append(_head_tail(out, 20_000, "stdout truncated"))
         if err:

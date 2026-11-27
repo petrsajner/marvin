@@ -143,19 +143,30 @@ class RepoIndex:
                 size = path.stat().st_size
             except OSError:
                 continue
-            if path.suffix.lower() == ".py" and size <= 500_000 and len(symbols) < 80:
-                try:
-                    tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
-                    names = [node.name for node in tree.body
-                             if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))]
-                    if names:
-                        symbols.append(f"{rel}: {', '.join(names[:8])}")
-                except (OSError, SyntaxError):
-                    pass
+            if size <= 500_000 and len(symbols) < 80:
+                suffix = path.suffix.lower()
+                if suffix == ".py":
+                    try:
+                        tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+                        names = [node.name for node in tree.body
+                                 if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))]
+                        if names:
+                            symbols.append(f"{rel}: {', '.join(names[:8])}")
+                    except (OSError, SyntaxError):
+                        pass
+                elif suffix in {".ts", ".tsx", ".js", ".jsx", ".rs", ".go", ".cs", ".java", ".kt", ".cpp", ".hpp", ".c", ".h"}:
+                    try:
+                        from harness.code_index import CodeIndex
+                        found = CodeIndex(self.workspace)._pattern_symbols(path)
+                        names = list(dict.fromkeys(item["name"] for item in found))
+                        if names:
+                            symbols.append(f"{rel}: {', '.join(names[:8])}")
+                    except OSError:
+                        pass
         lang = ", ".join(f"{ext}={count}" for ext, count in extensions.most_common(8)) or "none"
         dirs = ", ".join(f"{name}={count}" for name, count in directories.most_common(10)) or "none"
         entries = ", ".join(entrypoints[:12]) or "none detected"
         symbol_text = "\n".join(f"- {line}" for line in symbols[:30]) or "- none detected"
         return (f"Workspace: {self.workspace}\nFiles: {len(files)}\n"
                 f"File types: {lang}\nTop areas: {dirs}\nKey files: {entries}\n"
-                f"Top-level Python symbols:\n{symbol_text}")
+                f"Top-level symbols:\n{symbol_text}")

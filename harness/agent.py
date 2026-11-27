@@ -64,8 +64,8 @@ TASK_PROTOCOL_NOTE = (
     "[TASK PROTOCOL - follow for this task] "
     "(1) START: before any tool call, briefly confirm (1-2 sentences, user's language) "
     "what the task is and your plan. "
-    "When the task has multiple implementation or verification steps, use set_task_plan before "
-    "the first write and update_task_step as meaningful steps finish. "
+    "When the task has multiple implementation or verification steps, use task_plan(action='set', ...) before "
+    "the first write and task_plan(action='update_step', ...) as meaningful steps finish. "
     "(2) PROGRESS: during longer work include one-sentence status updates "
     "(what you found/did, what you do next). "
     "Before finishing substantial work, use proportionate verification when it helps: re-check "
@@ -94,11 +94,11 @@ WRITING_PROTOCOL_NOTE = (
 PLAN_FIRST_NOTE = (
     "[PLAN FIRST MODE] The owner wants a plan before implementation in this chat. "
     "If this message starts a new task: before any file change, lay out a short "
-    "plan (use set_task_plan where available so it shows in the interface), then "
+    "plan (use task_plan(action='set', ...) where available so it shows in the interface), then "
     "end your turn asking for approval - do not implement yet. "
     "If the owner is approving or adjusting a plan you just proposed (for example "
     "'yes', 'go ahead', or 'skip step 3'): do not re-plan - carry the approved "
-    "plan into set_task_plan, apply the adjustments, and implement it."
+    "plan into task_plan(action='set', ...), apply the adjustments, and implement it."
 )
 PROGRESS_NOTE = (
     "[PROGRESS UPDATE REQUIRED] Before or together with your next tool call, give the user "
@@ -137,11 +137,11 @@ def repeated_cycle(history: list[str]) -> int:
     return 0
 MIN_TOOLS_FOR_SUMMARY = 3      # Tasks that change files with at least this many tools require a structured summary.
 COMPRESS_AT = 0.85             # Compress automatically at 85 percent of the context limit.
-KEEP_FRACTION = 0.20           # Share of the limit kept as live recent work after a
-                               # compression. Owner choice 2026-09-23: freeing roughly
-                               # 70% of a full chat matters more than the larger tail -
-                               # older work lives in the summary and stays searchable.
+KEEP_FRACTION = 0.25           # Share of the limit kept as live recent work after a
+                               # compression; observation masking handles bulky tool logs first
+                               # so full summarization happens less often and preserves more memory.
 IMAGES_KEPT = 4                # Screenshots still sent once context pressure forces pruning.
+TOOL_OUTPUTS_KEPT = 8          # Recent tool outputs kept verbatim when masking older bulky logs.
 PRUNE_WORTH = 0.05             # Pruning must free this share of the context to earn its rewrite.
 OVERFLOW_RE = re.compile(
     r"exceeds.{0,40}context|context.{0,40}(exceed|full|too (large|long))|"
@@ -158,6 +158,10 @@ MALFORMED_TOOL_CALL_NOTE = (
     "[TOOL CALL NOT READ] The server could not parse the tool call in your last reply ({detail}), "
     "so the reply was discarded and no tool ran. Make the call again, exactly in the tool-call "
     "format the system prompt defines, one complete call per block."
+)
+THINKING_LOOP_NOTE = (
+    "[THINKING LOOP INTERRUPTED] Your previous internal reasoning repeated itself verbatim and was "
+    "stopped to save time. Take a concise next tool action or provide a direct final answer."
 )
 _LOCAL_DOCUMENT_PATTERN = input_pattern("document_operation_pattern")
 DOCUMENT_OPERATION_RE = re.compile(
@@ -246,6 +250,8 @@ class Agent:
         self._summary_requested = False
         self._tool_call_history: list[str] = []
         self._cycle_warned_at = -1
+        self._reasoning_loop_retried = False
+        self._repo_snapshot_cache: str | None = None
         self._next_step_hint = ""             # The model's latest guess in this task.
         restored = self.session.load_task_state()
         if restored.get("status") in ("running", "waiting_confirmation"):
@@ -295,6 +301,7 @@ class Agent:
             self.ctx.code_index = CodeIndex(p)
         else:
             self.ctx.code_index.set_workspace(p)
+        self._repo_snapshot_cache = None
         return p
 
     @property
@@ -329,9 +336,13 @@ class Agent:
         if skills:
             blocks["skills"] = skills
         if self.ctx.repo_index and WORK_MODES[self.work_mode].repo_snapshot:
-            blocks["project"] = "## CURRENT PROJECT SNAPSHOT\n" + self.ctx.repo_index.summary()
+            if self._repo_snapshot_cache is None:
+                self._repo_snapshot_cache = "## CURRENT PROJECT SNAPSHOT\n" + self.ctx.repo_index.summary()
+            blocks["project"] = self._repo_snapshot_cache
         elif self.ctx.repo_index:
-            blocks["project"] = "## CURRENT PROJECT DOCUMENT LIBRARY\n" + self.ctx.repo_index.document_catalog()
+            if self._repo_snapshot_cache is None:
+                self._repo_snapshot_cache = "## CURRENT PROJECT DOCUMENT LIBRARY\n" + self.ctx.repo_index.document_catalog()
+            blocks["project"] = self._repo_snapshot_cache
         if self.ctx.repo_index:
             instructions = self.ctx.repo_index.instruction_context(self._active_context_paths)
             if instructions:
@@ -462,6 +473,8 @@ class Agent:
         self._summary_requested = False
         self._overflow_retried = False
         self._malformed_tool_calls = 0
+        self._reasoning_loop_retried = False
+        self._repo_snapshot_cache = None
         self._tool_call_history = []
         self._cycle_warned_at = -1
         self._next_step_hint = ""
@@ -474,9 +487,10 @@ class Agent:
         if self.work_mode == "research" and not DOCUMENT_OPERATION_RE.search(text):
             self.ctx.research.begin(text)
         self._save_task_state("running", label=text)
-        # Inject persistent memory into the system prompt at task start.
+        # Keep the system prompt stable; only append the task protocol when it is not
+        # already present in the live visible prefix (avoids repeating ~250 tokens every turn).
         self.refresh_system_prompt()
-        if self.tools_enabled:
+        if self.tools_enabled and self._needs_protocol_note():
             self.session.add("user", self._protocol_note())
         if self.session.meta.get("plan_first"):
             self.session.add("user", PLAN_FIRST_NOTE)
@@ -492,6 +506,8 @@ class Agent:
         self._summary_requested = False
         self._overflow_retried = False
         self._malformed_tool_calls = 0
+        self._reasoning_loop_retried = False
+        self._repo_snapshot_cache = None
         self._tool_call_history = []
         self._cycle_warned_at = -1
         self.safety.new_task()
@@ -500,7 +516,7 @@ class Agent:
         self._active_context_paths = []
         self._save_task_state("running", label=label)
         self.refresh_system_prompt()
-        if self.tools_enabled:
+        if self.tools_enabled and self._needs_protocol_note():
             self.session.add("user", self._protocol_note())
         if self.session.meta.get("plan_first"):
             self.session.add("user", PLAN_FIRST_NOTE)
@@ -510,10 +526,12 @@ class Agent:
         self.abort_flag.clear()
         self._pending = []
         self._pending_text = ""
+        self._reasoning_loop_retried = False
+        self._repo_snapshot_cache = None
         self.session.add("user", text, images=images)
         self._save_task_state("running")
         self.refresh_system_prompt()
-        if self.tools_enabled:
+        if self.tools_enabled and self._needs_protocol_note():
             self.session.add("user", self._protocol_note())
 
     def _observe_context_paths(self, args: dict | None) -> None:
@@ -548,8 +566,14 @@ class Agent:
         return None
 
     # ------------------------------------------------------------------
-    def _execute_calls(self, calls: list[dict], assistant_text: str = "", reasoning: str = "") -> list[tuple]:
-        """Execute tool calls, append their results to the session and return the trace."""
+    def _execute_calls(self, calls: list[dict], assistant_text: str = "", reasoning: str = "",
+                       trailing_notes: list[str] | None = None) -> list[tuple]:
+        """Execute tool calls, append their results to the session and return the trace.
+
+        Any advisory `trailing_notes` (loop warning, progress update reminder) are
+        attached directly to the final tool result instead of injecting a synthetic
+        `role: user` message mid-loop, preserving Qwen3.8 thinking continuity and
+        KV cache reuse."""
         # Preserve the assistant tool-call message exactly as returned by the model.
         self.session.add("assistant", assistant_text, tool_calls=calls, reasoning=reasoning)
         prepared = []
@@ -584,11 +608,20 @@ class Agent:
         else:
             results = [execute_one(item) for item in prepared]
 
+        notes_footer = "\n\n" + "\n\n".join(n for n in (trailing_notes or []) if n) if trailing_notes else ""
         trace = []
-        for (call, name, args, _), result in zip(prepared, results):
+        last_idx = len(prepared) - 1
+        for idx, ((call, name, args, _), result) in enumerate(zip(prepared, results)):
             trace.append((name, args, result))
             self.emit("tool_result", (name, result))
-            self.session.add("tool", result, tool_call_id=call["id"], name=name)
+            stored_result = result
+            if idx == last_idx and notes_footer:
+                from harness.tools.base import ToolOutcome
+                if isinstance(result, ToolOutcome):
+                    stored_result = ToolOutcome(str(result) + notes_footer, status=result.status, tool=result.tool)
+                else:
+                    stored_result = str(result) + notes_footer
+            self.session.add("tool", stored_result, tool_call_id=call["id"], name=name)
             if name == "read_skill" and args and not str(result).startswith("ERROR"):
                 loaded = self.session.meta.setdefault("active_skills", [])
                 if args.get("name") and args["name"] not in loaded:
@@ -600,7 +633,10 @@ class Agent:
                     name, args, result, processes=self.ctx.processes)
             if (self.ctx.code_index and name in
                     {"write_file", "apply_patch", "move_file", "delete_file"}):
-                self.ctx.code_index.invalidate()
+                if name in {"write_file", "apply_patch"} and args and args.get("path"):
+                    self.ctx.code_index.invalidate(self.ctx.resolve(str(args["path"])))
+                else:
+                    self.ctx.code_index.invalidate()
             if name in {"write_file", "apply_patch", "move_file", "delete_file", "make_directory", "run_command"}:
                 from harness.file_index import invalidate_project_files
                 invalidate_project_files(self.ctx.workspace)
@@ -676,6 +712,18 @@ class Agent:
             est = self.estimate_context_tokens()
             self.emit("info", t("🖼 Older screenshots no longer sent (count: {count}) - context ~{est} tokens",
                                 count=dropped, est=est))
+            if not force and est < int(limit * COMPRESS_AT):
+                return
+        # Next, non-destructive observation masking: replace older bulky tool outputs
+        # (large file reads, command logs, web fetches) with compact references while
+        # keeping user turns, assistant replies, memory, decisions, and full history intact.
+        maskable, mask_saving = self.session.prunable_tool_outputs(keep_recent=TOOL_OUTPUTS_KEPT)
+        masked = (self.session.prune_tool_outputs(keep_recent=TOOL_OUTPUTS_KEPT)
+                  if maskable and (mask_saving >= int(limit * PRUNE_WORTH) or force) else 0)
+        if masked:
+            est = self.estimate_context_tokens()
+            self.emit("info", t("🧹 Masked {count} older large tool output(s) - context ~{est} tokens; originals kept in history",
+                                count=masked, est=est))
             if not force and est < int(limit * COMPRESS_AT):
                 return
         self.emit("info", t("📦 Context ~{est} tokens (over 85% of {limit}) - summarizing the earlier conversation ...",
@@ -840,7 +888,6 @@ class Agent:
             return StepResult(Status.ERROR, text=f"LLM error: {type(e).__name__}: {e}")
 
         self._steps += 1
-        self._malformed_tool_calls = 0
         tail = thought.flush()
         if tail:
             self.emit("reasoning", tail)
@@ -872,12 +919,40 @@ class Agent:
                 self.session.calibrate_tokens(prompt_tokens, getattr(self, "_last_sent", 0))
             self.emit("usage", res.usage)
 
+        if getattr(res, "reasoning_loop_detected", False) and not res.stopped:
+            if not self._reasoning_loop_retried:
+                self._reasoning_loop_retried = True
+                self.emit("info", t("Repetitive thinking loop interrupted; retrying concisely..."))
+                self.session.add("user", THINKING_LOOP_NOTE)
+                self._save_task_state("running")
+                return StepResult(Status.CONTINUE,
+                                  text="Repetitive thinking loop interrupted; retrying concisely.")
+            self._save_task_state("error", result="Model repeated its internal reasoning in a loop.")
+            return StepResult(Status.ERROR, text="Model repeated its internal reasoning in a loop.")
+
         if res.stopped:
             if (res.content or "").strip():
                 self.session.add("assistant", res.content, reasoning=res.reasoning)
             self._save_task_state("aborted", result="Stopped by the user.")
             return StepResult(Status.ABORTED, text="Stopped by the user.",
                               reasoning=res.reasoning)
+
+        # Catch leaked raw <tool_call> markup in plain text (llama.cpp / Infernix when
+        # the model emits malformed XML tool syntax that the server could not parse).
+        if not res.has_tool_calls and self.registry.names():
+            from harness.context import looks_like_tool_call
+            if looks_like_tool_call(res.content or ""):
+                malformed = getattr(self, "_malformed_tool_calls", 0)
+                if malformed < MALFORMED_TOOL_CALL_RETRIES:
+                    self._malformed_tool_calls = malformed + 1
+                    self.session.add(
+                        "user",
+                        MALFORMED_TOOL_CALL_NOTE.format(detail="raw tool-call markup emitted in text"),
+                    )
+                    self._save_task_state("running")
+                    return StepResult(Status.CONTINUE,
+                                      text="The model's tool call could not be read; it was asked to repeat it.")
+        self._malformed_tool_calls = 0
 
         # 4) tool calls?
         if res.has_tool_calls:
@@ -932,15 +1007,21 @@ class Agent:
                                   pending_summary=self._summarize_calls(res.tool_calls),
                                   text=res.content,
                                   reasoning=res.reasoning)
-            trace = self._execute_calls(res.tool_calls, res.content or "", reasoning=res.reasoning)
+            trailing_notes: list[str] = []
             if loop_warning:
-                self.session.add("user", loop_warning)
-            # Request a progress update after a long sequence of silent tool steps.
-            self._tools_used_this_task += len(trace)
-            self._tool_steps_since_update += 1
-            if self._tool_steps_since_update >= TOOL_STEPS_BEFORE_UPDATE:
+                trailing_notes.append(loop_warning)
+            if (res.content or "").strip():
                 self._tool_steps_since_update = 0
-                self.session.add("user", PROGRESS_NOTE)
+            else:
+                self._tool_steps_since_update += 1
+                if self._tool_steps_since_update >= TOOL_STEPS_BEFORE_UPDATE:
+                    self._tool_steps_since_update = 0
+                    trailing_notes.append(PROGRESS_NOTE)
+            trace = self._execute_calls(
+                res.tool_calls, res.content or "", reasoning=res.reasoning,
+                trailing_notes=trailing_notes or None,
+            )
+            self._tools_used_this_task += len(trace)
             self._save_task_state("running")
             return StepResult(Status.CONTINUE, text=res.content, tool_trace=trace,
                               reasoning=res.reasoning)
@@ -1023,6 +1104,14 @@ class Agent:
     def _protocol_note(self) -> str:
         note = WRITING_PROTOCOL_NOTE if self.work_mode == "writing" else TASK_PROTOCOL_NOTE
         return self._with_next_step(note)
+
+    def _needs_protocol_note(self) -> bool:
+        """True when the current mode's task protocol is not yet in the live visible prefix."""
+        expected = self._protocol_note()
+        for msg in self.session._view_messages():
+            if msg.get("role") == "user" and msg.get("content") == expected:
+                return False
+        return True
 
     def _publish_next_step(self, text: str, source: str) -> None:
         """Keep the composer's suggestion with the chat and tell the interface."""
@@ -1113,8 +1202,13 @@ def build_registry(mode: str, work_mode: str | None = None, cfg=None) -> ToolReg
     history.register_history_tools(reg)
     web.register_web_tools(reg)        # Web search and fetching are available in every mode.
     search.register_search_tools(reg)  # FTS5 project search is available in every mode.
-    semantic.register_semantic_tools(reg)  # Hybrid semantic search is available in every mode.
-    context.register_context_tools(reg)
+    if cfg is None or cfg.data.get("_semantic_search"):
+        semantic.register_semantic_tools(reg)
+    else:
+        reg.register_alias("semantic_search", semantic.SemanticSearchTool())
+    context.register_context_tools(
+        reg, include_project_docs=(selected in ("discussion", "research", "writing")),
+    )
     skills.register_skill_tools(reg)
     documents.register_document_tools(reg)
     fs.register_fs_tools(reg)          # File reading and writing are available in every mode.

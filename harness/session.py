@@ -136,20 +136,39 @@ class Session:
     # server has already processed changes the prompt prefix and costs a full
     # reprocess of the conversation. See prune_images.
     HIDDEN_IMAGES_KEY = "images_hidden"
+    # A bulky older tool output replaced in the model view by a compact reference
+    # under context pressure (observation masking). The full original output stays
+    # untouched in `content`, JSONL, UI, and read_chat_history.
+    MASKED_CONTENT_KEY = "masked_content"
+    EXEMPT_MASK_TOOLS = frozenset({
+        "memory", "read_memory", "save_memory",
+        "project_decisions",
+        "task_plan", "task_plan_status", "set_task_plan", "update_task_step", "record_task_validation",
+        "read_skill", "list_skills",
+        "apply_patch", "git_diff", "git_status", "list_task_changes",
+    })
 
     def _sent_images(self, message: dict) -> list[str]:
         if message.get(self.HIDDEN_IMAGES_KEY):
             return []
         return list(message.get("images") or [])
 
+    def _effective_content(self, message: dict) -> Any:
+        masked = message.get(self.MASKED_CONTENT_KEY)
+        if isinstance(masked, str) and masked:
+            return masked
+        return message.get("content")
+
     def to_api_messages(self, include_pins: bool = True) -> list[dict]:
-        """Render API messages, keeping every image that has not been pruned."""
+        """Render API messages, keeping every image and tool output that has not been pruned."""
         view = self._view_messages()
         out: list[dict] = []
         for m in view:
             m2 = {k: v for k, v in m.items() if k not in
-                  ("images", self.HIDDEN_IMAGES_KEY, "id", "created", "attachments",
+                  ("images", self.HIDDEN_IMAGES_KEY, self.MASKED_CONTENT_KEY,
+                   "id", "created", "attachments",
                    "request_id", "run_id", "step_id", "tool_status")}
+            m2["content"] = self._effective_content(m)
             if "reasoning" in m2:
                 reasoning_val = m2.pop("reasoning", None)
                 if reasoning_val and "reasoning_content" not in m2:
@@ -258,7 +277,7 @@ class Session:
         total = 0
         images = 0
         for m in view:
-            c = m.get("content") or ""
+            c = self._effective_content(m) or ""
             if isinstance(c, str):
                 total += len(c)
             elif isinstance(c, list):
@@ -335,6 +354,7 @@ class Session:
             "roles": dict(counts),
             "images": images,
             "images_sent": images_sent,
+            "masked_tool_outputs": sum(1 for m in view if m.get(self.MASKED_CONTENT_KEY)),
             "pinned_files": pins,
             "compressed": bool(self.compression),
         }
@@ -342,7 +362,7 @@ class Session:
     def _msg_tokens(self, m: dict) -> int:
         """Estimate one message's token cost, including images and tool calls."""
         import json as _json
-        c = m.get("content") or ""
+        c = self._effective_content(m) or ""
         if not isinstance(c, str):
             c = " ".join(str(p.get("text", "")) for p in c if isinstance(p, dict))
         chars = len(str(c)) + len(str(m.get("reasoning") or m.get("reasoning_content") or ""))
@@ -468,6 +488,79 @@ class Session:
         if dropped:
             self._rewrite_jsonl()
         return dropped
+
+    @staticmethod
+    def _masked_tool_placeholder(message: dict) -> str:
+        """Compact, traceable placeholder for an older bulky tool result."""
+        name = str(message.get("name") or "tool")
+        raw = str(message.get("content") or "")
+        msg_id = str(message.get("id") or "")
+        lines = [line.strip() for line in raw.splitlines() if line.strip()]
+        head = lines[0][:140] if lines else ""
+        extra = ""
+        for line in lines[1:6]:
+            if line.startswith(("[state:", "[exit code:", "[full log:")):
+                extra += " " + line[:120]
+        ref = f" message_id={msg_id}" if msg_id else ""
+        summary = f"{head}{extra}".strip()
+        return (
+            f"[Older {name} output omitted to save context ({len(raw):,} chars). "
+            f"{summary} | Full output kept in history — re-read the file or call "
+            f"read_chat_history({ref.strip() or 'query=...'}) if needed.]"
+        )
+
+    def _maskable_tool_messages(self, keep_recent: int = 8, min_chars: int = 2400) -> list[tuple[dict, str]]:
+        """Identify older bulky tool messages eligible for non-destructive observation masking."""
+        tool_messages = [m for m in self._view_messages() if m.get("role") == "tool"]
+        if len(tool_messages) <= 2:
+            return []
+        cutoff = max(0, len(tool_messages) - max(2, int(keep_recent)))
+        # Also detect superseded earlier read_file outputs for the exact same file header.
+        latest_read_idx: dict[str, int] = {}
+        for idx, msg in enumerate(tool_messages):
+            if msg.get("name") == "read_file":
+                first_line = str(msg.get("content") or "").splitlines()[0] if msg.get("content") else ""
+                file_key = first_line.split(" (lines ", 1)[0].strip().lower()
+                if file_key:
+                    latest_read_idx[file_key] = idx
+
+        candidates: list[tuple[dict, str]] = []
+        for idx, msg in enumerate(tool_messages):
+            if msg.get(self.MASKED_CONTENT_KEY):
+                continue
+            name = str(msg.get("name") or "")
+            if name in self.EXEMPT_MASK_TOOLS:
+                continue
+            raw = msg.get("content")
+            if not isinstance(raw, str) or len(raw) < min_chars:
+                continue
+            superseded_read = False
+            if name == "read_file" and idx < len(tool_messages) - 2:
+                first_line = raw.splitlines()[0] if raw else ""
+                file_key = first_line.split(" (lines ", 1)[0].strip().lower()
+                if file_key and latest_read_idx.get(file_key, -1) > idx:
+                    superseded_read = True
+            if idx < cutoff or superseded_read:
+                placeholder = self._masked_tool_placeholder(msg)
+                if len(placeholder) + 400 < len(raw):
+                    candidates.append((msg, placeholder))
+        return candidates
+
+    def prunable_tool_outputs(self, keep_recent: int = 8, min_chars: int = 2400) -> tuple[int, int]:
+        """Count older bulky tool outputs eligible for masking and estimate freed tokens."""
+        candidates = self._maskable_tool_messages(keep_recent=keep_recent, min_chars=min_chars)
+        saved_chars = sum(len(str(msg.get("content") or "")) - len(placeholder)
+                          for msg, placeholder in candidates)
+        return len(candidates), self.tokens_for(saved_chars, 0, self.token_scale())
+
+    def prune_tool_outputs(self, keep_recent: int = 8, min_chars: int = 2400) -> int:
+        """Mask older bulky tool outputs in the model view while keeping originals intact on disk."""
+        candidates = self._maskable_tool_messages(keep_recent=keep_recent, min_chars=min_chars)
+        for msg, placeholder in candidates:
+            msg[self.MASKED_CONTENT_KEY] = placeholder
+        if candidates:
+            self._rewrite_jsonl()
+        return len(candidates)
 
     def trim_to_budget(self, budget_tokens: int, min_keep: int = 6) -> bool:
         """Fallback: advance the model-view cut while retaining full history for the UI."""

@@ -30,7 +30,8 @@ class TestFixTests(unittest.TestCase):
         prompt = build_test_fix_prompt("C:/apps/index.html")
         self.assertIn("C:/apps/index.html", prompt)
         self.assertIn(f"at most {MAX_ROUNDS} test rounds", prompt)
-        self.assertIn("browser_console", prompt)
+        self.assertIn("browser_inspect", prompt)
+        self.assertIn("'console'", prompt)
         self.assertIn("TESTREPORT:", prompt)
 
     def test_report_rows_carry_verdicts_and_are_stripped(self):

@@ -165,16 +165,75 @@ class StartProjectCheckTool(Tool):
             return f"ERROR: cannot start project check: {exc}"
 
 
-def register_context_tools(registry) -> None:
-    registry.register(ContextStatusTool())
-    registry.register(PinContextFileTool())
-    registry.register(UnpinContextFileTool())
-    registry.register(ListProjectDocumentsTool())
-    registry.register(ReadProjectDocumentTool())
+class ManageContextTool(Tool):
+    name = "manage_context"
+    parallel_safe = False
+    description = (
+        "Inspect context usage or pin/unpin a text file in persistent chat context. "
+        "Actions: 'status', 'pin' (requires path), 'unpin' (requires path)."
+    )
+    parameters = {
+        "action": {"type": "string", "enum": ["status", "pin", "unpin"]},
+        "path": {"type": "string", "description": "File path (for pin/unpin)"},
+    }
+    required = ["action"]
+
+    def run(self, ctx: AgentContext, action: str, path: str = "") -> str:
+        act = str(action or "").strip().lower()
+        if act == "status":
+            return ContextStatusTool().run(ctx)
+        if act == "pin":
+            if not path:
+                return "ERROR: manage_context(action='pin') requires 'path'"
+            return PinContextFileTool().run(ctx, path=path)
+        if act == "unpin":
+            if not path:
+                return "ERROR: manage_context(action='unpin') requires 'path'"
+            return UnpinContextFileTool().run(ctx, path=path)
+        return f"ERROR: Unknown manage_context action: {action!r}"
+
+
+class ProjectInfoTool(Tool):
+    name = "project_info"
+    parallel_safe = True
+    description = (
+        "Inspect project metadata: 'overview' (workspace map & symbols), "
+        "'instructions' (hierarchical AGENTS.md/QWEN.md/CLAUDE.md for path), "
+        "or 'checks' (detected test/lint/build commands for start_project_check)."
+    )
+    parameters = {
+        "kind": {"type": "string", "enum": ["overview", "instructions", "checks"]},
+        "path": {"type": "string", "description": "Optional relative path (for kind='instructions')"},
+    }
+    required = ["kind"]
+
+    def run(self, ctx: AgentContext, kind: str, path: str = ".") -> str:
+        k = str(kind or "").strip().lower()
+        if k == "overview":
+            return RepoOverviewTool().run(ctx)
+        if k == "instructions":
+            return ProjectInstructionsTool().run(ctx, path=path)
+        if k == "checks":
+            return ProjectValidationProfileTool().run(ctx)
+        return f"ERROR: Unknown project_info kind: {kind!r}"
+
+
+def register_context_tools(registry, *, include_project_docs: bool = True) -> None:
+    registry.register(ManageContextTool())
+    registry.register_alias("context_status", ContextStatusTool())
+    registry.register_alias("pin_context_file", PinContextFileTool())
+    registry.register_alias("unpin_context_file", UnpinContextFileTool())
+    if include_project_docs:
+        registry.register(ListProjectDocumentsTool())
+        registry.register(ReadProjectDocumentTool())
+    else:
+        registry.register_alias("list_project_documents", ListProjectDocumentsTool())
+        registry.register_alias("read_project_document", ReadProjectDocumentTool())
 
 
 def register_coding_context_tools(registry) -> None:
-    registry.register(RepoOverviewTool())
-    registry.register(ProjectInstructionsTool())
-    registry.register(ProjectValidationProfileTool())
+    registry.register(ProjectInfoTool())
     registry.register(StartProjectCheckTool())
+    registry.register_alias("repo_overview", RepoOverviewTool())
+    registry.register_alias("project_instructions", ProjectInstructionsTool())
+    registry.register_alias("project_validation_profile", ProjectValidationProfileTool())

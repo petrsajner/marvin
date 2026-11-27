@@ -79,8 +79,66 @@ class RecordTaskValidationTool(Tool):
         return "OK: validation recorded"
 
 
+class TaskPlanTool(Tool):
+    name = "task_plan"
+    parallel_safe = False
+    description = (
+        "Manage the visible operational task plan. "
+        "Actions: 'status' (read plan), 'set' (create/replace plan with goal + steps), "
+        "'update_step' (step_id + status + optional note), "
+        "'record_validation' (label + status passed|failed|skipped + summary)."
+    )
+    parameters = {
+        "action": {
+            "type": "string",
+            "enum": ["status", "set", "update_step", "record_validation"],
+            "description": "Task plan action",
+        },
+        "goal": {"type": "string", "description": "Concise task goal (for action='set')"},
+        "steps": {
+            "type": "array", "items": {"type": "string"},
+            "description": "Ordered steps (for action='set')",
+        },
+        "step_id": {"type": "integer", "description": "Step number (for action='update_step')"},
+        "status": {
+            "type": "string",
+            "enum": ["pending", "in_progress", "completed", "skipped", "passed", "failed"],
+            "description": "Step status (for update_step) or check status (for record_validation)",
+        },
+        "note": {"type": "string", "description": "Optional progress note (for update_step)"},
+        "label": {"type": "string", "description": "Validation check label (for record_validation)"},
+        "summary": {"type": "string", "description": "Validation summary (for record_validation)"},
+    }
+    required = ["action"]
+
+    def run(self, ctx: AgentContext, action: str, goal: str | None = None,
+            steps: list[str] | None = None, step_id: int | None = None,
+            status: str | None = None, note: str = "",
+            label: str | None = None, summary: str = "") -> str:
+        act = str(action or "").strip().lower()
+        if act == "status":
+            return TaskPlanStatusTool().run(ctx)
+        if act == "set":
+            if not goal or not steps:
+                return "ERROR: task_plan(action='set') requires 'goal' and 'steps'"
+            return SetTaskPlanTool().run(ctx, goal=goal, steps=steps)
+        if act == "update_step":
+            if step_id is None or not status:
+                return "ERROR: task_plan(action='update_step') requires 'step_id' and 'status'"
+            return UpdateTaskStepTool().run(ctx, step_id=step_id, status=status, note=note)
+        if act == "record_validation":
+            if not label or not status:
+                return "ERROR: task_plan(action='record_validation') requires 'label' and 'status'"
+            return RecordTaskValidationTool().run(ctx, label=label, status=status, summary=summary)
+        return f"ERROR: Unknown task_plan action: {action!r}"
+
+
 def register_task_tools(registry) -> None:
-    registry.register(TaskPlanStatusTool())
-    registry.register(SetTaskPlanTool())
-    registry.register(UpdateTaskStepTool())
-    registry.register(RecordTaskValidationTool())
+    registry.register(TaskPlanTool())
+    for legacy in (
+        TaskPlanStatusTool(),
+        SetTaskPlanTool(),
+        UpdateTaskStepTool(),
+        RecordTaskValidationTool(),
+    ):
+        registry.register_alias(legacy.name, legacy)

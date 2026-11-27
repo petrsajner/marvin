@@ -53,7 +53,7 @@ class AgentLoopWarningTests(unittest.TestCase):
 
     def warnings(self):
         return [m["content"] for m in self.session.messages
-                if m.get("role") == "user" and str(m.get("content", "")).startswith("[LOOP WARNING")]
+                if m.get("role") in ("tool", "user") and "[LOOP WARNING]" in str(m.get("content", ""))]
 
     def test_a_cycle_of_different_calls_gets_one_advisory_warning_per_round_of_repeats(self):
         cycle = [("list_dir", "{}"), ("read_file", '{"path": "notes.txt"}'), ("task_plan_status", "{}")]
@@ -64,6 +64,12 @@ class AgentLoopWarningTests(unittest.TestCase):
         warnings = self.warnings()
         self.assertEqual(len(warnings), 2, "once per full set of repeats, not on every step")
         self.assertIn("cycle of 3 (list_dir, read_file, task_plan_status)", warnings[0])
+        # Warnings stay inline on tool messages so synthetic user turns do not break thinking continuity.
+        synthetic_user_warnings = [
+            m for m in self.session.messages
+            if m.get("role") == "user" and "[LOOP WARNING]" in str(m.get("content", ""))
+        ]
+        self.assertEqual(synthetic_user_warnings, [])
 
     def test_the_exact_repeat_warning_is_unchanged(self):
         self.calls = [("list_dir", "{}")] * 2

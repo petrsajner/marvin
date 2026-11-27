@@ -192,20 +192,141 @@ class BrowserCloseTool(Tool):
         return json.dumps(_browser(ctx).close(), ensure_ascii=False, indent=2)
 
 
+class BrowserInspectTool(Tool):
+    name = "browser_inspect"
+    parallel_safe = False
+    description = (
+        "Open or inspect a page in the isolated headless Edge browser. "
+        "Actions: 'open' (requires url), 'snapshot' (visible text + interactive element refs e1..), "
+        "'screenshot' (attaches image for native vision), 'console', 'network', 'close'."
+    )
+    parameters = {
+        "action": {
+            "type": "string",
+            "enum": ["open", "snapshot", "screenshot", "console", "network", "close"],
+            "description": "Inspection action to perform",
+        },
+        "url": {"type": "string", "description": "URL or local file URL (for action='open')"},
+        "max_text_chars": {"type": "integer", "description": "Visible text limit for snapshot (default 12000)"},
+        "max_elements": {"type": "integer", "description": "Interactive element limit for snapshot (default 160)"},
+        "full_page": {"type": "boolean", "description": "Full-page capture (for action='screenshot')"},
+        "cursor": {"type": "integer", "description": "Incremental cursor (for console/network)"},
+        "max_entries": {"type": "integer", "description": "Maximum entries (for console/network, default 100)"},
+    }
+    required = ["action"]
+    risk = Risk.SAFE
+
+    def run(self, ctx: AgentContext, action: str, url: str | None = None,
+            max_text_chars: int = 12_000, max_elements: int = 160,
+            full_page: bool = False, cursor: int = 0, max_entries: int = 100) -> str:
+        act = str(action or "").strip().lower()
+        if act == "open":
+            if not url:
+                return "ERROR: browser_inspect(action='open') requires 'url'"
+            return BrowserOpenTool().run(ctx, url=url)
+        if act == "snapshot":
+            return BrowserSnapshotTool().run(ctx, max_text_chars=max_text_chars, max_elements=max_elements)
+        if act == "screenshot":
+            return BrowserScreenshotTool().run(ctx, full_page=full_page)
+        if act == "console":
+            return BrowserConsoleTool().run(ctx, cursor=cursor, max_entries=max_entries)
+        if act == "network":
+            return BrowserNetworkTool().run(ctx, cursor=cursor, max_entries=max_entries)
+        if act == "close":
+            return BrowserCloseTool().run(ctx)
+        return f"ERROR: Unknown browser_inspect action: {action!r}"
+
+
+class BrowserInteractTool(Tool):
+    name = "browser_interact"
+    parallel_safe = False
+    description = (
+        "Interact with the isolated browser page using refs from browser_inspect(action='snapshot'). "
+        "Actions: 'click', 'fill', 'hover', 'select', 'scroll', 'press', 'wait', 'upload', 'download', 'viewport'."
+    )
+    parameters = {
+        "action": {
+            "type": "string",
+            "enum": ["click", "fill", "hover", "select", "scroll", "press", "wait", "upload", "download", "viewport"],
+            "description": "Interaction action to perform",
+        },
+        "ref": {"type": "string", "description": "Element ref from latest snapshot (e.g. 'e1')"},
+        "text": {"type": "string", "description": "Text to enter (for action='fill')"},
+        "value": {"type": "string", "description": "Option value or label (for action='select')"},
+        "delta_y": {"type": "integer", "description": "Vertical scroll pixels (for action='scroll')"},
+        "key": {"type": "string", "description": "Key or combo like 'Enter', 'Control+L' (for action='press')"},
+        "milliseconds": {"type": "integer", "description": "Wait duration in ms (for action='wait')"},
+        "path": {"type": "string", "description": "Local file path (for action='upload')"},
+        "width": {"type": "integer", "description": "Viewport width (for action='viewport')"},
+        "height": {"type": "integer", "description": "Viewport height (for action='viewport')"},
+    }
+    required = ["action"]
+    risk = Risk.WRITE
+
+    _SAFE_ACTIONS = frozenset({"hover", "scroll", "wait", "viewport"})
+
+    def risk_for(self, args: dict) -> Risk:
+        act = str((args or {}).get("action") or "").strip().lower()
+        return Risk.SAFE if act in self._SAFE_ACTIONS else Risk.WRITE
+
+    def run(self, ctx: AgentContext, action: str, ref: str | None = None,
+            text: str | None = None, value: str | None = None,
+            delta_y: int | None = None, key: str | None = None,
+            milliseconds: int | None = None, path: str | None = None,
+            width: int | None = None, height: int | None = None) -> str:
+        act = str(action or "").strip().lower()
+        if act == "click":
+            if not ref:
+                return "ERROR: browser_interact(action='click') requires 'ref'"
+            return BrowserClickTool().run(ctx, ref=ref)
+        if act == "fill":
+            if not ref or text is None:
+                return "ERROR: browser_interact(action='fill') requires 'ref' and 'text'"
+            return BrowserFillTool().run(ctx, ref=ref, text=text)
+        if act == "hover":
+            if not ref:
+                return "ERROR: browser_interact(action='hover') requires 'ref'"
+            return BrowserHoverTool().run(ctx, ref=ref)
+        if act == "select":
+            if not ref or value is None:
+                return "ERROR: browser_interact(action='select') requires 'ref' and 'value'"
+            return BrowserSelectTool().run(ctx, ref=ref, value=value)
+        if act == "scroll":
+            if delta_y is None:
+                return "ERROR: browser_interact(action='scroll') requires 'delta_y'"
+            return BrowserScrollTool().run(ctx, delta_y=delta_y, ref=ref)
+        if act == "press":
+            if not key:
+                return "ERROR: browser_interact(action='press') requires 'key'"
+            return BrowserPressTool().run(ctx, key=key)
+        if act == "wait":
+            if milliseconds is None:
+                return "ERROR: browser_interact(action='wait') requires 'milliseconds'"
+            return BrowserWaitTool().run(ctx, milliseconds=milliseconds)
+        if act == "upload":
+            if not ref or not path:
+                return "ERROR: browser_interact(action='upload') requires 'ref' and 'path'"
+            return BrowserUploadTool().run(ctx, ref=ref, path=path)
+        if act == "download":
+            if not ref:
+                return "ERROR: browser_interact(action='download') requires 'ref'"
+            return BrowserDownloadTool().run(ctx, ref=ref)
+        if act == "viewport":
+            if width is None or height is None:
+                return "ERROR: browser_interact(action='viewport') requires 'width' and 'height'"
+            return BrowserViewportTool().run(ctx, width=width, height=height)
+        return f"ERROR: Unknown browser_interact action: {action!r}"
+
+
 def register_browser_tools(registry) -> None:
-    registry.register(BrowserOpenTool())
-    registry.register(BrowserSnapshotTool())
-    registry.register(BrowserClickTool())
-    registry.register(BrowserFillTool())
-    registry.register(BrowserHoverTool())
-    registry.register(BrowserSelectTool())
-    registry.register(BrowserScrollTool())
-    registry.register(BrowserUploadTool())
-    registry.register(BrowserDownloadTool())
-    registry.register(BrowserViewportTool())
-    registry.register(BrowserPressTool())
-    registry.register(BrowserWaitTool())
-    registry.register(BrowserScreenshotTool())
-    registry.register(BrowserConsoleTool())
-    registry.register(BrowserNetworkTool())
-    registry.register(BrowserCloseTool())
+    registry.register(BrowserInspectTool())
+    registry.register(BrowserInteractTool())
+    # Keep legacy single-action tool names callable as aliases so existing
+    # workflows, tests, and skills keep working without bloating model schemas.
+    for legacy in (
+        BrowserOpenTool(), BrowserSnapshotTool(), BrowserClickTool(), BrowserFillTool(),
+        BrowserHoverTool(), BrowserSelectTool(), BrowserScrollTool(), BrowserUploadTool(),
+        BrowserDownloadTool(), BrowserViewportTool(), BrowserPressTool(), BrowserWaitTool(),
+        BrowserScreenshotTool(), BrowserConsoleTool(), BrowserNetworkTool(), BrowserCloseTool(),
+    ):
+        registry.register_alias(legacy.name, legacy)

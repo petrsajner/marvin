@@ -133,12 +133,90 @@ class MemoryStore:
             self.ensure_project()
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
+            # Deduplicate identical existing memory bullets (case- and whitespace-normalized).
+            norm_new = " ".join(fact.lower().split())
+            if path.exists():
+                existing = path.read_text(encoding="utf-8", errors="replace").splitlines()
+                for line in existing:
+                    stripped = line.strip()
+                    if stripped.startswith("- "):
+                        if " ".join(stripped[2:].lower().split()) == norm_new:
+                            labels = {"global": "global", "mode": "work-mode", "project": "project"}
+                            return f"Already in {labels[scope]} memory: {fact[:80]}"
             with open(path, "a", encoding="utf-8") as handle:
                 handle.write(f"- {fact}\n")
             labels = {"global": "global", "mode": "work-mode", "project": "project"}
             return f"OK: saved to {labels[scope]} memory: {fact[:80]}"
         except OSError as exc:
             return f"ERROR: cannot write {path}: {exc}"
+
+    def _matching_fact_indices(self, lines: list[str], needle: str) -> list[int]:
+        query = (needle or "").strip().lower()
+        if not query:
+            return []
+        exact: list[int] = []
+        partial: list[int] = []
+        for idx, line in enumerate(lines):
+            stripped = line.strip()
+            if not stripped.startswith("- "):
+                continue
+            body = stripped[2:].strip().lower()
+            if body == query:
+                exact.append(idx)
+            elif query in body:
+                partial.append(idx)
+        return exact or partial
+
+    def replace(self, old_text: str, new_fact: str, scope: str) -> str:
+        """Replace one outdated fact line in the specified memory layer."""
+        old_text = (old_text or "").strip()
+        new_fact = (new_fact or "").strip()
+        if not old_text or not new_fact:
+            return "ERROR: Both old_text and new_text must be non-empty."
+        if scope not in ("global", "mode", "project"):
+            return f"ERROR: Unknown memory scope: {scope}"
+        path = self._path_for(scope)
+        if path is None or not path.exists():
+            return f"ERROR: Memory layer '{scope}' is unavailable."
+        try:
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+            hits = self._matching_fact_indices(lines, old_text)
+            if not hits:
+                return f"ERROR: No memory line matching {old_text!r} found in {scope} memory."
+            if len(hits) > 1:
+                preview = "; ".join(lines[i].strip()[:80] for i in hits[:4])
+                return f"ERROR: {len(hits)} lines matched {old_text!r} ({preview}); pass a more specific phrase."
+            lines[hits[0]] = f"- {new_fact}"
+            from harness.changes import atomic_write_text
+            atomic_write_text(path, "\n".join(lines) + "\n")
+            return f"OK: updated {scope} memory: {new_fact[:80]}"
+        except OSError as exc:
+            return f"ERROR: cannot update {path}: {exc}"
+
+    def remove(self, match_text: str, scope: str) -> str:
+        """Remove one outdated fact line from the specified memory layer."""
+        match_text = (match_text or "").strip()
+        if not match_text:
+            return "ERROR: Provide text identifying the memory line to remove."
+        if scope not in ("global", "mode", "project"):
+            return f"ERROR: Unknown memory scope: {scope}"
+        path = self._path_for(scope)
+        if path is None or not path.exists():
+            return f"ERROR: Memory layer '{scope}' is unavailable."
+        try:
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+            hits = self._matching_fact_indices(lines, match_text)
+            if not hits:
+                return f"ERROR: No memory line matching {match_text!r} found in {scope} memory."
+            if len(hits) > 1:
+                preview = "; ".join(lines[i].strip()[:80] for i in hits[:4])
+                return f"ERROR: {len(hits)} lines matched {match_text!r} ({preview}); pass a more specific phrase."
+            removed = lines.pop(hits[0]).strip()
+            from harness.changes import atomic_write_text
+            atomic_write_text(path, "\n".join(lines) + "\n")
+            return f"OK: removed from {scope} memory: {removed[:80]}"
+        except OSError as exc:
+            return f"ERROR: cannot update {path}: {exc}"
 
     def context_block(self) -> str:
         """All three active memory scopes, without artificial truncation."""

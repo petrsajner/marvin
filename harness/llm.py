@@ -19,11 +19,55 @@ class AssistantResult:
     reasoning: str = ""
     tool_calls: list[dict] = field(default_factory=list)
     stopped: bool = False
+    reasoning_loop_detected: bool = False
     usage: dict = field(default_factory=dict)
 
     @property
     def has_tool_calls(self) -> bool:
         return bool(self.tool_calls)
+
+
+class ReasoningLoopGuard:
+    """Detect pathological verbatim repetition inside a local model's <think> stream.
+
+    Activates only after substantial reasoning (>= min_chars) and requires multiple
+    consecutive identical windows so genuine deep reasoning is never interrupted."""
+
+    def __init__(self, *, min_chars: int = 6000, window: int = 180, repeats: int = 4) -> None:
+        self.min_chars = min_chars
+        self.window = window
+        self.repeats = repeats
+        self._buf = ""
+        self._total = 0
+        self._since_check = 0
+        self.triggered = False
+
+    def feed(self, chunk: str) -> bool:
+        if not chunk or self.triggered:
+            return self.triggered
+        self._total += len(chunk)
+        self._since_check += len(chunk)
+        keep = max(self.window * (self.repeats + 2), 2048)
+        self._buf = (self._buf + chunk)[-keep:]
+        if self._total < self.min_chars or self._since_check < 120:
+            return False
+        self._since_check = 0
+        norm = " ".join(self._buf.split())
+        if len(norm) < self.window * self.repeats:
+            return False
+        # Check whether any period P in [40..window] repeats `repeats` consecutive times at the tail.
+        tail = norm[-(self.window * self.repeats):]
+        for period in range(40, self.window + 1):
+            span = period * self.repeats
+            if len(tail) < span:
+                break
+            unit = tail[-period:]
+            if len(set(unit)) < 8:
+                continue
+            if tail[-span:] == unit * self.repeats:
+                self.triggered = True
+                return True
+        return False
 
 
 REASONING_EFFORTS = ("xhigh", "high", "medium", "low")
@@ -210,6 +254,7 @@ class LLMClient:
         stop_started = None
         generation_started = False
         parser = ThinkStreamParser(on_text=on_text, on_reasoning=on_reasoning)
+        reasoning_guard = ReasoningLoopGuard()
         if should_stop and should_stop():
             res.stopped = True
             return res
@@ -330,12 +375,18 @@ class LLMClient:
                     reasoning_parts.append(r)
                     if on_reasoning:
                         on_reasoning(r)
+                    if reasoning_guard.feed(r):
+                        res.reasoning_loop_detected = True
+                        break
                 if delta.content:
                     tp, rp = parser.feed(delta.content)
                     if tp:
                         text_parts.extend(tp)
                     if rp:
                         reasoning_parts.extend(rp)
+                        if reasoning_guard.feed("".join(rp)):
+                            res.reasoning_loop_detected = True
+                            break
                 for tc in delta.tool_calls or []:
                     if tc.index is None:
                         tc.index = 0

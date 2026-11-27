@@ -133,12 +133,29 @@ def session_detail(app, session):
                                 "files": len(manifest.get("files", [])), "created": manifest.get("created"),
                                 "restored": bool(manifest.get("undone_at")), "snapshot": manifest.get("snapshot", False)})
     paths = {scope: memory._path_for(scope) for scope in ("global", "mode", "project")}
+    last_usage = session.meta.get("last_usage", {}) or {}
+    cache_hit = None
+    timings = last_usage.get("timings") if isinstance(last_usage.get("timings"), dict) else {}
+    cached_n = timings.get("cache_n")
+    prompt_n = timings.get("prompt_n")
+    if isinstance(cached_n, (int, float)) and isinstance(prompt_n, (int, float)) and (cached_n + prompt_n) > 0:
+        total_eval = int(cached_n + prompt_n)
+        cache_hit = {"cached": int(cached_n), "total": total_eval,
+                     "percent": round(100.0 * cached_n / total_eval, 1)}
+    else:
+        details = last_usage.get("prompt_tokens_details") if isinstance(last_usage.get("prompt_tokens_details"), dict) else {}
+        cached_tok = details.get("cached_tokens")
+        total_tok = last_usage.get("prompt_tokens")
+        if isinstance(cached_tok, (int, float)) and isinstance(total_tok, (int, float)) and total_tok > 0:
+            cache_hit = {"cached": int(cached_tok), "total": int(total_tok),
+                         "percent": round(100.0 * cached_tok / total_tok, 1)}
     return {
         "decisions": DecisionStore(workspace).list(),
         "notices": app.store.notices(session.id),
         "context": {**session.context_breakdown(), "limit": context_limit,
                     "snapshot": read_json(Path(session.meta["context_snapshot"])) if session.meta.get("context_snapshot") else None,
-                    "usage": session.meta.get("last_usage", {}), "active_skills": session.meta.get("active_skills", []),
+                    "usage": last_usage, "cache_hit": cache_hit,
+                    "active_skills": session.meta.get("active_skills", []),
                     "breakdown": agent.context_usage_breakdown() if agent else {}},
         "memory": {scope: {"path": str(path) if path else None, "content": memory.read(scope) if path else ""}
                    for scope, path in paths.items()},

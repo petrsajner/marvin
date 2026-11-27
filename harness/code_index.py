@@ -51,13 +51,29 @@ class CodeIndex:
     def __init__(self, workspace: Path):
         self.workspace = Path(workspace).resolve()
         self._symbols: list[dict[str, Any]] | None = None
+        # Incremental per-file cache: rel_path -> (mtime_ns, size, symbols)
+        self._file_cache: dict[str, tuple[int, int, list[dict[str, Any]]]] = {}
+        self._files_dirty: bool = True
+        self._cached_files: list[Path] = []
 
     def set_workspace(self, workspace: Path) -> None:
         self.workspace = Path(workspace).resolve()
+        self._file_cache.clear()
         self.invalidate()
 
-    def invalidate(self) -> None:
+    def invalidate(self, path: Path | str | None = None) -> None:
         self._symbols = None
+        if path is None:
+            self._files_dirty = True
+            return
+        try:
+            target = Path(path).resolve()
+            rel = str(target.relative_to(self.workspace))
+            self._file_cache.pop(rel, None)
+            if target not in self._cached_files:
+                self._files_dirty = True
+        except (OSError, ValueError):
+            self._files_dirty = True
 
     def find_symbol(self, query: str, path: str = ".", kind: str | None = None,
                     max_results: int = 100) -> list[dict[str, Any]]:
@@ -144,15 +160,34 @@ class CodeIndex:
 
     def _all_symbols(self) -> list[dict[str, Any]]:
         if self._symbols is None:
+            if self._files_dirty or not self._cached_files:
+                self._cached_files = self._files()
+                self._files_dirty = False
+            live_rels: set[str] = set()
             symbols: list[dict[str, Any]] = []
-            for path in self._files():
+            for path in self._cached_files:
+                try:
+                    rel = str(path.relative_to(self.workspace))
+                    stat = path.stat()
+                except (OSError, ValueError):
+                    continue
+                live_rels.add(rel)
+                cached = self._file_cache.get(rel)
+                if cached and cached[0] == stat.st_mtime_ns and cached[1] == stat.st_size:
+                    symbols.extend(cached[2])
+                    continue
                 try:
                     if path.suffix.lower() in {".py", ".pyi"}:
-                        symbols.extend(self._python_symbols(path))
+                        parsed = self._python_symbols(path)
                     else:
-                        symbols.extend(self._pattern_symbols(path))
+                        parsed = self._pattern_symbols(path)
                 except (OSError, SyntaxError, UnicodeError):
-                    continue
+                    parsed = []
+                self._file_cache[rel] = (stat.st_mtime_ns, stat.st_size, parsed)
+                symbols.extend(parsed)
+            # Prune cache entries for deleted files.
+            for stale in [k for k in self._file_cache if k not in live_rels]:
+                self._file_cache.pop(stale, None)
             self._symbols = symbols
         return self._symbols
 

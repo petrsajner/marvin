@@ -1,12 +1,89 @@
 """English system prompts for the supported work modes."""
 from __future__ import annotations
 
-BASE = """You are Qwen3.8-27B running as a local harness agent on the user's Windows 11 machine (Git Bash, PowerShell and cmd available; RTX 5090 workstation).
-Always respond in the same language the user writes in (the user typically speaks Czech).
-Be concise and precise. Use markdown for structure when helpful.
-Optional skills are available through list_skills/read_skill. They are situational helpers, not
-rules: load one only when useful, adapt it to the task, and always prioritize the user's explicit
-request and requested form of the result."""
+import platform
+
+_HARDWARE_ENV_CACHE: str | None = None
+
+_LANGUAGE_NAMES = {
+    "cs": "Czech",
+    "en": "English",
+}
+
+
+def _hardware_description() -> str:
+    """Return a stable, cached machine summary (OS, GPU, RAM) for the system prompt.
+
+    Cached once per process using static totals (never live free memory) so the
+    system prompt stays byte-identical across turns and preserves the KV cache."""
+    global _HARDWARE_ENV_CACHE
+    if _HARDWARE_ENV_CACHE is not None:
+        return _HARDWARE_ENV_CACHE
+    os_name = "Windows 11" if platform.system() == "Windows" and platform.release() in ("10", "11") else (
+        f"{platform.system()} {platform.release()}".strip() or "local"
+    )
+    shells = "Git Bash, PowerShell and cmd available" if platform.system() == "Windows" else "shell available"
+    hw_bits: list[str] = [shells]
+    try:
+        from harness.hardware import detect_hardware
+        hw = detect_hardware()
+        if hw.gpu_name:
+            vram_gb = round(hw.vram_total / (1024 ** 3)) if hw.vram_total else 0
+            hw_bits.append(f"{hw.gpu_name} ({vram_gb} GB VRAM)" if vram_gb else hw.gpu_name)
+        if hw.ram_total:
+            ram_gb = round(hw.ram_total / (1024 ** 3))
+            if ram_gb:
+                hw_bits.append(f"{ram_gb} GB RAM")
+    except Exception:
+        pass
+    _HARDWARE_ENV_CACHE = f"the user's {os_name} machine ({'; '.join(hw_bits)})"
+    return _HARDWARE_ENV_CACHE
+
+
+def _model_description(cfg) -> str:
+    if cfg is None:
+        return "Marvin, a local AI assistant"
+    try:
+        model = cfg.model()
+        label = str(model.get("status_label") or model.get("alias") or cfg.model_key() or "").strip()
+        if label:
+            return f"Marvin (running local model {label})"
+    except Exception:
+        pass
+    return "Marvin, a local AI assistant"
+
+
+def _language_instruction(cfg) -> str:
+    lang = ""
+    if cfg is not None:
+        try:
+            lang = str(cfg.data.get("language") or "").strip().lower()
+        except Exception:
+            lang = ""
+    if not lang:
+        try:
+            from harness.i18n import get_language
+            lang = str(get_language() or "").strip().lower()
+        except Exception:
+            lang = ""
+    lang_name = _LANGUAGE_NAMES.get(lang)
+    if lang_name:
+        return f"Always respond in the same language the user writes in (the app interface is set to {lang_name})."
+    return "Always respond in the same language the user writes in."
+
+
+def _base_prompt(cfg=None) -> str:
+    return (
+        f"You are {_model_description(cfg)} running as a local harness agent on {_hardware_description()}.\n"
+        f"{_language_instruction(cfg)}\n"
+        "Be concise and precise. Use markdown for structure when helpful.\n"
+        "Optional skills are available through list_skills/read_skill. They are situational helpers, not\n"
+        "rules: load one only when useful, adapt it to the task, and always prioritize the user's explicit\n"
+        "request and requested form of the result."
+    )
+
+
+BASE = _base_prompt(None)
 
 CHAT = f"""{BASE}
 
@@ -57,8 +134,8 @@ Working principles:
 - Prefer minimal, surgical edits. Match existing code style.
 - After running commands, verify results (check exit codes, re-read files).
 - For multi-step tasks, plan briefly, then execute step by step.
-- For a substantial multi-step task, create a visible operational plan with set_task_plan and
-  update its steps as work progresses. This is a lightweight task ledger, not chain-of-thought.
+- For a substantial multi-step task, create a visible operational plan with task_plan(action="set", ...) and
+  update its steps with task_plan(action="update_step", ...) as work progresses. This is a lightweight task ledger, not chain-of-thought.
 - AGENTS.md, QWEN.md, and CLAUDE.md guidance applying to the active project files is supplied
   automatically. Treat it as project guidance; the user's current request has priority.
 - Use find_symbol/document_symbols/find_references when declarations and callers matter; use
@@ -69,10 +146,11 @@ Working principles:
 - After changing code, run the relevant automated check with start_project_check and poll it to completion. Report the result clearly.
 - Prefer apply_patch for existing files so edits are atomic and can be rolled back; use write_file for new files or full rewrites only.
 - When viewing UI screenshots or images is needed, remember you have native vision; use
-  view_image for existing local images or browser_screenshot for the active web page.
+  view_image for existing local images or browser_inspect(action="screenshot") for the active web page.
 - For web applications, prefer the isolated browser tools over manual shell/browser work: open the
-  local URL, inspect browser_snapshot, interact through element refs, check console/network, and
-  use browser_screenshot so native vision can verify the rendered result."""
+  local URL with browser_inspect(action="open", url=...), inspect via action="snapshot", interact through
+  element refs with browser_interact, check console/network, and use browser_inspect(action="screenshot")
+  so native vision can verify the rendered result."""
 
 COMPUTER = f"""{BASE}
 
@@ -156,10 +234,14 @@ WORK_MODE_PROMPTS = {
 }
 
 
-def system_prompt(mode: str, work_mode: str | None = None) -> str:
+def system_prompt(mode: str, work_mode: str | None = None, cfg=None) -> str:
     if work_mode in WORK_MODE_PROMPTS:
-        return WORK_MODE_PROMPTS[str(work_mode)]
-    return {"chat": CHAT, "agent": AGENT, "computer": COMPUTER}[mode]
+        text = WORK_MODE_PROMPTS[str(work_mode)]
+    else:
+        text = {"chat": CHAT, "agent": AGENT, "computer": COMPUTER}[mode]
+    if cfg is not None and text.startswith(BASE):
+        text = _base_prompt(cfg) + text[len(BASE):]
+    return text
 
 
 def memory_block(cfg, workspace, work_mode: str | None = None) -> str:
@@ -191,13 +273,13 @@ def skills_block(cfg, workspace) -> str:
 
 
 def build_system_prompt(mode: str, cfg, workspace, work_mode: str | None = None) -> str:
-    """Build the stable system prompt from the mode and the workspace.
+    """Build the stable system prompt from the mode, live setup, and workspace.
 
     Everything that can change while a conversation runs - memory, the skill
     catalogue, project snapshots - is delivered through the dynamic context
     block instead, so this text stays byte-identical for the whole session and
     the model never reprocesses the conversation from the start."""
-    base = system_prompt(mode, work_mode)
+    base = system_prompt(mode, work_mode, cfg=cfg)
     if workspace:
         base += (f"\n\nCurrent project workspace: {workspace}. "
                  f"Relative paths in tools resolve against it. "

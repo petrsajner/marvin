@@ -526,8 +526,8 @@ def test_registry_modes() -> None:
     chat = build_registry("chat")
     agent = build_registry("agent")
     computer = build_registry("computer")
-    check(set(chat.names()) == {"read_memory", "save_memory", "web_search", "web_fetch",
-                                "context_status", "pin_context_file", "unpin_context_file",
+    check(set(chat.names()) == {"memory", "web_search", "web_fetch",
+                                "manage_context",
                                 "list_project_documents", "read_project_document",
                                 "export_document", "read_document", "edit_spreadsheet",
                                 "list_skills", "read_skill",
@@ -565,9 +565,11 @@ def test_registry_modes() -> None:
           "Writing has document editing without Git and shell tools")
     check({"apply_patch", "git_commit", "run_command", "start_project_check"}
           <= set(development.names()), "Development has the complete development toolset")
-    check({"browser_open", "browser_snapshot", "browser_screenshot", "browser_console",
-           "browser_network", "browser_select", "browser_upload", "browser_download",
-           "browser_viewport"} <= set(development.names()),
+    check({"browser_inspect", "browser_interact"} <= set(development.names())
+          and all(development.get(alias) is not None for alias in (
+              "browser_open", "browser_snapshot", "browser_screenshot", "browser_console",
+              "browser_network", "browser_select", "browser_upload", "browser_download",
+              "browser_viewport")),
           "Development has an isolated browser session")
     check({"find_symbol", "document_symbols", "find_references"}
           <= set(development.names()),
@@ -2084,18 +2086,21 @@ def test_communication_protocol() -> None:
                           SafetyPolicy("auto"), mode="agent", work_mode=work_mode)
             return agent, session
 
-        # 1) Preserve internal context messages to keep the cached prefix stable.
+        # 1) Preserve the cached protocol without duplicating it on subsequent tasks.
         agent, session = make_agent([])
         agent.new_task("udelej neco")
         notes = [m for m in session.messages if "[TASK PROTOCOL" in str(m.get("content"))]
         check(len(notes) == 1, "The task protocol is added as a user message")
+        first_note_id = notes[0]["id"]
         agent.new_task("Next task")
         notes = [m for m in session.messages if "[TASK PROTOCOL" in str(m.get("content"))]
-        check(len(notes) == 2, "A new task preserves the previously cached protocol")
+        check(len(notes) == 1 and notes[0]["id"] == first_note_id,
+              "A new task preserves the previously cached protocol without duplicating it")
         reloaded = Session.load(cfg, session.id)
         persisted_notes = [m for m in reloaded.messages
                            if "[TASK PROTOCOL" in str(m.get("content"))]
-        check(len(persisted_notes) == 2, "Cache-preserving protocol messages survive reload unchanged")
+        check(len(persisted_notes) == 1 and persisted_notes[0]["id"] == first_note_id,
+              "Cache-preserving protocol messages survive reload unchanged")
 
         # 2) Request an update after four silent tool steps.
         script = [AssistantResult(tool_calls=[_tc("list_dir", '{"path": "."}')]) for _ in range(4)]

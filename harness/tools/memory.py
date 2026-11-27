@@ -46,6 +46,49 @@ class SaveMemoryTool(Tool):
         return store.append(fact, scope)
 
 
+class MemoryTool(Tool):
+    name = "memory"
+    parallel_safe = False
+    description = (
+        "Read or update persistent memory layers ('global' = all modes/projects, "
+        "'mode' = current work mode across projects, 'project' = current workspace). "
+        "Actions: 'save' (add one concise fact, deduplicated), 'replace' (update outdated fact "
+        "matching old_text with fact), 'remove' (delete fact matching old_text), 'read' (show full layer)."
+    )
+    parameters = {
+        "action": {
+            "type": "string",
+            "enum": ["save", "replace", "remove", "read"],
+            "description": "Memory operation",
+        },
+        "scope": {
+            "type": "string",
+            "enum": ["global", "mode", "project"],
+            "description": "Which memory layer owns this fact",
+        },
+        "fact": {"type": "string", "description": "Concise fact to save or replacement text"},
+        "old_text": {"type": "string", "description": "Text identifying an existing fact (for replace/remove)"},
+    }
+    required = ["action", "scope"]
+    risk = Risk.SAFE
+
+    def run(self, ctx: AgentContext, action: str, scope: str = "mode",
+            fact: str = "", old_text: str = "") -> str:
+        from harness.memory import MemoryStore
+        store = MemoryStore(ctx.cfg, ctx.project_workspace, ctx.work_mode)
+        act = str(action or "").strip().lower()
+        if act == "read":
+            return store.read(scope) or "(empty)"
+        if act == "save":
+            return store.append(fact, scope)
+        if act == "replace":
+            return store.replace(old_text, fact, scope)
+        if act == "remove":
+            return store.remove(old_text or fact, scope)
+        return f"ERROR: Unknown memory action: {action!r}"
+
+
 def register_memory_tools(registry) -> None:
-    registry.register(ReadMemoryTool())
-    registry.register(SaveMemoryTool())
+    registry.register(MemoryTool())
+    registry.register_alias("read_memory", ReadMemoryTool())
+    registry.register_alias("save_memory", SaveMemoryTool())

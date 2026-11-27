@@ -2048,6 +2048,22 @@ export function App() {
                             <br />
                             {tr("Generated")}:{" "}
                             {detail.context.usage.completion_tokens}
+                            {detail?.context?.cache_hit && (
+                              <>
+                                <br />
+                                {tr("Prompt cache")}:{" "}
+                                {detail.context.cache_hit.percent}% (
+                                {formatTokens(detail.context.cache_hit.cached)}{" "}
+                                / {formatTokens(detail.context.cache_hit.total)})
+                              </>
+                            )}
+                            {detail?.context?.masked_tool_outputs > 0 && (
+                              <>
+                                <br />
+                                {tr("Masked tool outputs")}:{" "}
+                                {detail.context.masked_tool_outputs}
+                              </>
+                            )}
                           </p>
                         )}
                       </section>

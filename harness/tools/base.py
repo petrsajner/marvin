@@ -27,6 +27,7 @@ class AgentContext:
     browser: Any = None            # harness.browser.BrowserSession
     code_index: Any = None         # harness.code_index.CodeIndex
     abort_flag: Any = None         # threading.Event shared with the active agent run
+    file_read_hashes: dict[str, str] = field(default_factory=dict)  # path -> sha256 when last read
 
     def resolve(self, path: str) -> Path:
         """Resolve relative paths against the workspace and preserve absolute paths."""
@@ -73,15 +74,23 @@ class ToolOutcome(str):
 class ToolRegistry:
     def __init__(self) -> None:
         self._tools: dict[str, Tool] = {}
+        self._aliases: dict[str, Tool] = {}
 
     def register(self, tool: Tool) -> None:
         self._tools[tool.name] = tool
 
+    def register_alias(self, name: str, tool: Tool) -> None:
+        """Register a callable legacy tool name without bloating the schema sent to the model."""
+        self._aliases[name] = tool
+
     def get(self, name: str) -> Tool | None:
-        return self._tools.get(name)
+        return self._tools.get(name) or self._aliases.get(name)
 
     def names(self) -> list[str]:
         return list(self._tools)
+
+    def all_callable_names(self) -> list[str]:
+        return list(dict.fromkeys([*self._tools, *self._aliases]))
 
     def schemas(self) -> list[dict]:
         return [t.schema() for t in self._tools.values()]

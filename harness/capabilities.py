@@ -48,8 +48,7 @@ CAPABILITIES: tuple[Capability, ...] = (
         summary="Word, PDF, Excel and CSV, including scanned pages that have to be looked at.",
         example="Read the contract in this project and summarise the main points for me.",
         category="documents", modes=EVERY_MODE,
-        tools=("read_document", "read_project_document", "list_project_documents",
-               "view_document_page", "read_file"),
+        tools=("read_document", "view_document_page", "read_file"),
     ),
     Capability(
         id="edit_word",
@@ -98,7 +97,7 @@ CAPABILITIES: tuple[Capability, ...] = (
         summary="For this project, for this kind of work, or everywhere. You can read and edit what is stored.",
         example="Remember for this project that we use metric units.",
         category="finding", modes=EVERY_MODE,
-        tools=("save_memory", "read_memory"), opens="settings:memory",
+        tools=("memory",), opens="settings:memory",
     ),
     Capability(
         id="pin_file",
@@ -106,7 +105,7 @@ CAPABILITIES: tuple[Capability, ...] = (
         summary="A pinned file stays in view for every answer in this chat.",
         example="Pin brief.md so you have it with every answer.",
         category="finding", modes=EVERY_MODE,
-        tools=("pin_context_file", "unpin_context_file"), opens="panel:context",
+        tools=("manage_context",), opens="panel:context",
     ),
     Capability(
         id="record_decision",
@@ -183,7 +182,7 @@ CAPABILITIES: tuple[Capability, ...] = (
         summary="Finds the project's own tests, runs them and repairs the failures.",
         example="Run the tests and fix whatever fails.",
         category="project", modes=("development", "computer"),
-        tools=("start_project_check", "project_validation_profile", "run_command"),
+        tools=("start_project_check", "project_info", "run_command"),
         opens="panel:progress",
     ),
     Capability(
@@ -208,10 +207,7 @@ CAPABILITIES: tuple[Capability, ...] = (
         summary="Opens it in a separate browser of its own, clicks through it and reports what it saw.",
         example="Open that page and check whether the form works.",
         category="project", modes=("development", "computer"),
-        tools=("browser_open", "browser_snapshot", "browser_click", "browser_fill",
-               "browser_screenshot", "browser_press", "browser_select", "browser_scroll",
-               "browser_hover", "browser_wait", "browser_upload", "browser_download",
-               "browser_viewport", "browser_console", "browser_network", "browser_close"),
+        tools=("browser_inspect", "browser_interact"),
         opens="panel:progress",
     ),
     # --- long work ---------------------------------------------------------
@@ -221,8 +217,7 @@ CAPABILITIES: tuple[Capability, ...] = (
         summary="A visible plan that survives a restart.",
         example="Split this into steps and keep showing me where you are.",
         category="long_work", modes=("writing", "development", "computer"),
-        tools=("set_task_plan", "update_task_step", "task_plan_status",
-               "record_task_validation"), opens="panel:progress",
+        tools=("task_plan",), opens="panel:progress",
     ),
     Capability(
         id="background_work",
@@ -248,9 +243,8 @@ CAPABILITIES: tuple[Capability, ...] = (
 # mapped to a capability nor listed here fails the suite, so "we forgot to tell
 # users about it" is a failing test rather than a silent omission.
 INTERNAL_TOOLS: dict[str, str] = {
-    "context_status": "Already shown in the Context panel; not something to ask for",
-    "repo_overview": "The model orients itself with it; not a user request",
-    "project_instructions": "Applied automatically from AGENTS.md and friends",
+    "list_project_documents": "Project document catalog helper for non-coding modes",
+    "read_project_document": "Project document reader with research-ledger recording",
     "find_symbol": "Code navigation the model uses while working",
     "document_symbols": "Code navigation the model uses while working",
     "find_references": "Code navigation the model uses while working",
