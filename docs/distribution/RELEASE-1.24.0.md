@@ -39,3 +39,10 @@ Staged in `dist/release-1.24.0/` and recorded in `release-1.24.0.json` (applicat
 - Replaced `Marvin-Setup-1.23.0-Full.exe` with `Marvin-Setup-1.24.0-Full.exe`, updated manuals and installation guides, and packed the verified `Bonsai-2.5-27B` model (`Ternary-Bonsai-2.5-27B-Q2_0.gguf`, `Ternary-Bonsai-2.5-27B-mmproj-BF16.gguf`, and `.marvin-verified.json`).
 - `offline_backup.py verify` passed for all **3,499** recorded files (0 errors).
 - Superseded `1.23.0` local installers and staging directory were deleted after verification.
+
+## GitHub publication verification
+
+- Published as latest release [`v1.24.0`](https://github.com/petrsajner/marvin/releases/tag/v1.24.0) on `2026-11-27T07:51:23Z`.
+- Release tag target commit: `c96c1dab` (application build commit: `581d4536`).
+- Verified all 6 uploaded GitHub release asset sizes and SHA-256 digests against `docs/distribution/release-1.24.0.json` — all 6 matched exactly.
+- Verified `https://github.com/petrsajner/marvin/releases/latest/download/SHA256SUMS.txt` resolves to `v1.24.0` and matches `dist/release-1.24.0/SHA256SUMS.txt` byte-for-byte (`Marvin-Setup-Full.exe` SHA-256 `f8506bab2889187272da591bea9124b24d3c292db3a3d49e38d0a0cfd5d169e5`).
