@@ -376,14 +376,19 @@ project layers too.
   the main protection)
 - Always use `supervised` for payments, email and similar
 
-## Benchmark (RTX 5090, thinking off)
+## Benchmark (RTX 5090 32 GB, 64 GB RAM — November 2026)
 
-| Model | Generation | VRAM | Context |
-|---|---|---|---|
-| Q4_K_M | **~82 tok/s** | depends on KV profile | F16 128k / Q8 256k |
-| Q5_K_M | **~73 tok/s** | depends on KV profile | F16 96k / Q8 192k |
+Measured through Marvin's real `LLMClient` and `Agent` loop (`scripts/engine_eval.py`, 9/9 scenarios including 8-tool JSON calling, vision OCR, end-to-end coding agent, and near-ceiling needle-in-a-haystack; see [full engine evaluation](docs/design/2026-11-22-inference-engine-evaluation.md)):
 
-TTFT ~1–2 s. Custom benchmark: `.venv/Scripts/python scripts/bench.py [--model q5]`
+| Model & Engine | GPU Support | Context | Load | Prose / Code Decode | Long Prefill | Agent e2e | Peak RAM |
+|---|---|---|---:|---:|---:|---:|---:|
+| **Qwen3.8-27B · NVFP4** (`Infernix 2026.11.20` + DFlash2) | RTX 50-series (Blackwell) | 256k INT8 | **6.6 s** | **184 / 448 tok/s** | 5,087 tok/s | **11.6 s** | **8.4 GiB** |
+| **Qwen3.8-Flash-Next · IQ3_S** (`Infernix 2026.11.20` + DFlash2) | RTX 50-series (Blackwell) | 256k INT8 | 22.1 s | **197 / 282 tok/s** | **7,288 tok/s** | **11.4 s** | 44.2 GiB |
+| **Qwen3.8-Flash-Next · IQ3_S** (`Strata 0.2.17` + DFlash2) | All NVIDIA 12–96 GB | 256k Q8 | 24.4 s | 152 / 209 tok/s | 6,810 tok/s | 16.7 s | 50.5 GiB |
+| **Qwen3.8-27B · Q5_K_M + MTP** (`llama.cpp b12359`) | All NVIDIA 24–96 GB | 192k Q8 | 22.9 s | 113 / 150 tok/s | 1,477 tok/s | 19.3 s | 27.7 GiB |
+| **Qwen3.8-27B · Q4_K_M / Q5_K_M** (`llama.cpp`, plain) | All NVIDIA 12–96 GB | Q8 256k / 192k *(F16 128k / 96k)* | ~20 s | ~70–82 tok/s | ~1,400 tok/s | — | ~26 GiB |
+
+Cached follow-up turns at 180k–246k context return in **0.14 s** (Infernix 27B), **0.56 s** (Strata Flash-Next), and **0.72 s** (`llama.cpp b12359`). Custom benchmark: `.venv/Scripts/python scripts/bench.py [--model q5]` or `scripts/engine_eval.py`.
 
 ## Tests
 
@@ -482,13 +487,12 @@ sessions/         development conversation history (gitignored)
 
 - The llama-server default port will change to 9931 in the future (currently 8080,
   see the notice in the log)
-- An alternative to llama.cpp is SGLang/vLLM under WSL2 (faster batching, more
-  complex setup) — for computer-use on Windows, native llama.cpp is the most stable path
-- The MTP (multi-token prediction) module can be added as a draft model via
-  `server.extra_args`
+- An alternative to native engines is SGLang/vLLM under WSL2 (faster batching, more
+  complex setup) — for desktop/computer-use on Windows, native `llama.cpp`, Strata,
+  and Infernix are the most stable path
 
-## Measured model profiles (1.9.0)
+## Measured model profiles
 
-The [approved profile table and 55-case qualification](docs/design/profile-remeasurement-2026-09-15.md) includes reusable JSON/CSV measurements, exact arguments, long-input coverage and smaller-card limitations. [Memory selection and recovery](docs/design/memory-profiles.md) documents the current behavior. Q8 is the default; F16 is optional only for Qwen Q4/Q5 on 32 GB-class GPUs.
+The [approved profile table and 55-case qualification](docs/design/profile-remeasurement-2026-09-15.md) and the [November 2026 engine evaluation](docs/design/2026-11-22-inference-engine-evaluation.md) include reusable JSON/CSV measurements, exact arguments, long-input coverage, and smaller-card (down to 12 GB VRAM) profiles. [Memory selection and recovery](docs/design/memory-profiles.md) documents the current behavior. Q8 is the default; F16 is optional only for Qwen Q4/Q5 on 32 GB-class GPUs.
 
 Qwen Q4/Q5 additionally offer opt-in **MTP speculative variants** (e.g. "Q8 · 192k · MTP") that generate about 2–3× faster through the pinned MTP draft model at 1.9–2.8 GiB of extra measured VRAM. The draft downloads and verifies automatically on first start. Under memory pressure a session started on MTP first drops the draft at the same context, then lowers the context with MTP, then without. See [MTP profiles](docs/design/mtp-profiles.md).
