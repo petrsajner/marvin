@@ -193,6 +193,39 @@ FLASH_NEXT_INFERNIX = {
     },
 }
 
+# Ternary Bonsai 2.5 27B (PrismML, Apache 2.0) in stock llama.cpp Q2_0 format.
+# Measured on 2026-11-27 (docs/design/measurements/2026-11-27-bonsai25-profiles.json):
+# - 7.67 GB weights + 0.93 GB BF16 vision projector, runs on stock llama.cpp b11556+ (we ship b12359).
+# - ~1.7-2.4 GiB less VRAM than Qwen3.8-27B UD-Q2_K_XL -> 2x context on 12 GB GPUs (64k Q8 / 128k Q4)
+#   and full 256k Q4 on 16 GB GPUs, +16-17% faster decode, stronger coding/tool-calling/OCR,
+#   while UD-Q2_K_XL keeps cleaner free-form Czech prose. Both stay available side by side.
+BONSAI_25_Q2 = {
+    "backend": "llama",
+    "alias": "Bonsai 2.5 27B Ternary Q2_0 (8.6 GB, 12/16 GB GPUs - 2x context & faster coding)",
+    "status_label": "Bonsai 2.5 27B · Q2_0",
+    "family": "bonsai",
+    "repo": "prism-ml/Ternary-Bonsai-2.5-27B-GGUF",
+    "revision": "28a7093cc25bc151cc2b284c5570f12ce343fdcf",
+    "download_dir": "Bonsai-2.5-27B",
+    "download_transport": "range",
+    "file": "Bonsai-2.5-27B/Ternary-Bonsai-2.5-27B-Q2_0.gguf",
+    "mmproj": "Bonsai-2.5-27B/Ternary-Bonsai-2.5-27B-mmproj-BF16.gguf",
+    "assets": [
+        {"path": "Ternary-Bonsai-2.5-27B-Q2_0.gguf", "size": 7673194848,
+         "sha256": "84496171ca79d4d33fb45612a2afd8303ec494baf916281023b7dc9cb3b3b9fa"},
+        {"path": "Ternary-Bonsai-2.5-27B-mmproj-BF16.gguf", "size": 931145856,
+         "sha256": "e287342d92332fa3577ed1d42e921dac9370c08da58ba9337fa450f6cc76cfd7"},
+    ],
+    "optional_download": True,
+    "vision": True,
+    "server_args": ["-fa", "on"],
+    "reasoning_efforts": ["xhigh", "medium", "low"],
+    "sampling": {
+        "thinking": {"temperature": 1.0, "top_p": 0.95, "top_k": 20, "min_p": 0.0, "presence_penalty": 0.0},
+        "non_thinking": {"temperature": 0.7, "top_p": 0.8, "top_k": 20, "min_p": 0.0, "presence_penalty": 1.5},
+    },
+}
+
 # Auxiliary draft model for the speculative ("MTP") q4/q5 profiles. Selected via
 # a profile, never a standalone model entry; same upstream repository as the
 # Qwen3.8-27B weights so the tokenizer matches the target models exactly.

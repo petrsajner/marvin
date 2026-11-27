@@ -316,6 +316,23 @@ class IndexesShellAndTelemetryTests(unittest.TestCase):
         detail = session_detail(service, session)
         self.assertEqual(detail["context"]["cache_hit"], {"cached": 19000, "total": 20000, "percent": 95.0})
 
+    def test_bonsai25_model_profiles_and_reasoning_effort_mapping(self):
+        from harness.llm import _template_kwargs
+        tmp = Path(tempfile.mkdtemp(prefix="marvin-bonsai-"))
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        cfg = _make_cfg(tmp)
+        self.assertIn("bonsai25", cfg.data["models"])
+        cfg.data["default_model"] = "bonsai25"
+        cfg.data["thinking"] = True
+        cfg.data["reasoning_effort"] = "high"
+        # Bonsai 2.5 Jinja template only allows xhigh/medium/low; high maps cleanly to xhigh.
+        self.assertEqual(_template_kwargs(cfg), {"chat_template_kwargs": {"reasoning_effort": "xhigh"}})
+        cfg.data["reasoning_effort"] = "medium"
+        self.assertEqual(_template_kwargs(cfg), {"chat_template_kwargs": {"reasoning_effort": "medium"}})
+        self.assertEqual(cfg.sampling(thinking=True).get("min_p"), 0.0)
+        self.assertIn("q8_0_64k_g12", cfg.kv_cache_profiles("bonsai25"))
+        self.assertIn("q4_0_256k", cfg.kv_cache_profiles("bonsai25"))
+
 
 if __name__ == "__main__":
     unittest.main()

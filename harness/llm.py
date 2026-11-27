@@ -94,10 +94,14 @@ def _template_kwargs(cfg: Config) -> dict:
     """Configure thinking and reasoning effort through chat-template parameters."""
     if not cfg.data.get("thinking", True):
         return {"chat_template_kwargs": {"enable_thinking": False}}
-    if not cfg.model().get("supports_reasoning_effort", True):
+    model = cfg.model()
+    if not model.get("supports_reasoning_effort", True):
         return {"chat_template_kwargs": {"enable_thinking": True}}
     effort = cfg.data.get("reasoning_effort")
-    if effort in REASONING_EFFORTS:
+    allowed = tuple(model.get("reasoning_efforts") or REASONING_EFFORTS)
+    if effort == "high" and "high" not in allowed and "xhigh" in allowed:
+        effort = "xhigh"
+    if effort in allowed:
         return {"chat_template_kwargs": {"reasoning_effort": effort}}
     return {}
 

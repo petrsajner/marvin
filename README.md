@@ -52,7 +52,7 @@ These are product decisions, not postponed roadmap items.
   Last used folder is remembered.
 - 🖼️ **Image analysis** — native vision (mmproj), including screenshots
 - 🖱️ **Computer control** — screenshot → clicking, typing, keys (pyautogui + mss)
-- 🔀 **Switchable models** — Qwen3.8-27B (Q2/IQ3/Q4/Q5, plus NVFP4 via Infernix on RTX 50-series) and Qwen3.8-Flash-Next (IQ3_S/IQ2_XS on Strata, plus IQ3_S via Infernix on RTX 50-series)
+- 🔀 **Switchable models** — Qwen3.8-27B (Q2/IQ3/Q4/Q5, plus NVFP4 via Infernix on RTX 50-series), **Bonsai 2.5 27B Ternary** (8.6 GB on `llama.cpp`, 2× context & faster agentic coding on 12–16 GB GPUs alongside Q2 for cleaner Czech prose), and Qwen3.8-Flash-Next (IQ3_S/IQ2_XS on Strata, plus IQ3_S via Infernix on RTX 50-series)
 - 🎚️ **KV cache precision** — Q8 by default, with optional F16 on 32 GB+ cards and compact Q4 profiles on 12–16 GB cards
 - 🧠 **Thinking on/off** — model reasoning mode (switchable at runtime)
 - 🛡️ **Three autonomy levels** — supervised / semi / auto (switchable anytime);
@@ -386,6 +386,8 @@ Measured through Marvin's real `LLMClient` and `Agent` loop (`scripts/engine_eva
 | **Qwen3.8-Flash-Next · IQ3_S** (`Infernix 2026.11.20` + DFlash2) | RTX 50-series (Blackwell) | 256k INT8 | 22.1 s | **197 / 282 tok/s** | **7,288 tok/s** | **11.4 s** | 44.2 GiB |
 | **Qwen3.8-Flash-Next · IQ3_S** (`Strata 0.2.17` + DFlash2) | All NVIDIA 12–96 GB | 256k Q8 | 24.4 s | 152 / 209 tok/s | 6,810 tok/s | 16.7 s | 50.5 GiB |
 | **Qwen3.8-27B · Q5_K_M + MTP** (`llama.cpp b12359`) | All NVIDIA 24–96 GB | 192k Q8 | 22.9 s | 113 / 150 tok/s | 1,477 tok/s | 19.3 s | 27.7 GiB |
+| **Bonsai 2.5 27B · Ternary Q2_0** (`llama.cpp b12359`) | All NVIDIA 12–96 GB | 64k Q8 / 128k Q4 *(12 GB)*; 256k Q4 *(16 GB)* | **4.6 s** | 111 / 111 tok/s | 3,177 tok/s | 55.0 s *(3-bug hard)* | 17.3 GiB |
+| **Qwen3.8-27B · Q2_K_XL** (`llama.cpp b12359`) | All NVIDIA 12–96 GB | 32k Q8 / 64k Q4 *(12 GB)*; 192k Q4 *(16 GB)* | ~10–35 s | 95 / 96 tok/s | 2,894 tok/s | 67.3 s *(3-bug hard)* | 20.4 GiB |
 | **Qwen3.8-27B · Q4_K_M / Q5_K_M** (`llama.cpp`, plain) | All NVIDIA 12–96 GB | Q8 256k / 192k *(F16 128k / 96k)* | ~20 s | ~70–82 tok/s | ~1,400 tok/s | — | ~26 GiB |
 
 Cached follow-up turns at 180k–246k context return in **0.14 s** (Infernix 27B), **0.56 s** (Strata Flash-Next), and **0.72 s** (`llama.cpp b12359`). Custom benchmark: `.venv/Scripts/python scripts/bench.py [--model q5]` or `scripts/engine_eval.py`.

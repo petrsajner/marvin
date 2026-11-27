@@ -287,9 +287,12 @@ Thinking depth also stays beside the prompt because it can change between questi
 
 | GPU class | Model | KV precision | Context choices |
 |---|---|---|---|
-| 12 GB | Qwen Q2 | Q8 / Q4 | 32k / 16k (Q8), 64k / 32k (Q4) |
-| 16 GB | Qwen Q2 | Q8 / Q4 | 128k / 96k / 64k (Q8), 192k (Q4) |
-| 16 GB | Qwen IQ3 | Q8 | 64k / 48k |
+| 12 GB | Qwen Q2 (`Q2_K_XL`) | Q8 / Q4 | 32k / 16k (Q8), 48k (Q8/Q4), 64k / 32k (Q4) |
+| 12 GB | **Bonsai 2.5 27B** (`Q2_0`) | Q8 / Q4 | **64k / 32k (Q8), 128k / 64k (Q4)** |
+| 16 GB | Qwen Q2 (`Q2_K_XL`) | Q8 / Q4 | 128k / 96k / 64k (Q8), 192k (Q4) |
+| 16 GB | **Bonsai 2.5 27B** (`Q2_0`) | Q8 / Q4 | **160k / 128k / 96k (Q8), 256k / 192k (Q4)** |
+| 16 GB | Qwen IQ3 | Q8 / Q4 | 64k / 48k (Q8), 96k (Q8/Q4), 128k (Q4) |
+| 24 GB | Bonsai 2.5 27B (`Q2_0`) | Q8 | 256k / 192k |
 | 24 GB | Qwen IQ3 | Q8 | 128k / 96k |
 | 24 GB | Qwen Q4 | Q8 | 96k / 64k |
 | 24 GB | Qwen Q5 | Q8 | 96k / 64k |
@@ -341,6 +344,23 @@ IQ2_XS answers at 107–136 tokens/s with 64 or 48 GB of RAM on every card, and 
 If memory runs short during a task, Marvin restarts the same model at 128k with the same settings and continues; completed tool results stay in the history. With 48 GB of RAM and a 16 GB card, a very long input can exceed the memory even at 128k; then select a smaller model and use **Continue**.
 
 Profile names 128k/192k/256k refer to 131,072 / 196,608 / 262,144 tokens. The numeric indicator may round the same capacity to a value such as 262k.
+
+## Choosing a model on 12 GB and 16 GB GPUs: Qwen Q2 vs. Bonsai 2.5
+
+Marvin ships **two compact 27B models** that fit entirely on a 12 GB or 16 GB graphics card through the standard `llama.cpp` engine — and each shines in a different kind of work:
+
+| Aspect | **Bonsai 2.5 27B · Q2_0** (PrismML Ternary) | **Qwen 3.8 27B · Q2** (`UD-Q2_K_XL`) |
+|---|---|---|
+| Download size (incl. vision) | **8.6 GB** (7.67 GB + 0.93 GB BF16 vision) | 9.8 GB (+ shared 0.93 GB vision) |
+| Max context on **12 GB GPU** | **64k Q8 / 128k Q4** *(2× longer!)* | 32k Q8 / 64k Q4 |
+| Max context on **16 GB GPU** | **160k Q8** (128k w/ GPU vision) / **256k Q4** | 128k Q8 (96k w/ GPU vision) / 192k Q4 |
+| Speed | **~16–17% faster** generation, ~10% faster prefill | Baseline |
+| Coding, multi-step tools & OCR | **Stronger** — specifically trained for long agentic loops, tool calls, and sharp screenshot OCR | Solid, but takes more steps and loses ~2 GiB of context headroom |
+| Free-form Czech prose & formal emails | **Weaker** — 1.76-bit ternary weights were tuned mainly on English agentic tasks and occasionally produce awkward Czech phrasing or word forms | **Clearly cleaner, more natural Czech** |
+
+> NOTE: **Rule of thumb for 12 GB and 16 GB cards:** Pick **Bonsai 2.5 27B** whenever you are **coding, running multi-step tools, working with long repositories/documents, reading screenshots, or writing in English** — it turns a 12 GB GPU into a genuinely comfortable 64k–128k coding workstation. Pick **Qwen 3.8 27B · Q2** (or **Qwen IQ3_S** on 16 GB) whenever you are **writing polished Czech emails, articles, or free-form Czech text**. Keeping **both** installed takes only ~18.4 GB total (less than a single Q5 model) and lets you switch between them inside the same conversation anytime.
+
+On 24 GB and 32 GB GPUs, **Qwen Q4 / Q5** (or **Qwen 27B NVFP4 on Infernix** and **Flash-Next**) remain strictly better in both Czech and coding, so Bonsai 2.5 is mainly intended for 12–16 GB cards.
 
 ## Choosing Qwen Q5 or Q4
 
@@ -951,7 +971,7 @@ The installer creates **Marvin (CLI)** in the Start Menu. It opens `run_cli.bat`
 | Command | Purpose |
 |---|---|
 | `/memory` | Show global, active-mode, and project memory. |
-| `/model q2\|q3\|q4\|q5\|flash_next_strata` | Switch model; restarts the server. |
+| `/model q2\|bonsai25\|q3\|q4\|q5\|flash_next_strata` | Switch model; restarts the server. |
 | `/work discussion\|research\|writing\|development\|computer` | Select work mode. |
 | `/mode chat\|agent\|computer` | Compatibility shortcut for legacy agent mode. |
 | `/autonomy supervised\|semi\|auto` | Set confirmation behavior. |

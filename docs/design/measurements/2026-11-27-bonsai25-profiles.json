@@ -1,0 +1,139 @@
+{
+  "measurement_id": "bonsai25-profiles-2026-11-27",
+  "date": "2026-11-27",
+  "note": "Measured on NVIDIA GeForce RTX 5090 (32 GB, driver 610.88) using stock llama.cpp v1.0.0 (b12359) with Ternary-Bonsai-2.5-27B-Q2_0.gguf + Ternary-Bonsai-2.5-27B-mmproj-BF16.gguf.",
+  "bonsai25": [
+    {
+      "name": "q8_0_32k_g12",
+      "ctx": 32768,
+      "ctk": "q8_0",
+      "ctv": "q8_0",
+      "cpu_vision": true,
+      "base_vram_mib": 2220,
+      "peak_vram_mib": 11286,
+      "delta_vram_mib": 9066,
+      "delta_vram_gib": 8.854
+    },
+    {
+      "name": "q8_0_64k_g12",
+      "ctx": 65536,
+      "ctk": "q8_0",
+      "ctv": "q8_0",
+      "cpu_vision": true,
+      "base_vram_mib": 2199,
+      "peak_vram_mib": 12540,
+      "delta_vram_mib": 10341,
+      "delta_vram_gib": 10.099
+    },
+    {
+      "name": "q4_0_64k_g12",
+      "ctx": 65536,
+      "ctk": "q4_0",
+      "ctv": "q4_0",
+      "cpu_vision": true,
+      "base_vram_mib": 2204,
+      "peak_vram_mib": 11509,
+      "delta_vram_mib": 9305,
+      "delta_vram_gib": 9.087
+    },
+    {
+      "name": "q4_0_128k_g12",
+      "ctx": 131072,
+      "ctk": "q4_0",
+      "ctv": "q4_0",
+      "cpu_vision": true,
+      "base_vram_mib": 2198,
+      "peak_vram_mib": 12982,
+      "delta_vram_mib": 10784,
+      "delta_vram_gib": 10.531
+    },
+    {
+      "name": "q8_0_96k_vision",
+      "ctx": 98304,
+      "ctk": "q8_0",
+      "ctv": "q8_0",
+      "cpu_vision": false,
+      "base_vram_mib": 2202,
+      "peak_vram_mib": 14928,
+      "delta_vram_mib": 12726,
+      "delta_vram_gib": 12.428
+    },
+    {
+      "name": "q8_0_128k_vision",
+      "ctx": 131072,
+      "ctk": "q8_0",
+      "ctv": "q8_0",
+      "cpu_vision": false,
+      "base_vram_mib": 2245,
+      "peak_vram_mib": 16230,
+      "delta_vram_mib": 13985,
+      "delta_vram_gib": 13.657
+    },
+    {
+      "name": "q8_0_128k",
+      "ctx": 131072,
+      "ctk": "q8_0",
+      "ctv": "q8_0",
+      "cpu_vision": true,
+      "base_vram_mib": 2240,
+      "peak_vram_mib": 15098,
+      "delta_vram_mib": 12858,
+      "delta_vram_gib": 12.557
+    },
+    {
+      "name": "q8_0_160k",
+      "ctx": 163840,
+      "ctk": "q8_0",
+      "ctv": "q8_0",
+      "cpu_vision": true,
+      "base_vram_mib": 2254,
+      "peak_vram_mib": 16330,
+      "delta_vram_mib": 14076,
+      "delta_vram_gib": 13.746
+    },
+    {
+      "name": "q4_0_192k",
+      "ctx": 196608,
+      "ctk": "q4_0",
+      "ctv": "q4_0",
+      "cpu_vision": true,
+      "base_vram_mib": 2250,
+      "peak_vram_mib": 14496,
+      "delta_vram_mib": 12246,
+      "delta_vram_gib": 11.959
+    },
+    {
+      "name": "q4_0_256k",
+      "ctx": 262144,
+      "ctk": "q4_0",
+      "ctv": "q4_0",
+      "cpu_vision": true,
+      "base_vram_mib": 2241,
+      "peak_vram_mib": 15968,
+      "delta_vram_mib": 13727,
+      "delta_vram_gib": 13.405
+    },
+    {
+      "name": "q8_0_192k_g24",
+      "ctx": 196608,
+      "ctk": "q8_0",
+      "ctv": "q8_0",
+      "cpu_vision": false,
+      "base_vram_mib": 2241,
+      "peak_vram_mib": 18714,
+      "delta_vram_mib": 16473,
+      "delta_vram_gib": 16.087
+    },
+    {
+      "name": "q8_0_256k_g24",
+      "ctx": 262144,
+      "ctk": "q8_0",
+      "ctv": "q8_0",
+      "cpu_vision": false,
+      "base_vram_mib": 2261,
+      "peak_vram_mib": 21207,
+      "delta_vram_mib": 18946,
+      "delta_vram_gib": 18.502
+    }
+  ]
+}

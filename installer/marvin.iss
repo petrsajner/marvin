@@ -169,57 +169,62 @@ var
   ModelList: TNewCheckListBox;
   // Populated in FillModelTable because Pascal Script does not support typed constants;
   // mirrors config.yaml (min_vram_gb is the smallest model profile)
-  ModelKeys: array[0..7] of String;
-  ModelNames: array[0..7] of String;
-  ModelMinVram: array[0..7] of Double;
-  ModelBlackwell: array[0..7] of Boolean;
-  ModelRowKeys: array[0..7] of String;
-  ModelFiles: array[0..7] of String;
+  ModelKeys: array[0..8] of String;
+  ModelNames: array[0..8] of String;
+  ModelMinVram: array[0..8] of Double;
+  ModelBlackwell: array[0..8] of Boolean;
+  ModelRowKeys: array[0..8] of String;
+  ModelFiles: array[0..8] of String;
 
 procedure FillModelTable;
 begin
   ModelKeys[0] := 'q2';
-  ModelKeys[1] := 'q3';
-  ModelKeys[2] := 'q4';
-  ModelKeys[3] := 'q5';
-  ModelKeys[4] := 'flash_next_strata';
-  ModelKeys[5] := 'flash_next_strata_iq2';
-  ModelKeys[6] := 'qwen27b_infernix';
-  ModelKeys[7] := 'flash_next_infernix';
-  ModelNames[0] := 'Qwen3.8-27B Q2_K_XL  (9.8 GB)  -  12/16 GB GPUs, optional on 16 GB+';
-  ModelNames[1] := 'Qwen3.8-27B IQ3_S  (12.0 GB)  -  16/24 GB GPUs, Q8 64k/48k on 16 GB';
-  ModelNames[2] := 'Qwen3.8-27B Q4_K_M  (16.5 GB)  -  24 GB+ GPUs';
-  ModelNames[3] := 'Qwen3.8-27B Q5_K_M  (19.8 GB)  -  24 GB+ GPUs';
-  ModelNames[4] := 'Qwen3.8-Flash-Next IQ3_S  (84.5 GB)  -  12 GB+ GPU & 32 GB+ RAM, optional';
-  ModelNames[5] := 'Qwen3.8-Flash-Next IQ2_XS  (69 GB)  -  faster on 48/32 GB RAM, optional';
-  ModelNames[6] := 'Qwen3.8-27B NVFP4 · Infernix  (22.2 GB)  -  24 GB+ RTX 50-series, optional';
-  ModelNames[7] := 'Qwen3.8-Flash-Next IQ3_S · Infernix  (85.9 GB)  -  12 GB+ RTX 50-series, optional';
+  ModelKeys[1] := 'bonsai25';
+  ModelKeys[2] := 'q3';
+  ModelKeys[3] := 'q4';
+  ModelKeys[4] := 'q5';
+  ModelKeys[5] := 'flash_next_strata';
+  ModelKeys[6] := 'flash_next_strata_iq2';
+  ModelKeys[7] := 'qwen27b_infernix';
+  ModelKeys[8] := 'flash_next_infernix';
+  ModelNames[0] := 'Qwen3.8-27B Q2_K_XL  (9.8 GB)  -  12/16 GB GPUs, cleaner Czech/prose';
+  ModelNames[1] := 'Bonsai 2.5 27B Ternary  (8.6 GB)  -  12/16 GB GPUs, 2x context & fast coding, optional';
+  ModelNames[2] := 'Qwen3.8-27B IQ3_S  (12.0 GB)  -  16/24 GB GPUs, Q8 64k/48k on 16 GB';
+  ModelNames[3] := 'Qwen3.8-27B Q4_K_M  (16.5 GB)  -  24 GB+ GPUs';
+  ModelNames[4] := 'Qwen3.8-27B Q5_K_M  (19.8 GB)  -  24 GB+ GPUs';
+  ModelNames[5] := 'Qwen3.8-Flash-Next IQ3_S  (84.5 GB)  -  12 GB+ GPU & 32 GB+ RAM, optional';
+  ModelNames[6] := 'Qwen3.8-Flash-Next IQ2_XS  (69 GB)  -  faster on 48/32 GB RAM, optional';
+  ModelNames[7] := 'Qwen3.8-27B NVFP4 · Infernix  (22.2 GB)  -  24 GB+ RTX 50-series, optional';
+  ModelNames[8] := 'Qwen3.8-Flash-Next IQ3_S · Infernix  (85.9 GB)  -  12 GB+ RTX 50-series, optional';
   ModelMinVram[0] := 11.0;
-  ModelMinVram[1] := 15.0;
-  ModelMinVram[2] := 23.0;
+  ModelMinVram[1] := 11.0;
+  ModelMinVram[2] := 15.0;
   ModelMinVram[3] := 23.0;
-  ModelMinVram[4] := 11.0;
+  ModelMinVram[4] := 23.0;
   ModelMinVram[5] := 11.0;
-  ModelMinVram[6] := 23.0;
-  ModelMinVram[7] := 11.0;
+  ModelMinVram[6] := 11.0;
+  ModelMinVram[7] := 23.0;
+  ModelMinVram[8] := 11.0;
   ModelBlackwell[0] := False;
   ModelBlackwell[1] := False;
   ModelBlackwell[2] := False;
   ModelBlackwell[3] := False;
   ModelBlackwell[4] := False;
   ModelBlackwell[5] := False;
-  ModelBlackwell[6] := True;
+  ModelBlackwell[6] := False;
   ModelBlackwell[7] := True;
+  ModelBlackwell[8] := True;
   ModelFiles[0] := 'Qwen3.8-27B-UD-Q2_K_XL.gguf';
-  ModelFiles[1] := 'Qwen3.8-27B-UD-IQ3_S.gguf';
-  ModelFiles[2] := 'Qwen3.8-27B-UD-Q4_K_M.gguf';
-  ModelFiles[3] := 'Qwen3.8-27B-UD-Q5_K_M.gguf';
+  ModelFiles[1] := 'Bonsai-2.5-27B\.marvin-verified.json';
+  ModelFiles[2] := 'Qwen3.8-27B-UD-IQ3_S.gguf';
+  ModelFiles[3] := 'Qwen3.8-27B-UD-Q4_K_M.gguf';
+  ModelFiles[4] := 'Qwen3.8-27B-UD-Q5_K_M.gguf';
   // Flash-Next's receipts in the default paths.strata_data_dir (runtime\models\strata).
-  ModelFiles[4] := 'strata\models\.marvin-verified.json';
-  ModelFiles[5] := 'strata\models\.marvin-verified-iq2_xs.json';
+  ModelFiles[5] := 'strata\models\.marvin-verified.json';
+  ModelFiles[6] := 'strata\models\.marvin-verified-iq2_xs.json';
   // Infernix receipts in paths.infernix_models_dir (runtime\models\infernix).
-  ModelFiles[6] := 'infernix\qwen3.8-27b-nvfp4\.marvin-verified.json';
-  ModelFiles[7] := 'infernix\flash-next-iq3_s\.marvin-verified.json';
+  ModelFiles[7] := 'infernix\qwen3.8-27b-nvfp4\.marvin-verified.json';
+  ModelFiles[8] := 'infernix\flash-next-iq3_s\.marvin-verified.json';
 end;
 
 function DetectVRAM: Double;
@@ -270,20 +275,21 @@ begin
   IsBlackwell := CapMajor >= 12;
   ModelsDir := AppDir + '\runtime\models';
   HasAnyModel := False;
-  for I := 0 to 7 do
+  for I := 0 to 8 do
     if FileExists(ModelsDir + '\' + ModelFiles[I]) then HasAnyModel := True;
   // Recreate TNewCheckListBox on refresh because individual items cannot be removed
   if ModelList <> nil then
     ModelList.Free;
   ModelList := TNewCheckListBox.Create(ModelPage.Surface);
-  ModelList.SetBounds(ScaleX(0), ScaleY(0), ModelPage.SurfaceWidth, ScaleY(190));
+  ModelList.SetBounds(ScaleX(0), ScaleY(0), ModelPage.SurfaceWidth, ScaleY(205));
   ModelList.Parent := ModelPage.Surface;
   ModelList.ShowLines := False;
-  for I := 0 to 7 do
+  for I := 0 to 8 do
   begin
     Fits := (Vram <= 0) or (ModelMinVram[I] <= Vram);
-    // Q2 is optional on 16 GB+ GPUs (automatic only on 12 GB); Flash-Next and Infernix are optional.
-    IsOptional := (I >= 4) or ((I = 0) and ((Vram <= 0) or (Vram >= 15.0)));
+    // Q2 and Bonsai 2.5 are automatic on 12 GB fresh installs and optional on 16 GB+;
+    // Flash-Next and Infernix are always optional.
+    IsOptional := (I >= 5) or (((I = 0) or (I = 1)) and ((Vram <= 0) or (Vram >= 15.0)));
     if ModelBlackwell[I] and (not IsBlackwell) then
     begin
       Enabled := False;
@@ -301,7 +307,7 @@ begin
       else
         Checked := Fits;
     end;
-    if not ((I = 1) and (Vram >= 31.0)) then
+    if not ((I = 2) and (Vram >= 31.0)) then
     begin
       ModelRowKeys[ModelList.Items.Count] := ModelKeys[I];
       ModelList.AddCheckBox(DisplayName, '', 0, Checked, Enabled, False, False, TObject(I));

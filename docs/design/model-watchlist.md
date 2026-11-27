@@ -47,6 +47,7 @@ The owner marked this as an interesting variant whose development should be foll
 |---|---|---|---|
 | Liquid LFM2.5-24B-A2B (24B, 2.45B active, text only) | 15 Oct 2026 | Wait | An independent index score above 34 |
 | NVIDIA Nemotron 3.5 Super VL (120B-A12B, index 26), Bolt 74B-A9B (21.4) | 17 Oct 2026 | Keep Nemotron 3.5 Lightning | A Nemotron above the Qwen models |
-| DeepSeek-V4.1-Flash-1017 (748B, 16B active, index 45) | 18 Oct 2026 | Wait | Upstream llama.cpp runs it (PR #28696), and a size fits 64 GB RAM. Maya's `maya-ds4` needs about 390 GB of disk. |
+| DeepSeek-V4.1-Flash-1017 (748B, 16B active, index 45) | 18 Oct / 27 Nov 2026 | Wait | Even with ISTA-DASLab IQ2_XXS (~100 GB) + Engram (~103 GB), 64 GB RAM forces heavy NVMe streaming (~10–25 tok/s). Revisit on 128–256 GB RAM or for a smaller successor. |
+| PrismML Ternary Bonsai 2.5 27B (`Q2_0`, 7.67 GB + 0.93 GB vision, Apache 2.0) | 27 Nov 2026 | **Adopted as `bonsai25`** | Added alongside `q2` (`UD-Q2_K_XL`): 2× context on 12 GB (64k Q8 / 128k Q4), full 256k Q4 on 16 GB, +16–17% faster decode, better agentic coding & OCR; `q2` stays beside it for cleaner free-form Czech prose. Revisit `PTQ1_0` (5.93 GB) when merged into upstream `llama.cpp`. |
 | Mistral Large 4 (~1T, index ~38, weights due late October), Small 4 119B-A6B (index ~20) | 20 Oct 2026 | Not adopted | A Mistral that beats Flash-Next and fits the PC |
 | Xiaomi MiMo-V2.6-Flash (309B, 15B active, index 38) | 20 Oct 2026 | Not adopted | A version above Flash-Next |

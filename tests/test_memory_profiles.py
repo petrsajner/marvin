@@ -174,17 +174,19 @@ class MemoryProfileTests(unittest.TestCase):
 
     def test_approved_menu_is_exact_for_each_card_class(self):
         expected = {
-            # Measured on 2026-11-22 for 12 GB minimum GPU floor.
-            12: {"q2": {"q8_0": ["32k", "16k"], "q8_0/q4_0": ["48k"], "q4_0": ["64k", "32k"]}},
-            # Approved on 2026-09-19 after measuring a 16 GB budget: a two-bit
-            # quant buys either the vision projector back on the card or twice
-            # the context, and quantising only the value half costs a gigabyte.
+            # Measured on 2026-11-22 (Q2) and 2026-11-27 (Bonsai 2.5) for 12 GB minimum GPU floor.
+            12: {"q2": {"q8_0": ["32k", "16k"], "q8_0/q4_0": ["48k"], "q4_0": ["64k", "32k"]},
+                 "bonsai25": {"q8_0": ["64k", "32k"], "q4_0": ["128k", "64k"]}},
+            # Approved on 2026-09-19 (Q2/IQ3) and 2026-11-27 (Bonsai 2.5) for 16 GB budget.
             16: {"q2": {"q8_0": ["128k", "96k", "64k"], "q4_0": ["192k"]},
+                 "bonsai25": {"q8_0": ["160k", "128k", "96k"], "q4_0": ["256k", "192k"]},
                  "q3": {"q8_0": ["64k", "48k"], "q8_0/q4_0": ["96k"], "q4_0": ["128k"]}},
-            24: {"q3": {"q8_0": ["128k", "96k"]},
+            24: {"bonsai25": {"q8_0": ["256k", "192k"]},
+                 "q3": {"q8_0": ["128k", "96k"]},
                  "q4": {"q8_0": ["96k", "96k·MTP", "64k", "64k·MTP"]},
                  "q5": {"q8_0": ["96k", "64k"]}},
             32: {"q2": {"q8_0": ["256k"]},
+                 "bonsai25": {"q8_0": ["256k"]},
                  "q4": {"q8_0": ["256k", "256k·MTP", "192k", "192k·MTP"], "f16": ["128k", "96k"]},
                  "q5": {"q8_0": ["192k", "192k·MTP", "128k", "128k·MTP"], "f16": ["128k", "96k"]}},
         }

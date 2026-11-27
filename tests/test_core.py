@@ -488,8 +488,8 @@ def test_gpu_autofit() -> None:
           "Setup selects IQ3_S for 16 GB cards")
     check(best_fit(cfg, 16.0) == ("q3", "q8_0_64k"),
           "auto-fit for 16 GB selects the measured IQ3_S / 64k profile")
-    check(set(download_keys(cfg, 12.0)) == {"q2"},
-          "Setup selects Q2 for 12 GB cards where larger quants do not fit")
+    check(set(download_keys(cfg, 12.0)) == {"q2", "bonsai25"},
+          "Setup selects Q2 and Bonsai 2.5 for 12 GB cards where larger quants do not fit")
     check(best_fit(cfg, 12.0) == ("q2", "q8_0_32k_g12"),
           "auto-fit for 12 GB selects the measured Q2 / 32k profile")
     q3_profiles = cfg.kv_cache_profiles("q3")

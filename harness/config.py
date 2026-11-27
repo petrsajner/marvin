@@ -17,7 +17,7 @@ BUILTIN_MODELS: dict[str, dict[str, Any]] = {'q4': {'alias': 'Qwen3.8-27B Q4_K_M
         'file': 'Qwen3.8-27B-UD-Q4_K_M.gguf',
         'mmproj': 'mmproj-F16.gguf',
         'server_args': ['-fa', 'on']},
- 'q2': {'alias': 'Qwen3.8-27B Q2_K_XL (9.8 GB, smallest quant - fits 12 GB and 16 GB GPUs)',
+ 'q2': {'alias': 'Qwen3.8-27B Q2_K_XL (9.8 GB, 12/16 GB GPUs - better Czech & natural prose)',
         'status_label': 'Qwen 3.8 27B · Q2',
         # Offered on 16 GB+ as an explicit opt-in; automatic fallback only on 12 GB where larger quants do not fit.
         'optional_download': True,
@@ -39,12 +39,14 @@ BUILTIN_MODELS: dict[str, dict[str, Any]] = {'q4': {'alias': 'Qwen3.8-27B Q4_K_M
         'server_args': ['-fa', 'on']}}
 
 from harness.model_catalog import (
+    BONSAI_25_Q2,
     FLASH_NEXT_INFERNIX,
     FLASH_NEXT_STRATA,
     FLASH_NEXT_STRATA_IQ2,
     QWEN27B_INFERNIX,
 )
 
+BUILTIN_MODELS["bonsai25"] = copy.deepcopy(BONSAI_25_Q2)
 BUILTIN_MODELS["flash_next_strata"] = copy.deepcopy(FLASH_NEXT_STRATA)
 BUILTIN_MODELS["flash_next_strata_iq2"] = copy.deepcopy(FLASH_NEXT_STRATA_IQ2)
 BUILTIN_MODELS["qwen27b_infernix"] = copy.deepcopy(QWEN27B_INFERNIX)

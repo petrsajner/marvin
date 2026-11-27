@@ -254,9 +254,12 @@ Myšlení zůstává také u promptu, protože ho můžete měnit mezi otázkami
 
 | Třída GPU | Model | Přesnost KV | Dostupné kontexty |
 |---|---|---|---|
-| 12 GB | Qwen Q2 | Q8 / Q4 | 32k / 16k (Q8), 64k / 32k (Q4) |
-| 16 GB | Qwen Q2 | Q8 / Q4 | 128k / 96k / 64k (Q8), 192k (Q4) |
-| 16 GB | Qwen IQ3 | Q8 | 64k / 48k |
+| 12 GB | Qwen Q2 (`Q2_K_XL`) | Q8 / Q4 | 32k / 16k (Q8), 48k (Q8/Q4), 64k / 32k (Q4) |
+| 12 GB | **Bonsai 2.5 27B** (`Q2_0`) | Q8 / Q4 | **64k / 32k (Q8), 128k / 64k (Q4)** |
+| 16 GB | Qwen Q2 (`Q2_K_XL`) | Q8 / Q4 | 128k / 96k / 64k (Q8), 192k (Q4) |
+| 16 GB | **Bonsai 2.5 27B** (`Q2_0`) | Q8 / Q4 | **160k / 128k / 96k (Q8), 256k / 192k (Q4)** |
+| 16 GB | Qwen IQ3 | Q8 / Q4 | 64k / 48k (Q8), 96k (Q8/Q4), 128k (Q4) |
+| 24 GB | Bonsai 2.5 27B (`Q2_0`) | Q8 | 256k / 192k |
 | 24 GB | Qwen IQ3 | Q8 | 128k / 96k |
 | 24 GB | Qwen Q4 | Q8 | 96k / 64k |
 | 24 GB | Qwen Q5 | Q8 | 96k / 64k |
@@ -282,6 +285,23 @@ Když běží spekulativní profil, záhlaví zobrazuje odznak **MTP** vedle ná
 Q5 používejte pro náročný vývoj, architekturu a finální kvalitu. Q4 je vhodný pro vyšší rychlost nebo kontext 256k.
 
 Qwen3.8-27B i Flash-Next mají vlastní podporu obrazových vstupů. Nabídka modelů ukazuje dostupnost souborů; Flash-Next potřebuje své shardy, projektor a připravené soubory a chybějící si Marvin připraví při jeho výběru. Podle karty jsou u Qwenu dostupné také kompaktní profily pro 12–16 GB karty. Tabulka není příslibem, že každá kombinace poběží na každém počítači; přesný výběr najdete u zvoleného modelu v nastavení.
+
+## Který model zvolit na 12 GB a 16 GB kartě: Qwen Q2 vs. Bonsai 2.5
+
+Marvin nabízí **dva kompaktní 27B modely**, které se celé vejdou na 12 GB nebo 16 GB grafickou kartu v běžném jádru `llama.cpp` — každý z nich ale vyniká v jiné práci:
+
+| Vlastnost | **Bonsai 2.5 27B · Q2_0** (PrismML Ternary) | **Qwen 3.8 27B · Q2** (`UD-Q2_K_XL`) |
+|---|---|---|
+| Velikost stažení (vč. vision) | **8,6 GB** (7,67 GB + 0,93 GB BF16 vision) | 9,8 GB (+ sdílený 0,93 GB vision) |
+| Max kontext na **12 GB GPU** | **64k Q8 / 128k Q4** *(2× delší!)* | 32k Q8 / 64k Q4 |
+| Max kontext na **16 GB GPU** | **160k Q8** (128k s GPU vision) / **256k Q4** | 128k Q8 (96k s GPU vision) / 192k Q4 |
+| Rychlost | **o ~16–17 % rychlejší** generování, ~10 % rychlejší čtení | Základní |
+| Kódování, nástroje a OCR | **Silnější** — cíleně laděný pro dlouhé agentní smyčky, volání nástrojů a přesné čtení ze screenshotů | Spolehlivý, ale potřebuje víc kroků a má o ~2 GiB menší prostor pro kontext |
+| Volná česká próza a formální e-maily | **Slabší** — 1,76bitové ternární váhy byly trénované hlavně na anglické agentní úlohy, takže ve volné češtině občas použije kostrbatý obrat nebo zkomolené slovo | **Výrazně přirozenější a čistší čeština** |
+
+> POZNÁMKA: **Jednoduché pravidlo pro 12 GB a 16 GB karty:** Zvolte **Bonsai 2.5 27B** vždy pro **kódování, vícekrokovou práci agenta s nástroji, dlouhé repozitáře/dokumenty, čtení screenshotů nebo práci v angličtině** — z 12 GB karty udělá plnohodnotnou 64k–128k vývojovou stanici. Zvolte **Qwen 3.8 27B · Q2** (na 16 GB kartě případně **Qwen IQ3_S**) vždy, když potřebujete **psát čistou češtinou — e-maily, články nebo delší české texty**. Mít nainstalované **oba** modely zabere dohromady jen asi 18,4 GB (méně než jediný model Q5) a můžete mezi nimi kdykoli přepnout i uprostřed rozpracovaného chatu.
+
+Na kartách s 24 GB a 32 GB VRAM zůstávají jasnou volbou **Qwen Q4 / Q5** (případně **Qwen 27B NVFP4 na Infernixu** a **Flash-Next**), které jsou silnější v češtině i v kódování — Bonsai 2.5 je určen hlavně pro 12–16 GB karty.
 
 ## Limit paměti GPU a automatická obnova
 
@@ -696,7 +716,7 @@ Instalátor přidá **Marvin (CLI)** do nabídky Start. Spouští `run_cli.bat` 
 | Příkaz | Účel |
 |---|---|
 | `/memory` | Zobrazit globální, režimovou a projektovou paměť. |
-| `/model q2\|q3\|q4\|q5\|flash_next_strata` | Přepnout model a restartovat server. |
+| `/model q2\|bonsai25\|q3\|q4\|q5\|flash_next_strata` | Přepnout model a restartovat server. |
 | `/work discussion\|research\|writing\|development\|computer` | Zvolit pracovní režim. |
 | `/mode chat\|agent\|computer` | Legacy kompatibilní režimová zkratka. |
 | `/autonomy supervised\|semi\|auto` | Nastavit potvrzování. |

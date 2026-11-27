@@ -60,6 +60,7 @@ def profile(context, gpu_class, measured, *, precision="q8_0", value_precision=N
 SMALL_CARD_MEASUREMENT = "profiles-16gb-2026-09-19"
 PROFILES_12GB_MEASUREMENT = "profiles-12gb-2026-11-22"
 INFERNIX_MEASUREMENT_ID = "infernix-profiles-2026-11-22"
+BONSAI25_MEASUREMENT = "bonsai25-profiles-2026-11-27"
 
 # Strata (docs/design/2026-10-05-strata-backend.md), approved by the owner on
 # 2026-10-07 from docs/design/strata-qualification-2026-10-07.md.
@@ -160,6 +161,35 @@ PROFILES = {
         # because no Qwen profile here has been approved beyond 256k.
         "q8_0_256k": profile(256, 32, 20.27, gpu_vision=True,
                              measurement=SMALL_CARD_MEASUREMENT),
+    },
+    # PrismML Ternary Bonsai 2.5 27B (Q2_0, 7.67 GB + 0.93 GB BF16 vision):
+    # leaves ~1.7-2.4 GiB more VRAM than Qwen3.8 Q2_K_XL -> 2x context on 12 GB cards
+    # and full 256k Q4 on 16 GB cards; measured 2026-11-27 on stock llama.cpp b12359.
+    "bonsai25": {
+        "q8_0_64k_g12": profile(64, 12, 10.099, cpu_vision=True,
+                                measurement=BONSAI25_MEASUREMENT),
+        "q8_0_32k_g12": profile(32, 12, 8.854, cpu_vision=True,
+                                measurement=BONSAI25_MEASUREMENT),
+        "q4_0_128k_g12": profile(128, 12, 10.531, precision="q4_0", cpu_vision=True,
+                                 measurement=BONSAI25_MEASUREMENT),
+        "q4_0_64k_g12": profile(64, 12, 9.087, precision="q4_0", cpu_vision=True,
+                                measurement=BONSAI25_MEASUREMENT),
+        "q8_0_160k": profile(160, 16, 13.746, cpu_vision=True,
+                             measurement=BONSAI25_MEASUREMENT),
+        "q8_0_128k_vision": profile(128, 16, 13.657, gpu_vision=True,
+                                    measurement=BONSAI25_MEASUREMENT),
+        "q8_0_96k_vision": profile(96, 16, 12.428, gpu_vision=True,
+                                   measurement=BONSAI25_MEASUREMENT),
+        "q4_0_256k": profile(256, 16, 13.405, precision="q4_0", cpu_vision=True,
+                             measurement=BONSAI25_MEASUREMENT),
+        "q4_0_192k": profile(192, 16, 11.959, precision="q4_0", cpu_vision=True,
+                             measurement=BONSAI25_MEASUREMENT),
+        "q8_0_256k_g24": profile(256, 24, 18.502,
+                                 measurement=BONSAI25_MEASUREMENT),
+        "q8_0_192k_g24": profile(192, 24, 16.087,
+                                 measurement=BONSAI25_MEASUREMENT),
+        "q8_0_256k": profile(256, 32, 18.502,
+                             measurement=BONSAI25_MEASUREMENT),
     },
     "q3": {
         "q8_0_64k": profile(64, 16, 13.617, cpu_vision=True),
@@ -268,6 +298,7 @@ def larger_card_profiles(gpu):
 
     menu = {
         "q2": {"q8_0_256k": derived(256, 20.27, gpu_vision=True)},
+        "bonsai25": {"q8_0_256k": derived(256, 18.502)},
         "q4": {"q8_0_256k": derived(256, 26.137), "q8_0_256k_mtp": derived(256, 28.982, speculative=True),
                "q8_0_192k": derived(192, 23.502), "q8_0_192k_mtp": derived(192, 26.033, speculative=True),
                "f16_256k": derived(256, 34.3, precision="f16"), "f16_128k": derived(128, 24.371, precision="f16")},
